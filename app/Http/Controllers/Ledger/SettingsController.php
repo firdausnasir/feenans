@@ -17,9 +17,21 @@ class SettingsController extends Controller
     {
         $this->authorize('view', $ledger);
 
+        $apiTokens = $request->user()->tokens()
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($token) => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'last_used_at' => $token->last_used_at?->toIso8601String(),
+                'created_at' => $token->created_at?->toIso8601String(),
+            ]);
+
         return Inertia::render('ledgers/settings/index', [
             'ledger' => $ledger->load(['accountTypes' => fn ($q) => $q->orderBy('position')]),
             'hasSampleData' => $sampleDataService->hasSampleData($ledger),
+            'apiTokens' => $apiTokens,
+            'newToken' => session('newToken'),
         ]);
     }
 
