@@ -1,6 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { CurrencySelect } from '@/components/currency-select';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -124,7 +125,7 @@ export default function SettingsIndex({
             {
                 name: ledgerName.trim(),
                 cycle_start_day: cycleStartDay,
-                currency_code: currencyCode.trim().toUpperCase(),
+                currency_code: currencyCode,
             },
             {
                 preserveScroll: true,
@@ -351,7 +352,7 @@ export default function SettingsIndex({
                     errors.ledger ??
                     errors.message ??
                     Object.values(errors)[0] ??
-                    'Failed to delete ledger.';
+                    'Failed to delete workspace.';
                 toast.error(String(msg));
             },
         });
@@ -364,7 +365,7 @@ export default function SettingsIndex({
             <div className="flex h-full flex-1 flex-col gap-8 p-4">
                 <Heading
                     title="Settings"
-                    description="Configure your ledger settings."
+                    description="Configure your workspace settings."
                 />
 
                 {/* ── General ────────────────────────────────────────────── */}
@@ -373,9 +374,9 @@ export default function SettingsIndex({
                     <Separator />
 
                     <div className="grid max-w-md gap-4">
-                        {/* Ledger name */}
+                        {/* Workspace name */}
                         <div className="space-y-1.5">
-                            <Label htmlFor="ledger-name">Ledger name</Label>
+                            <Label htmlFor="ledger-name">Workspace name</Label>
                             <Input
                                 id="ledger-name"
                                 value={ledgerName}
@@ -390,20 +391,10 @@ export default function SettingsIndex({
 
                         {/* Currency */}
                         <div className="space-y-1.5">
-                            <Label htmlFor="currency">Currency code</Label>
-                            <Input
-                                id="currency"
+                            <Label>Currency code</Label>
+                            <CurrencySelect
                                 value={currencyCode}
-                                onChange={(e) =>
-                                    setCurrencyCode(
-                                        e.target.value
-                                            .toUpperCase()
-                                            .slice(0, 3),
-                                    )
-                                }
-                                maxLength={3}
-                                className="w-24 uppercase"
-                                placeholder="e.g. USD"
+                                onValueChange={setCurrencyCode}
                             />
                             {currencyCode !== ledger.currency_code && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -721,7 +712,7 @@ export default function SettingsIndex({
                         <div className="flex items-center justify-between gap-4">
                             <div>
                                 <p className="text-sm font-medium">
-                                    Delete this ledger
+                                    Delete this workspace
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                     This will permanently delete all accounts,
@@ -736,7 +727,7 @@ export default function SettingsIndex({
                                     setShowDeleteDialog(true);
                                 }}
                             >
-                                Delete ledger
+                                Delete workspace
                             </Button>
                         </div>
                     </div>
@@ -780,7 +771,7 @@ export default function SettingsIndex({
                 </DialogContent>
             </Dialog>
 
-            {/* ── Delete ledger dialog ─────────────────────────────────────── */}
+            {/* ── Delete workspace dialog ────────────────────────────────────── */}
             <Dialog
                 open={showDeleteDialog}
                 onOpenChange={(open) => {
@@ -793,7 +784,7 @@ export default function SettingsIndex({
             >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Delete ledger</DialogTitle>
+                        <DialogTitle>Delete workspace</DialogTitle>
                         <DialogDescription>
                             This will permanently delete all accounts,
                             transactions, categories, and other data associated
@@ -834,7 +825,9 @@ export default function SettingsIndex({
                                 deleteConfirmName !== ledger.name
                             }
                         >
-                            {isDeletingLedger ? 'Deleting…' : 'Delete ledger'}
+                            {isDeletingLedger
+                                ? 'Deleting…'
+                                : 'Delete workspace'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

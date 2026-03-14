@@ -1,5 +1,8 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
+import { CurrencySelect } from '@/components/currency-select';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -11,11 +14,11 @@ import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Ledgers',
+        title: 'Workspaces',
         href: index(),
     },
     {
-        title: 'Create ledger',
+        title: 'Create workspace',
         href: createLedger(),
     },
 ];
@@ -25,24 +28,27 @@ export default function CreateLedger({
 }: {
     defaults: { currency_code: string; uses_seeded_categories: boolean };
 }) {
+    const [currencyCode, setCurrencyCode] = useState(defaults.currency_code);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Create ledger" />
+            <Head title="Create workspace" />
 
             <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
                 <Heading
-                    title="Create ledger"
+                    title="Create your workspace"
                     description="Set up a new financial space with custom accounts and categories."
                 />
 
                 <Form
                     {...LedgerController.store.form()}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
+                    onSuccess={() => toast.success('Ledger created')}
                 >
                     {({ errors, processing }) => (
                         <>
                             <div className="grid gap-2">
-                                <Label htmlFor="name">Ledger name</Label>
+                                <Label htmlFor="name">Workspace name</Label>
                                 <Input
                                     id="name"
                                     name="name"
@@ -53,15 +59,15 @@ export default function CreateLedger({
                             </div>
 
                             <div className="grid gap-2">
-                                <Label htmlFor="currency_code">
-                                    Currency code
-                                </Label>
-                                <Input
-                                    id="currency_code"
+                                <Label>Currency code</Label>
+                                <CurrencySelect
+                                    value={currencyCode}
+                                    onValueChange={setCurrencyCode}
+                                />
+                                <input
+                                    type="hidden"
                                     name="currency_code"
-                                    defaultValue={defaults.currency_code}
-                                    maxLength={3}
-                                    required
+                                    value={currencyCode}
                                 />
                                 <InputError message={errors.currency_code} />
                             </div>
@@ -74,7 +80,9 @@ export default function CreateLedger({
                                 }
                             />
 
-                            <Button disabled={processing}>Create ledger</Button>
+                            <Button disabled={processing}>
+                                Create workspace
+                            </Button>
                         </>
                     )}
                 </Form>
