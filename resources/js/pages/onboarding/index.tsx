@@ -5,6 +5,7 @@ import {
     complete,
     saveStep,
 } from '@/actions/App/Http/Controllers/OnboardingController';
+import { CurrencySelect } from '@/components/currency-select';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,6 +25,7 @@ import type { Account, AccountType, Ledger } from '@/types/ledger';
 type OnboardingData = {
     // Step 1
     name?: string;
+    currency_code?: string;
     cycle_start_day?: number;
     seed_categories?: boolean;
     // Step 2
@@ -43,12 +45,13 @@ type Props = {
 };
 
 // ──────────────────────────────────────────
-// Step 1: Create Your Ledger
+// Step 1: Create Your Workspace
 // ──────────────────────────────────────────
 
 function Step1({ savedData }: { savedData: OnboardingData | null }) {
     const form = useForm({
         name: savedData?.name ?? '',
+        currency_code: savedData?.currency_code ?? 'MYR',
         cycle_start_day: savedData?.cycle_start_day ?? 1,
         seed_categories: savedData?.seed_categories ?? true,
     });
@@ -89,7 +92,7 @@ function Step1({ savedData }: { savedData: OnboardingData | null }) {
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-2">
-                <Label htmlFor="name">Ledger name</Label>
+                <Label htmlFor="name">Workspace name</Label>
                 <Input
                     id="name"
                     type="text"
@@ -100,6 +103,20 @@ function Step1({ savedData }: { savedData: OnboardingData | null }) {
                     autoFocus
                 />
                 <InputError message={form.errors.name} />
+            </div>
+
+            <div className="grid gap-2">
+                <Label>Currency</Label>
+                <CurrencySelect
+                    value={form.data.currency_code}
+                    onValueChange={(val) => form.setData('currency_code', val)}
+                />
+                <input
+                    type="hidden"
+                    name="currency_code"
+                    value={form.data.currency_code}
+                />
+                <InputError message={form.errors.currency_code} />
             </div>
 
             <div className="grid gap-2">
@@ -315,12 +332,12 @@ function Step3({
         <div className="space-y-6 text-center">
             <div className="space-y-2">
                 <p className="text-lg font-medium">
-                    Your ledger and first account are ready!
+                    Your workspace and first account are ready!
                 </p>
 
                 <div className="mt-4 space-y-2 rounded-lg border border-sidebar-border/70 p-4 text-left text-sm">
                     <div className="flex justify-between">
-                        <span className="text-muted-foreground">Ledger</span>
+                        <span className="text-muted-foreground">Workspace</span>
                         <span className="font-medium">
                             {ledger?.name ?? '—'}
                         </span>
@@ -357,8 +374,8 @@ function Step3({
 
 const STEP_TITLES: Record<number, { title: string; description: string }> = {
     1: {
-        title: 'Create your ledger',
-        description: 'Set up your financial space to start tracking.',
+        title: 'Create your workspace',
+        description: 'Name your workspace and choose your currency.',
     },
     2: {
         title: 'Create your first account',

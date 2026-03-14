@@ -52,7 +52,7 @@ class OnboardingController extends Controller
 
             $this->ledgerSetupService->createForUser($user, [
                 'name' => $data['name'],
-                'currency_code' => 'MYR',
+                'currency_code' => $data['currency_code'] ?? 'MYR',
                 'uses_seeded_categories' => (bool) ($data['seed_categories'] ?? false),
                 'cycle_start_day' => $data['cycle_start_day'],
             ]);
