@@ -1,0 +1,191 @@
+<?php
+
+use App\Models\Account;
+use App\Models\AccountType;
+use App\Models\Ledger;
+use App\Models\Transaction;
+use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+
+test('store uploads attachment and returns created response', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $response = $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ]);
+
+    $response->assertCreated();
+
+    $attachment = $transaction->attachments()->first();
+
+    expect($attachment)->not->toBeNull()
+        ->and($attachment->filename)->toBe('receipt.pdf')
+        ->and($attachment->mime_type)->toBe('application/pdf');
+
+    Storage::disk('local')->assertExists($attachment->path);
+});
+
+test('store validates file type and rejects unsupported mimes', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('script.exe', 128, 'application/octet-stream');
+
+    $response = $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ]);
+
+    $response->assertSessionHasErrors('file');
+});
+
+test('store validates max file size', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('large.pdf', 11000, 'application/pdf');
+
+    $response = $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ]);
+
+    $response->assertSessionHasErrors('file');
+});
+
+test('destroy deletes attachment record and file from disk', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ])
+        ->assertCreated();
+
+    $attachment = $transaction->fresh()->attachments()->first();
+
+    expect($attachment)->not->toBeNull();
+
+    Storage::disk('local')->assertExists($attachment->path);
+
+    $response = $this
+        ->actingAs($user)
+        ->delete("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments/{$attachment->id}");
+
+    $response->assertNoContent();
+
+    expect($transaction->fresh()->attachments()->count())->toBe(0);
+    Storage::disk('local')->assertMissing($attachment->path);
+});
+
+test('show returns file content for authorized user', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->createWithContent('receipt.txt', 'receipt body');
+
+    $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ])
+        ->assertCreated();
+
+    $attachment = $transaction->fresh()->attachments()->first();
+
+    $response = $this
+        ->actingAs($user)
+        ->get("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments/{$attachment->id}");
+
+    $response->assertSuccessful();
+
+    expect(file_get_contents($response->baseResponse->getFile()->getPathname()))->toBe('receipt body');
+});
+
+test('show returns forbidden for unauthorized user', function () {
+    Storage::fake('local');
+
+    $owner = User::factory()->create();
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->createWithContent('receipt.txt', 'receipt body');
+
+    $this
+        ->actingAs($owner)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'file' => $file,
+        ])
+        ->assertCreated();
+
+    $attachment = $transaction->fresh()->attachments()->first();
+
+    $response = $this
+        ->actingAs($user)
+        ->get("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments/{$attachment->id}");
+
+    $response->assertForbidden();
+});
+
+test('attachment uploads use the configured ledger storage disk', function () {
+    config()->set('filesystems.ledger_disk', 's3');
+    Storage::fake('s3');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $this->actingAs($user)
+        ->post(route('ledgers.transactions.attachments.store', [$ledger, $transaction]), [
+            'file' => $file,
+        ])
+        ->assertCreated();
+
+    $attachment = $transaction->fresh()->attachments()->first();
+
+    Storage::disk('s3')->assertExists($attachment->path);
+});

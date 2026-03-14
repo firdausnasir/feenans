@@ -1,0 +1,22 @@
+{
+    "agents": [
+        "cursor",
+        "claude_code",
+        "opencode",
+        "codex",
+        "copilot"
+    ],
+    "guidelines": true,
+    "herd_mcp": false,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "packages": [
+        "laravel/fortify"
+    ],
+    "sail": false,
+    "skills": [
+        "wayfinder-development",
+        "pest-testing",
+        "fortify-development"
+    ]
+}
