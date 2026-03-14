@@ -47,12 +47,15 @@ class HandleInertiaRequests extends Middleware
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'avatar' => $user->avatar ?? null,
+                    'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                     'onboarding_step' => $user->onboarding_step,
                 ] : null,
             ],
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
+                'first_transaction' => $request->session()->get('first_transaction', false),
             ],
             'currentLedger' => $currentLedger ? [
                 'id' => $currentLedger->id,

@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
     AlertTriangle,
     Bell,
@@ -7,9 +8,12 @@ import {
     ChevronLeft,
     ChevronRight,
     CreditCard,
+    DatabaseZap,
+    Landmark,
     TrendingDown,
     TrendingUp,
     Wallet,
+    X,
 } from 'lucide-react';
 import {
     Area,
@@ -38,20 +42,40 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from '@/components/ui/chart';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
-import { show as accountShow } from '@/routes/ledgers/accounts';
+import {
+    index as accountsIndex,
+    show as accountShow,
+} from '@/routes/ledgers/accounts';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
+import { store as storeSampleData } from '@/routes/ledgers/sample-data';
 import {
     edit as transactionEdit,
     index as transactionsIndex,
 } from '@/routes/ledgers/transactions';
+import { Progress } from '@/components/ui/progress';
+import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import type {
     Account,
     AccountType,
     Bill,
     BreadcrumbItem,
+    BudgetStat,
     Category,
     Ledger,
     Payee,
@@ -101,6 +125,9 @@ export default function LedgerDashboard({
     cycleDates,
     cycleOffset,
     topCategories,
+    topBudgets,
+    uncategorizedCount,
+    netWorth,
 }: {
     ledger: Ledger;
     summary: Summary;
@@ -115,12 +142,18 @@ export default function LedgerDashboard({
     cycleDates: CycleDates;
     cycleOffset: number;
     topCategories: TopCategory[];
+    topBudgets: BudgetStat[];
+    uncategorizedCount: number;
+    netWorth: { assets: number; liabilities: number; net: number };
 }) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: dashboard.url(ledger.id) },
     ];
 
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
+    const [showExpense, setShowExpense] = useState(true);
+    const [showIncome, setShowIncome] = useState(true);
+    const [uncategorizedDismissed, setUncategorizedDismissed] = useState(false);
 
     const hasAnyBills =
         upcomingBills.due.length > 0 ||
@@ -156,13 +189,41 @@ export default function LedgerDashboard({
         fill: cat.color ?? CHART_COLORS[index % CHART_COLORS.length],
     }));
 
+    const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
+
+    const isEmpty = accounts.length === 0 && recentTransactions.length === 0;
+
+    function handleLoadSampleData() {
+        setIsLoadingSampleData(true);
+
+        router.post(
+            storeSampleData.url(ledger.id),
+            {},
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsLoadingSampleData(false);
+                    toast.success('Sample data loaded successfully.');
+                },
+                onError: (errors) => {
+                    setIsLoadingSampleData(false);
+                    const msg =
+                        errors.message ??
+                        Object.values(errors)[0] ??
+                        'Failed to load sample data.';
+                    toast.error(String(msg));
+                },
+            },
+        );
+    }
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={ledger.name} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold tracking-tight">
                             {ledger.name}
@@ -172,22 +233,115 @@ export default function LedgerDashboard({
                             place.
                         </p>
                     </div>
-                    <AddTransactionModal
-                        ledger={ledger}
-                        accounts={flatAccounts}
-                        categories={categories}
-                        payees={payees}
-                        tags={tags}
-                    />
+                    <div className="w-full sm:w-auto">
+                        <AddTransactionModal
+                            ledger={ledger}
+                            accounts={flatAccounts}
+                            categories={categories}
+                            payees={payees}
+                            tags={tags}
+                        />
+                    </div>
                 </div>
+
+                {/* Empty state with sample data option */}
+                {isEmpty && (
+                    <Card>
+                        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+                            <DatabaseZap className="size-10 text-muted-foreground" />
+                            <div>
+                                <h2 className="text-lg font-semibold">
+                                    No data yet
+                                </h2>
+                                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                                    Start by adding your first account and
+                                    transaction, or load sample data to explore
+                                    how everything works.
+                                </p>
+                            </div>
+                            <Button
+                                onClick={handleLoadSampleData}
+                                disabled={isLoadingSampleData}
+                                variant="outline"
+                            >
+                                <DatabaseZap className="mr-2 size-4" />
+                                {isLoadingSampleData
+                                    ? 'Loading...'
+                                    : 'Load Sample Data'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Uncategorized transactions alert */}
+                {uncategorizedCount > 0 && !uncategorizedDismissed && (
+                    <div className="flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
+                        <AlertTriangle className="size-4 shrink-0" />
+                        <span className="flex-1">
+                            You have {uncategorizedCount} uncategorized
+                            transaction(s)
+                        </span>
+                        <Link
+                            href={transactionsIndex.url(ledger.id, {
+                                query: { uncategorized: '1' },
+                            })}
+                            className="font-medium underline underline-offset-2"
+                        >
+                            Review
+                        </Link>
+                        <button
+                            onClick={() => setUncategorizedDismissed(true)}
+                            className="text-yellow-600 hover:text-yellow-800 dark:text-yellow-400"
+                        >
+                            <X className="size-4" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Net Worth Card */}
+                <Link href={accountsIndex.url(ledger.id)} className="block">
+                    <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-primary/5">
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="flex items-center gap-2">
+                                <Landmark className="size-5 text-primary" />
+                                <span className="text-sm font-medium text-muted-foreground">
+                                    Net Worth
+                                </span>
+                            </div>
+                            <p
+                                className={`mt-2 text-3xl font-bold sm:text-4xl ${
+                                    netWorth.net >= 0
+                                        ? 'text-green-600 dark:text-green-400'
+                                        : 'text-red-600 dark:text-red-400'
+                                }`}
+                            >
+                                {formatAmount(netWorth.net)}
+                            </p>
+                            <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                                <span>
+                                    Assets:{' '}
+                                    <span className="font-medium text-foreground">
+                                        {formatAmount(netWorth.assets)}
+                                    </span>
+                                </span>
+                                <span>
+                                    Liabilities:{' '}
+                                    <span className="font-medium text-red-600 dark:text-red-400">
+                                        {formatAmount(netWorth.liabilities)}
+                                    </span>
+                                </span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
 
                 {/* Summary Cards - always 3 columns */}
                 <div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <Link
                             href={transactionsIndex.url(ledger.id, {
                                 query: {
-                                    type: 'income',
+                                    transaction_type: 'income',
                                     date_from: cycleDates.start,
                                     date_to: cycleDates.end,
                                 },
@@ -206,7 +360,7 @@ export default function LedgerDashboard({
                         <Link
                             href={transactionsIndex.url(ledger.id, {
                                 query: {
-                                    type: 'expense',
+                                    transaction_type: 'expense',
                                     date_from: cycleDates.start,
                                     date_to: cycleDates.end,
                                 },
@@ -283,11 +437,11 @@ export default function LedgerDashboard({
                 {/* Bills + Expense Trend */}
                 <div className="grid gap-6 lg:auto-rows-fr lg:grid-cols-2">
                     {/* Upcoming Bills */}
-                    <Card className="lg:h-[32rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:h-[32rem] lg:min-h-0">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <Bell className="size-4 text-muted-foreground" />
-                                <CardTitle>Upcoming Bills</CardTitle>
+                                <CardTitle>Upcoming Recurring</CardTitle>
                             </div>
                             {hasUrgentBills && (
                                 <div className="mt-2 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -343,12 +497,54 @@ export default function LedgerDashboard({
                     </Card>
 
                     {/* Expense & Income Trend */}
-                    <Card className="lg:h-[32rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:h-[32rem] lg:min-h-0">
                         <CardHeader>
                             <CardTitle>Expense & Income Trend</CardTitle>
                             <CardDescription>
                                 Daily expenses and income this cycle
                             </CardDescription>
+                            {dailyExpenseTrend.length > 0 && (
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setShowExpense((v) => !v)
+                                        }
+                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                            showExpense
+                                                ? 'border-transparent bg-muted text-foreground'
+                                                : 'border-border text-muted-foreground opacity-60'
+                                        }`}
+                                    >
+                                        <span
+                                            className="inline-block size-2 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    'var(--color-chart-1)',
+                                            }}
+                                        />
+                                        Expense
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowIncome((v) => !v)}
+                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                            showIncome
+                                                ? 'border-transparent bg-muted text-foreground'
+                                                : 'border-border text-muted-foreground opacity-60'
+                                        }`}
+                                    >
+                                        <span
+                                            className="inline-block size-2 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    'var(--color-chart-3)',
+                                            }}
+                                        />
+                                        Income
+                                    </button>
+                                </div>
+                            )}
                         </CardHeader>
                         <CardContent className="flex-1 lg:min-h-0">
                             {dailyExpenseTrend.length === 0 ? (
@@ -370,10 +566,9 @@ export default function LedgerDashboard({
                                                 vertical={false}
                                             />
                                             <XAxis
-                                                dataKey="date"
+                                                type="number"
                                                 tickLine={false}
                                                 axisLine={false}
-                                                tickFormatter={formatChartDate}
                                                 fontSize={12}
                                             />
                                             <YAxis
@@ -425,20 +620,25 @@ export default function LedgerDashboard({
                                                     />
                                                 </linearGradient>
                                             </defs>
-                                            <Area
-                                                dataKey="income"
-                                                type="monotone"
-                                                stroke="var(--color-chart-3)"
-                                                fill="url(#incomeGradient)"
-                                                strokeWidth={2}
-                                            />
-                                            <Area
-                                                dataKey="expense"
-                                                type="monotone"
-                                                stroke="var(--color-chart-1)"
-                                                fill="url(#expenseGradient)"
-                                                strokeWidth={2}
-                                            />
+                                            {showIncome && (
+                                                <Area
+                                                    dataKey="income"
+                                                    type="monotone"
+                                                    stroke="var(--color-chart-3)"
+                                                    fill="url(#incomeGradient)"
+                                                    strokeWidth={2}
+                                                    strokeDasharray="5 3"
+                                                />
+                                            )}
+                                            {showExpense && (
+                                                <Area
+                                                    dataKey="expense"
+                                                    type="monotone"
+                                                    stroke="var(--color-chart-1)"
+                                                    fill="url(#expenseGradient)"
+                                                    strokeWidth={2.5}
+                                                />
+                                            )}
                                         </AreaChart>
                                     </ChartContainer>
                                 </div>
@@ -450,7 +650,7 @@ export default function LedgerDashboard({
                 {/* Accounts + Top Categories */}
                 <div className="grid gap-6 lg:auto-rows-fr lg:grid-cols-2">
                     {/* Accounts */}
-                    <Card className="lg:h-[28rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:h-[28rem] lg:min-h-0">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <CreditCard className="size-4 text-muted-foreground" />
@@ -488,11 +688,43 @@ export default function LedgerDashboard({
                                                     <span className="text-sm">
                                                         {account.name}
                                                     </span>
-                                                    <span className="text-sm font-medium">
-                                                        {formatAmount(
-                                                            account.balance,
-                                                        )}
-                                                    </span>
+                                                    {account.balance < 0 ? (
+                                                        <Tooltip>
+                                                            <TooltipTrigger
+                                                                asChild
+                                                            >
+                                                                <span className="inline-flex items-center gap-1 text-sm font-medium text-red-600 dark:text-red-400">
+                                                                    <AlertTriangle className="size-3.5 shrink-0" />
+                                                                    {formatAmount(
+                                                                        account.balance,
+                                                                    )}
+                                                                </span>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>
+                                                                    This account
+                                                                    has a
+                                                                    negative
+                                                                    balance,
+                                                                    which can
+                                                                    happen if
+                                                                    you've
+                                                                    logged more
+                                                                    expenses
+                                                                    than the
+                                                                    initial
+                                                                    balance you
+                                                                    set.
+                                                                </p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    ) : (
+                                                        <span className="text-sm font-medium">
+                                                            {formatAmount(
+                                                                account.balance,
+                                                            )}
+                                                        </span>
+                                                    )}
                                                 </Link>
                                             ))}
                                         </div>
@@ -508,7 +740,7 @@ export default function LedgerDashboard({
                     </Card>
 
                     {/* Top Expense Categories */}
-                    <Card className="lg:h-[28rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:h-[28rem] lg:min-h-0">
                         <CardHeader>
                             <CardTitle>Top Expense Categories</CardTitle>
                             <CardDescription>
@@ -557,6 +789,32 @@ export default function LedgerDashboard({
                                             <Bar
                                                 dataKey="total"
                                                 radius={[0, 4, 4, 0]}
+                                                className="cursor-pointer"
+                                                onClick={(data) => {
+                                                    const category =
+                                                        categories.find(
+                                                            (c) =>
+                                                                c.name ===
+                                                                data.name,
+                                                        );
+                                                    if (category) {
+                                                        router.visit(
+                                                            transactionsIndex.url(
+                                                                ledger.id,
+                                                                {
+                                                                    query: {
+                                                                        category_id:
+                                                                            category.id,
+                                                                        date_from:
+                                                                            cycleDates.start,
+                                                                        date_to:
+                                                                            cycleDates.end,
+                                                                    },
+                                                                },
+                                                            ),
+                                                        );
+                                                    }
+                                                }}
                                             />
                                         </BarChart>
                                     </ChartContainer>
@@ -565,6 +823,63 @@ export default function LedgerDashboard({
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Budget Progress */}
+                {topBudgets.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>Budget Progress</CardTitle>
+                                <Button variant="ghost" size="sm" asChild>
+                                    <Link href={budgetsIndex.url(ledger.id)}>
+                                        View all
+                                    </Link>
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {topBudgets.map((budget) => {
+                                    const statusColor: Record<string, string> =
+                                        {
+                                            good: 'text-green-600 dark:text-green-400',
+                                            warning:
+                                                'text-yellow-600 dark:text-yellow-400',
+                                            danger: 'text-orange-600 dark:text-orange-400',
+                                            over: 'text-red-600 dark:text-red-400',
+                                        };
+                                    return (
+                                        <div
+                                            key={budget.id}
+                                            className="space-y-1.5"
+                                        >
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="font-medium">
+                                                    {budget.category_name}
+                                                </span>
+                                                <span
+                                                    className={`text-xs ${statusColor[budget.status] ?? ''}`}
+                                                >
+                                                    {formatAbsAmount(
+                                                        budget.spent,
+                                                    )}{' '}
+                                                    /{' '}
+                                                    {formatAbsAmount(
+                                                        budget.amount,
+                                                    )}
+                                                </span>
+                                            </div>
+                                            <Progress
+                                                value={budget.percentage}
+                                                className="h-2"
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Recent Transactions - full width */}
                 <Card>
@@ -577,28 +892,80 @@ export default function LedgerDashboard({
                                 No recent transactions.
                             </p>
                         ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b text-left text-xs text-muted-foreground">
-                                            <th className="pr-4 pb-2 font-medium">
+                            <>
+                                <div className="divide-y sm:hidden">
+                                    {recentTransactions.map((transaction) => {
+                                        const amount = parseFloat(
+                                            transaction.amount,
+                                        );
+                                        const isTransfer =
+                                            transaction.transaction_type ===
+                                            'transfer';
+                                        const amountClass = isTransfer
+                                            ? 'text-blue-600 dark:text-blue-400'
+                                            : amount >= 0
+                                              ? 'text-green-600 dark:text-green-400'
+                                              : 'text-red-600 dark:text-red-400';
+
+                                        return (
+                                            <div
+                                                key={transaction.id}
+                                                className="flex cursor-pointer items-center justify-between gap-3 py-3"
+                                                onClick={() =>
+                                                    router.visit(
+                                                        transactionEdit.url({
+                                                            ledger: ledger.id,
+                                                            transaction:
+                                                                transaction.id,
+                                                        }),
+                                                    )
+                                                }
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-medium">
+                                                        {transaction.description ??
+                                                            'Transaction'}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {formatDate(
+                                                            transaction.transaction_date,
+                                                        )}
+                                                        {transaction.account
+                                                            ?.name
+                                                            ? ` · ${transaction.account.name}`
+                                                            : ''}
+                                                    </p>
+                                                </div>
+                                                <span
+                                                    className={`shrink-0 text-sm font-semibold tabular-nums ${amountClass}`}
+                                                >
+                                                    {formatAbsAmount(amount)}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <Table className="hidden sm:table">
+                                    <TableHeader>
+                                        <TableRow className="text-xs text-muted-foreground">
+                                            <TableHead className="pr-4">
                                                 Date
-                                            </th>
-                                            <th className="pr-4 pb-2 font-medium">
+                                            </TableHead>
+                                            <TableHead className="pr-4">
                                                 Description
-                                            </th>
-                                            <th className="hidden pr-4 pb-2 font-medium sm:table-cell">
+                                            </TableHead>
+                                            <TableHead className="hidden pr-4 sm:table-cell">
                                                 Account
-                                            </th>
-                                            <th className="hidden pr-4 pb-2 font-medium md:table-cell">
+                                            </TableHead>
+                                            <TableHead className="hidden pr-4 md:table-cell">
                                                 Category
-                                            </th>
-                                            <th className="pb-2 text-right font-medium">
+                                            </TableHead>
+                                            <TableHead className="text-right">
                                                 Amount
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
                                         {recentTransactions.map(
                                             (transaction) => {
                                                 const amount = parseFloat(
@@ -614,9 +981,9 @@ export default function LedgerDashboard({
                                                       : 'text-red-600 dark:text-red-400';
 
                                                 return (
-                                                    <tr
+                                                    <TableRow
                                                         key={transaction.id}
-                                                        className="cursor-pointer border-b last:border-0 hover:bg-muted/50"
+                                                        className="cursor-pointer"
                                                         onClick={() =>
                                                             router.visit(
                                                                 transactionEdit.url(
@@ -629,12 +996,12 @@ export default function LedgerDashboard({
                                                             )
                                                         }
                                                     >
-                                                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                                                        <TableCell className="pr-4">
                                                             {formatDate(
                                                                 transaction.transaction_date,
                                                             )}
-                                                        </td>
-                                                        <td className="py-2.5 pr-4">
+                                                        </TableCell>
+                                                        <TableCell className="pr-4">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="truncate">
                                                                     {transaction.description ??
@@ -649,30 +1016,30 @@ export default function LedgerDashboard({
                                                                     }
                                                                 </Badge>
                                                             </div>
-                                                        </td>
-                                                        <td className="hidden py-2.5 pr-4 sm:table-cell">
+                                                        </TableCell>
+                                                        <TableCell className="hidden pr-4 sm:table-cell">
                                                             {transaction.account
                                                                 ?.name ?? '-'}
-                                                        </td>
-                                                        <td className="hidden py-2.5 pr-4 md:table-cell">
+                                                        </TableCell>
+                                                        <TableCell className="hidden pr-4 md:table-cell">
                                                             {transaction
                                                                 .category
                                                                 ?.name ?? '-'}
-                                                        </td>
-                                                        <td
-                                                            className={`py-2.5 text-right font-medium whitespace-nowrap ${amountClass}`}
+                                                        </TableCell>
+                                                        <TableCell
+                                                            className={`text-right font-medium ${amountClass}`}
                                                         >
                                                             {formatAbsAmount(
                                                                 amount,
                                                             )}
-                                                        </td>
-                                                    </tr>
+                                                        </TableCell>
+                                                    </TableRow>
                                                 );
                                             },
                                         )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                    </TableBody>
+                                </Table>
+                            </>
                         )}
                     </CardContent>
                 </Card>
@@ -700,7 +1067,7 @@ function SummaryCard({
     colorClass: string;
 }) {
     return (
-        <Card>
+        <Card className="cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:bg-muted/30">
             <CardContent className="p-4">
                 <div className="flex items-center gap-2">
                     {icon}
@@ -709,7 +1076,7 @@ function SummaryCard({
                     </span>
                 </div>
                 <p
-                    className={`mt-2 text-lg font-bold sm:text-xl lg:text-2xl ${colorClass}`}
+                    className={`mt-2 text-2xl font-bold sm:text-3xl lg:text-4xl ${colorClass}`}
                 >
                     {formatAmount(value)}
                 </p>
@@ -744,12 +1111,32 @@ function BillSection({
 }
 
 function BillRow({ bill, onPay }: { bill: Bill; onPay: (bill: Bill) => void }) {
+    const isIncome = bill.transaction_type === 'income';
+    const amountClass = isIncome
+        ? 'text-green-600 dark:text-green-400'
+        : 'text-red-600 dark:text-red-400';
+    const actionLabel = isIncome ? 'Record' : 'Pay';
+
     return (
         <div className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50">
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{bill.name}</p>
+                <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium">{bill.name}</p>
+                    <Badge
+                        variant="outline"
+                        className={`shrink-0 text-[10px] ${
+                            isIncome
+                                ? 'border-green-200 text-green-700 dark:border-green-800 dark:text-green-400'
+                                : 'border-red-200 text-red-700 dark:border-red-800 dark:text-red-400'
+                        }`}
+                    >
+                        {isIncome ? 'Income' : 'Expense'}
+                    </Badge>
+                </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{formatAmount(bill.amount)}</span>
+                    <span className={amountClass}>
+                        {formatAmount(bill.amount)}
+                    </span>
                     <span>&middot;</span>
                     <span>{formatDate(bill.next_due_date)}</span>
                 </div>
@@ -762,7 +1149,7 @@ function BillRow({ bill, onPay }: { bill: Bill; onPay: (bill: Bill) => void }) {
                     onClick={() => onPay(bill)}
                     className="shrink-0"
                 >
-                    Pay
+                    {actionLabel}
                 </Button>
             </div>
         </div>

@@ -75,6 +75,7 @@ class DemoSeeder extends Seeder
             'account_type_id' => $bankType->id,
             'name' => 'Maybank Savings',
             'initial_balance' => 5200.00,
+            'position' => 1,
         ]);
 
         $cimb = Account::create([
@@ -83,6 +84,7 @@ class DemoSeeder extends Seeder
             'name' => 'CIMB Credit Card',
             'initial_balance' => 0.00,
             'statement_day' => 15,
+            'position' => 2,
         ]);
 
         $tng = Account::create([
@@ -90,6 +92,7 @@ class DemoSeeder extends Seeder
             'account_type_id' => $ewalletType->id,
             'name' => "Touch 'n Go eWallet",
             'initial_balance' => 200.00,
+            'position' => 3,
         ]);
 
         $cash = Account::create([
@@ -97,6 +100,8 @@ class DemoSeeder extends Seeder
             'account_type_id' => $cashType->id,
             'name' => 'Cash Wallet',
             'initial_balance' => 150.00,
+            'position' => 4,
+            'is_hidden' => true,
         ]);
 
         // Payees
@@ -281,6 +286,7 @@ class DemoSeeder extends Seeder
             ],
         ];
 
+        $createdBills = [];
         foreach ($bills as $bill) {
             $today = CarbonImmutable::today();
             $day = $bill['recurrence_day'];
@@ -289,7 +295,7 @@ class DemoSeeder extends Seeder
                 $nextDue = $nextDue->addMonth()->setDay(min($day, $nextDue->addMonth()->daysInMonth));
             }
 
-            Bill::create([
+            $createdBills[$bill['name']] = Bill::create([
                 'ledger_id' => $ledger->id,
                 'account_id' => $bill['account_id'],
                 'category_id' => $bill['category_id'],
@@ -312,7 +318,8 @@ class DemoSeeder extends Seeder
         // Transactions — 3 months of data
         $this->seedTransactions(
             $ledger, $maybank, $cimb, $tng, $cash,
-            $payees, $expenseCats, $expenseSubCats, $incomeCats, $incomeSubCats
+            $payees, $expenseCats, $expenseSubCats, $incomeCats, $incomeSubCats,
+            $createdBills
         );
     }
 
@@ -326,7 +333,8 @@ class DemoSeeder extends Seeder
         array $expenseCats,
         array $expenseSubCats,
         array $incomeCats,
-        array $incomeSubCats
+        array $incomeSubCats,
+        array $bills
     ): void {
         $today = CarbonImmutable::today();
 
@@ -414,6 +422,7 @@ class DemoSeeder extends Seeder
         ];
 
         foreach ($subscriptions as [$desc, $amount, $payee, $cat]) {
+            $billId = $bills[$desc]->id ?? null;
             for ($m = 2; $m >= 0; $m--) {
                 $subDate = $today->subMonths($m)->startOfMonth()->addDays(4)->toDateString();
                 Transaction::create([
@@ -427,6 +436,7 @@ class DemoSeeder extends Seeder
                     'notes' => null,
                     'transaction_date' => $subDate,
                     'transfer_pair_id' => null,
+                    'bill_id' => $billId,
                 ]);
             }
         }
@@ -440,6 +450,7 @@ class DemoSeeder extends Seeder
         ];
 
         foreach ($utilities as [$desc, $amount, $payee, $cat, $day]) {
+            $billId = $bills[$desc]->id ?? null;
             for ($m = 2; $m >= 0; $m--) {
                 $ref = $today->subMonths($m);
                 $utilDate = $ref->setDay(min($day, $ref->daysInMonth))->toDateString();
@@ -454,6 +465,7 @@ class DemoSeeder extends Seeder
                     'notes' => null,
                     'transaction_date' => $utilDate,
                     'transfer_pair_id' => null,
+                    'bill_id' => $billId,
                 ]);
             }
         }

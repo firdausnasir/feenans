@@ -30,7 +30,7 @@ class BillOverdue extends Notification implements ShouldQueue
             ->subject("Overdue: {$this->bill->name}")
             ->greeting("Hi {$notifiable->name},")
             ->line("Your bill **{$this->bill->name}** was due on {$this->bill->next_due_date->format('d M Y')} and is now {$daysOverdue} day(s) overdue.")
-            ->line('Amount: ' . number_format((float) $this->bill->amount, 2))
+            ->line('Amount: '.number_format((float) $this->bill->amount, 2))
             ->action('View Bills', url('/'))
             ->line('Please log in to record the payment.');
     }

@@ -84,6 +84,16 @@ class Ledger extends Model
         return $this->hasMany(Budget::class);
     }
 
+    public function importMappings(): HasMany
+    {
+        return $this->hasMany(ImportMapping::class);
+    }
+
+    public function importRecords(): HasMany
+    {
+        return $this->hasMany(ImportRecord::class);
+    }
+
     /**
      * Compute the [start, end] Carbon dates for the billing cycle containing the reference date.
      *

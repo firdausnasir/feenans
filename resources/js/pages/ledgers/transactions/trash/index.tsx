@@ -24,7 +24,7 @@ export default function TransactionTrashIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transaction trash`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Transaction Trash"
                     description="Recently deleted transactions that can still be restored."

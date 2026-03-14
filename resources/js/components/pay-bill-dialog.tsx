@@ -10,6 +10,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -29,7 +30,12 @@ type PayBillDialogProps = {
     onClose: () => void;
 };
 
-export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDialogProps) {
+export function PayBillDialog({
+    bill,
+    ledgerId,
+    accounts,
+    onClose,
+}: PayBillDialogProps) {
     const [amount, setAmount] = useState('');
     const [accountId, setAccountId] = useState('');
     const [paymentDate, setPaymentDate] = useState('');
@@ -50,6 +56,10 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
         }
     }
 
+    const isIncome = bill?.transaction_type === 'income';
+    const actionLabel = isIncome ? 'Record Income' : 'Record Payment';
+    const successLabel = isIncome ? 'recorded' : 'paid';
+
     function handlePay() {
         if (!bill) {
             return;
@@ -67,25 +77,24 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
             payload.account_id = accountId;
         }
 
-        if (paymentDate && paymentDate !== new Date().toISOString().slice(0, 10)) {
+        if (
+            paymentDate &&
+            paymentDate !== new Date().toISOString().slice(0, 10)
+        ) {
             payload.date = paymentDate;
         }
 
-        router.post(
-            pay.url({ ledger: ledgerId, bill: bill.id }),
-            payload,
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setProcessing(false);
-                    toast.success(`${bill.name} paid`);
-                    onClose();
-                },
-                onError: () => {
-                    setProcessing(false);
-                },
+        router.post(pay.url({ ledger: ledgerId, bill: bill.id }), payload, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setProcessing(false);
+                toast.success(`${bill.name} ${successLabel}`);
+                onClose();
             },
-        );
+            onError: () => {
+                setProcessing(false);
+            },
+        });
     }
 
     const selectedAccount = accounts.find(
@@ -96,9 +105,11 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
         <Dialog open={bill !== null} onOpenChange={handleOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Pay {bill?.name}?</DialogTitle>
+                    <DialogTitle>
+                        {actionLabel} — {bill?.name}
+                    </DialogTitle>
                     <DialogDescription>
-                        Confirm the payment details below.
+                        Confirm the details below.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -107,7 +118,7 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
                         <Label htmlFor="pay-amount">Amount</Label>
                         <Input
                             id="pay-amount"
-                            type="number"
+                            type="number" inputMode="decimal"
                             step="0.01"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
@@ -116,10 +127,7 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
 
                     <div className="grid gap-2">
                         <Label htmlFor="pay-account">Account</Label>
-                        <Select
-                            value={accountId}
-                            onValueChange={setAccountId}
-                        >
+                        <Select value={accountId} onValueChange={setAccountId}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select account" />
                             </SelectTrigger>
@@ -138,11 +146,11 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
 
                     <div className="grid gap-2">
                         <Label htmlFor="pay-date">Payment date</Label>
-                        <Input
+                        <DatePicker
                             id="pay-date"
-                            type="date"
                             value={paymentDate}
-                            onChange={(e) => setPaymentDate(e.target.value)}
+                            onChange={(date) => setPaymentDate(date)}
+                            placeholder="Pick a date"
                         />
                     </div>
                 </div>
@@ -152,7 +160,7 @@ export function PayBillDialog({ bill, ledgerId, accounts, onClose }: PayBillDial
                         Cancel
                     </Button>
                     <Button onClick={handlePay} disabled={processing}>
-                        {processing ? 'Paying...' : 'Pay Now'}
+                        {processing ? 'Processing...' : actionLabel}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -5,8 +5,20 @@ import BillController from '@/actions/App/Http/Controllers/Ledger/BillController
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { edit as editRoute, index as billsIndex } from '@/routes/ledgers/bills';
@@ -39,10 +51,25 @@ export default function EditBill({
         bill.recurrence_type,
     );
     const [endType, setEndType] = useState<EndType>(bill.end_type ?? 'never');
+    const [transactionType, setTransactionType] = useState<string>(
+        bill.transaction_type ?? 'expense',
+    );
+    const [accountId, setAccountId] = useState(String(bill.account_id));
+    const [categoryId, setCategoryId] = useState(
+        bill.category_id ? String(bill.category_id) : '__none__',
+    );
+    const [payeeId, setPayeeId] = useState(
+        bill.payee_id ? String(bill.payee_id) : '__none__',
+    );
+    const [autoCreate, setAutoCreate] = useState(bill.auto_create);
+    const [endDate, setEndDate] = useState(bill.end_date ?? '');
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Bills', href: billsIndex.url(ledger.id) },
+        {
+            title: 'Recurring Transactions',
+            href: billsIndex.url(ledger.id),
+        },
         {
             title: bill.name,
             href: editRoute.url({ ledger: ledger.id, bill: bill.id }),
@@ -55,8 +82,8 @@ export default function EditBill({
 
             <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
                 <Heading
-                    title="Edit Bill"
-                    description="Update the recurring bill details."
+                    title="Edit Recurring Transaction"
+                    description="Update the recurring transaction details."
                 />
 
                 <Form
@@ -65,7 +92,9 @@ export default function EditBill({
                         bill: bill.id,
                     })}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Bill updated')}
+                    onSuccess={() =>
+                        toast.success('Recurring transaction updated')
+                    }
                 >
                     {({ errors, processing }) => (
                         <>
@@ -84,19 +113,28 @@ export default function EditBill({
 
                             {/* Transaction type */}
                             <div className="grid gap-2">
-                                <Label htmlFor="transaction_type">Type</Label>
-                                <select
-                                    id="transaction_type"
-                                    name="transaction_type"
-                                    required
-                                    defaultValue={
-                                        bill.transaction_type ?? 'expense'
-                                    }
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                <Label>Type</Label>
+                                <Select
+                                    value={transactionType}
+                                    onValueChange={setTransactionType}
                                 >
-                                    <option value="expense">Expense</option>
-                                    <option value="income">Income</option>
-                                </select>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="expense">
+                                            Expense
+                                        </SelectItem>
+                                        <SelectItem value="income">
+                                            Income
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <input
+                                    type="hidden"
+                                    name="transaction_type"
+                                    value={transactionType}
+                                />
                                 <InputError message={errors.transaction_type} />
                             </div>
 
@@ -106,7 +144,7 @@ export default function EditBill({
                                 <Input
                                     id="amount"
                                     name="amount"
-                                    type="number"
+                                    type="number" inputMode="decimal"
                                     step="0.01"
                                     min="0.01"
                                     defaultValue={bill.amount}
@@ -117,123 +155,179 @@ export default function EditBill({
 
                             {/* Account */}
                             <div className="grid gap-2">
-                                <Label htmlFor="account_id">Account</Label>
-                                <select
-                                    id="account_id"
-                                    name="account_id"
-                                    defaultValue={bill.account_id}
-                                    required
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                <Label>Account</Label>
+                                <Select
+                                    value={accountId}
+                                    onValueChange={setAccountId}
                                 >
-                                    {accounts.map((account) => (
-                                        <option
-                                            key={account.id}
-                                            value={account.id}
-                                        >
-                                            {account.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select account" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accounts.map((account) => (
+                                            <SelectItem
+                                                key={account.id}
+                                                value={String(account.id)}
+                                            >
+                                                {account.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <input
+                                    type="hidden"
+                                    name="account_id"
+                                    value={accountId}
+                                />
                                 <InputError message={errors.account_id} />
                             </div>
 
                             {/* Category — grouped by parent */}
                             <div className="grid gap-2">
-                                <Label htmlFor="category_id">
+                                <Label>
                                     Category{' '}
                                     <span className="text-muted-foreground">
                                         (optional)
                                     </span>
                                 </Label>
-                                <select
-                                    id="category_id"
-                                    name="category_id"
-                                    defaultValue={bill.category_id ?? ''}
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                <Select
+                                    value={categoryId}
+                                    onValueChange={setCategoryId}
                                 >
-                                    <option value="">No category</option>
-                                    {categories.map((parent) =>
-                                        parent.children &&
-                                        parent.children.length > 0 ? (
-                                            <optgroup
-                                                key={parent.id}
-                                                label={parent.name}
-                                            >
-                                                <option value={parent.id}>
-                                                    {parent.name} (general)
-                                                </option>
-                                                {parent.children.map(
-                                                    (child) => (
-                                                        <option
-                                                            key={child.id}
-                                                            value={child.id}
-                                                        >
-                                                            {child.name}
-                                                        </option>
-                                                    ),
-                                                )}
-                                            </optgroup>
-                                        ) : (
-                                            <option
-                                                key={parent.id}
-                                                value={parent.id}
-                                            >
-                                                {parent.name}
-                                            </option>
-                                        ),
-                                    )}
-                                </select>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="No category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none__">
+                                            No category
+                                        </SelectItem>
+                                        {categories.map((parent) =>
+                                            parent.children &&
+                                            parent.children.length > 0 ? (
+                                                <SelectGroup key={parent.id}>
+                                                    <SelectLabel>
+                                                        {parent.name}
+                                                    </SelectLabel>
+                                                    <SelectItem
+                                                        value={String(
+                                                            parent.id,
+                                                        )}
+                                                    >
+                                                        {parent.name} (general)
+                                                    </SelectItem>
+                                                    {parent.children.map(
+                                                        (child) => (
+                                                            <SelectItem
+                                                                key={child.id}
+                                                                value={String(
+                                                                    child.id,
+                                                                )}
+                                                            >
+                                                                {child.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectGroup>
+                                            ) : (
+                                                <SelectItem
+                                                    key={parent.id}
+                                                    value={String(parent.id)}
+                                                >
+                                                    {parent.name}
+                                                </SelectItem>
+                                            ),
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                                <input
+                                    type="hidden"
+                                    name="category_id"
+                                    value={
+                                        categoryId === '__none__'
+                                            ? ''
+                                            : categoryId
+                                    }
+                                />
                                 <InputError message={errors.category_id} />
                             </div>
 
                             {/* Payee */}
                             <div className="grid gap-2">
-                                <Label htmlFor="payee_id">
+                                <Label>
                                     Payee{' '}
                                     <span className="text-muted-foreground">
                                         (optional)
                                     </span>
                                 </Label>
-                                <select
-                                    id="payee_id"
-                                    name="payee_id"
-                                    defaultValue={bill.payee_id ?? ''}
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                <Select
+                                    value={payeeId}
+                                    onValueChange={setPayeeId}
                                 >
-                                    <option value="">No payee</option>
-                                    {payees.map((payee) => (
-                                        <option key={payee.id} value={payee.id}>
-                                            {payee.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="No payee" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none__">
+                                            No payee
+                                        </SelectItem>
+                                        {payees.map((payee) => (
+                                            <SelectItem
+                                                key={payee.id}
+                                                value={String(payee.id)}
+                                            >
+                                                {payee.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <input
+                                    type="hidden"
+                                    name="payee_id"
+                                    value={
+                                        payeeId === '__none__' ? '' : payeeId
+                                    }
+                                />
                                 <InputError message={errors.payee_id} />
                             </div>
 
                             {/* Recurrence */}
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="grid gap-2">
-                                    <Label htmlFor="recurrence_type">
-                                        Recurrence type
-                                    </Label>
-                                    <select
-                                        id="recurrence_type"
-                                        name="recurrence_type"
+                                    <Label>Recurrence type</Label>
+                                    <Select
                                         value={recurrenceType}
-                                        onChange={(e) =>
+                                        onValueChange={(val) =>
                                             setRecurrenceType(
-                                                e.target
-                                                    .value as RecurrenceType,
+                                                val as RecurrenceType,
                                             )
                                         }
-                                        className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                                     >
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="yearly">Yearly</option>
-                                        <option value="custom">Custom</option>
-                                    </select>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select recurrence" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="daily">
+                                                Daily
+                                            </SelectItem>
+                                            <SelectItem value="weekly">
+                                                Weekly
+                                            </SelectItem>
+                                            <SelectItem value="monthly">
+                                                Monthly
+                                            </SelectItem>
+                                            <SelectItem value="yearly">
+                                                Yearly
+                                            </SelectItem>
+                                            <SelectItem value="custom">
+                                                Custom
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <input
+                                        type="hidden"
+                                        name="recurrence_type"
+                                        value={recurrenceType}
+                                    />
                                     <InputError
                                         message={errors.recurrence_type}
                                     />
@@ -246,7 +340,7 @@ export default function EditBill({
                                     <Input
                                         id="recurrence_interval"
                                         name="recurrence_interval"
-                                        type="number"
+                                        type="number" inputMode="decimal"
                                         min="1"
                                         defaultValue={bill.recurrence_interval}
                                         required
@@ -270,7 +364,7 @@ export default function EditBill({
                                     <Input
                                         id="recurrence_day"
                                         name="recurrence_day"
-                                        type="number"
+                                        type="number" inputMode="decimal"
                                         min="1"
                                         max="31"
                                         defaultValue={
@@ -286,13 +380,17 @@ export default function EditBill({
 
                             {/* Auto-create */}
                             <div className="flex items-center gap-3">
-                                <input
+                                <Checkbox
                                     id="auto_create"
+                                    checked={autoCreate}
+                                    onCheckedChange={(checked) =>
+                                        setAutoCreate(checked === true)
+                                    }
+                                />
+                                <input
+                                    type="hidden"
                                     name="auto_create"
-                                    type="checkbox"
-                                    value="1"
-                                    defaultChecked={bill.auto_create}
-                                    className="size-4 rounded border-input"
+                                    value={autoCreate ? '1' : '0'}
                                 />
                                 <Label htmlFor="auto_create">
                                     Auto-create transaction when due
@@ -302,38 +400,45 @@ export default function EditBill({
                             {/* End type */}
                             <div className="grid gap-2">
                                 <Label>End</Label>
-                                <div className="flex flex-col gap-2">
-                                    {(
-                                        [
-                                            'never',
-                                            'on_date',
-                                            'after_occurrences',
-                                        ] as EndType[]
-                                    ).map((value) => (
-                                        <label
-                                            key={value}
-                                            className="flex cursor-pointer items-center gap-2"
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="end_type"
-                                                value={value}
-                                                checked={endType === value}
-                                                onChange={() =>
-                                                    setEndType(value)
-                                                }
-                                                className="size-4"
-                                            />
-                                            <span className="text-sm capitalize">
-                                                {value === 'never'
-                                                    ? 'Never'
-                                                    : value === 'on_date'
-                                                      ? 'On date'
-                                                      : 'After occurrences'}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
+                                <RadioGroup
+                                    value={endType}
+                                    onValueChange={(val) =>
+                                        setEndType(val as EndType)
+                                    }
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <RadioGroupItem
+                                            value="never"
+                                            id="end_type_never"
+                                        />
+                                        <Label htmlFor="end_type_never">
+                                            Never
+                                        </Label>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <RadioGroupItem
+                                            value="on_date"
+                                            id="end_type_on_date"
+                                        />
+                                        <Label htmlFor="end_type_on_date">
+                                            On date
+                                        </Label>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <RadioGroupItem
+                                            value="after_occurrences"
+                                            id="end_type_after_occurrences"
+                                        />
+                                        <Label htmlFor="end_type_after_occurrences">
+                                            After occurrences
+                                        </Label>
+                                    </div>
+                                </RadioGroup>
+                                <input
+                                    type="hidden"
+                                    name="end_type"
+                                    value={endType}
+                                />
                                 <InputError message={errors.end_type} />
                             </div>
 
@@ -341,14 +446,11 @@ export default function EditBill({
                             {endType === 'on_date' && (
                                 <div className="grid gap-2">
                                     <Label htmlFor="end_date">End date</Label>
-                                    <Input
+                                    <DatePicker
                                         id="end_date"
                                         name="end_date"
-                                        type="date"
-                                        defaultValue={
-                                            bill.end_date ?? undefined
-                                        }
-                                        required
+                                        value={endDate}
+                                        onChange={(date) => setEndDate(date)}
                                     />
                                     <InputError message={errors.end_date} />
                                 </div>
@@ -363,7 +465,7 @@ export default function EditBill({
                                     <Input
                                         id="end_after_occurrences"
                                         name="end_after_occurrences"
-                                        type="number"
+                                        type="number" inputMode="decimal"
                                         min="1"
                                         defaultValue={
                                             bill.end_after_occurrences ??

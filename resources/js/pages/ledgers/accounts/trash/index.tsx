@@ -23,7 +23,7 @@ export default function AccountTrashIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} account trash`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Account Trash"
                     description="Recently deleted accounts available for restore or permanent deletion."

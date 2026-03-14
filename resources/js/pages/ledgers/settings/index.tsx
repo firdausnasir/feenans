@@ -1,6 +1,8 @@
 import { Head, router } from '@inertiajs/react';
+import { Download } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { ColorPicker } from '@/components/color-picker';
 import { CurrencySelect } from '@/components/currency-select';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +23,7 @@ import AppLayout from '@/layouts/app-layout';
 import {
     dashboard as ledgerDashboard,
     destroy as destroyLedger,
+    exportMethod as ledgerExport,
 } from '@/routes/ledgers';
 import {
     destroy as accountTypeDestroy,
@@ -32,6 +35,7 @@ import {
     index as settingsIndex,
     update as settingsUpdate,
 } from '@/routes/ledgers/settings';
+import { destroy as destroySampleData } from '@/routes/ledgers/sample-data';
 import type { AccountType, BreadcrumbItem, Ledger } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -72,8 +76,10 @@ function colorDot(color: string | null) {
 
 export default function SettingsIndex({
     ledger,
+    hasSampleData,
 }: {
     ledger: LedgerWithAccountTypes;
+    hasSampleData: boolean;
 }) {
     // General settings state
     const [ledgerName, setLedgerName] = useState(ledger.name);
@@ -103,6 +109,9 @@ export default function SettingsIndex({
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteConfirmName, setDeleteConfirmName] = useState('');
     const [isDeletingLedger, setIsDeletingLedger] = useState(false);
+
+    // Sample data state
+    const [isRemovingSampleData, setIsRemovingSampleData] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -335,6 +344,28 @@ export default function SettingsIndex({
         );
     }
 
+    // ── Sample data handler ─────────────────────────────────────────────
+
+    function handleRemoveSampleData() {
+        setIsRemovingSampleData(true);
+
+        router.delete(destroySampleData.url(ledger.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setIsRemovingSampleData(false);
+                toast.success('Sample data removed.');
+            },
+            onError: (errors) => {
+                setIsRemovingSampleData(false);
+                const msg =
+                    errors.message ??
+                    Object.values(errors)[0] ??
+                    'Failed to remove sample data.';
+                toast.error(String(msg));
+            },
+        });
+    }
+
     // ── Ledger delete ─────────────────────────────────────────────────────────
 
     function handleDeleteLedger() {
@@ -362,7 +393,7 @@ export default function SettingsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} settings`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4">
+            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Settings"
                     description="Configure your workspace settings."
@@ -411,7 +442,7 @@ export default function SettingsIndex({
                             </Label>
                             <Input
                                 id="cycle-start-day"
-                                type="number"
+                                type="number" inputMode="decimal"
                                 min={1}
                                 max={31}
                                 value={cycleStartDay}
@@ -520,19 +551,15 @@ export default function SettingsIndex({
                                                 >
                                                     Color
                                                 </Label>
-                                                <input
+                                                <ColorPicker
                                                     id={`at-color-${editState.accountTypeId}`}
-                                                    type="color"
                                                     value={editState.color}
-                                                    onChange={(e) =>
+                                                    onChange={(color) =>
                                                         setEditState({
                                                             ...editState,
-                                                            color: e.target
-                                                                .value,
+                                                            color,
                                                         })
                                                     }
-                                                    className="h-7 w-8 cursor-pointer rounded border border-border bg-transparent p-0.5"
-                                                    title="Pick color"
                                                 />
                                             </div>
                                             <div className="flex items-center gap-1.5">
@@ -575,15 +602,16 @@ export default function SettingsIndex({
                                         </div>
                                     ) : (
                                         <>
-                                            <button
+                                            <Button
                                                 type="button"
+                                                variant="link"
                                                 onClick={() =>
                                                     startEdit(accountType)
                                                 }
-                                                className="flex-1 text-left text-sm font-medium hover:underline"
+                                                className="h-auto flex-1 justify-start p-0 text-sm font-medium text-foreground no-underline hover:underline"
                                             >
                                                 {accountType.name}
-                                            </button>
+                                            </Button>
 
                                             <Badge
                                                 variant={
@@ -597,7 +625,7 @@ export default function SettingsIndex({
                                                     : 'Debit'}
                                             </Badge>
 
-                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -640,17 +668,14 @@ export default function SettingsIndex({
                                     placeholder="Account type name…"
                                     className="h-7 w-48 text-sm"
                                 />
-                                <input
-                                    type="color"
+                                <ColorPicker
                                     value={addState.color}
-                                    onChange={(e) =>
+                                    onChange={(color) =>
                                         setAddState({
                                             ...addState,
-                                            color: e.target.value,
+                                            color,
                                         })
                                     }
-                                    className="h-7 w-8 cursor-pointer rounded border border-border bg-transparent p-0.5"
-                                    title="Pick color"
                                 />
                                 <div className="flex items-center gap-1.5">
                                     <Switch
@@ -701,6 +726,66 @@ export default function SettingsIndex({
                     </div>
                 </section>
 
+                {/* ── Sample Data ─────────────────────────────────────────── */}
+                {hasSampleData && (
+                    <section className="space-y-4">
+                        <h2 className="text-base font-semibold">Sample Data</h2>
+                        <Separator />
+
+                        <div className="rounded-lg border border-border p-4">
+                            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-medium">
+                                        Remove sample data
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        This will delete all sample accounts,
+                                        transactions, bills, and payees. Your
+                                        own data will not be affected.
+                                    </p>
+                                </div>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={handleRemoveSampleData}
+                                    disabled={isRemovingSampleData}
+                                >
+                                    {isRemovingSampleData
+                                        ? 'Removing...'
+                                        : 'Remove sample data'}
+                                </Button>
+                            </div>
+                        </div>
+                    </section>
+                )}
+
+                {/* ── Data Export ──────────────────────────────────────────── */}
+                <section className="space-y-4">
+                    <h2 className="text-base font-semibold">Data Export</h2>
+                    <Separator />
+
+                    <div className="rounded-lg border border-border p-4">
+                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm font-medium">
+                                    Export all data
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    Download all accounts, transactions,
+                                    categories, payees, tags, bills, and budgets
+                                    as a JSON file.
+                                </p>
+                            </div>
+                            <a href={ledgerExport.url(ledger.id)} download>
+                                <Button variant="outline" size="sm">
+                                    <Download className="mr-2 size-4" />
+                                    Export
+                                </Button>
+                            </a>
+                        </div>
+                    </div>
+                </section>
+
                 {/* ── Danger Zone ─────────────────────────────────────────── */}
                 <section className="space-y-4">
                     <h2 className="text-base font-semibold text-destructive">
@@ -709,7 +794,7 @@ export default function SettingsIndex({
                     <Separator />
 
                     <div className="rounded-lg border border-destructive/30 p-4">
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <p className="text-sm font-medium">
                                     Delete this workspace

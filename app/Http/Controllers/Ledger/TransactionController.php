@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ledger;
 
 use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkUpdateTransactionsRequest;
 use App\Http\Requests\StoreTransactionRequest;
 use App\Http\Requests\UpdateTransactionRequest;
 use App\Models\Account;
@@ -11,6 +12,8 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Services\BudgetService;
 use App\Services\TransactionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +25,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TransactionController extends Controller
 {
-    public function __construct(private readonly TransactionService $transactionService) {}
+    public function __construct(
+        private readonly TransactionService $transactionService,
+        private readonly BudgetService $budgetService,
+    ) {}
 
     public function index(Request $request, Ledger $ledger): Response
     {
@@ -48,6 +54,10 @@ class TransactionController extends Controller
             $query->where('category_id', $request->get('category_id'));
         }
 
+        if ($request->boolean('uncategorized')) {
+            $query->whereNull('category_id')->where('transaction_type', '!=', 'transfer');
+        }
+
         if ($request->filled('transaction_type')) {
             $query->where('transaction_type', $request->get('transaction_type'));
         }
@@ -71,7 +81,7 @@ class TransactionController extends Controller
         return Inertia::render('ledgers/transactions/index', [
             'ledger' => $ledger,
             'transactions' => $query->paginate(25)->withQueryString(),
-            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
+            'accounts' => $ledger->accounts()->visible()->with('accountType')->orderBy('name')->get(),
             'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
             'payees' => $ledger->payees()->orderBy('name')->get(),
             'tags' => $ledger->tags()->orderBy('name')->get(),
@@ -84,6 +94,7 @@ class TransactionController extends Controller
                 'payee_id' => $request->get('payee_id'),
                 'search' => $request->get('search'),
                 'tag_id' => $request->get('tag_id'),
+                'uncategorized' => $request->boolean('uncategorized') ? '1' : null,
             ],
         ]);
     }
@@ -101,6 +112,8 @@ class TransactionController extends Controller
                 'notes' => $request->input('notes'),
                 'transaction_date' => $request->date('transaction_date')?->toDateString() ?? now()->toDateString(),
             ]);
+
+            $this->celebrateFirstTransaction();
 
             return back();
         }
@@ -122,7 +135,27 @@ class TransactionController extends Controller
             $transaction->tags()->sync($request->input('tag_ids', []));
         }
 
+        $this->budgetService->checkThresholds(
+            $ledger,
+            $request->filled('category_id') ? $request->integer('category_id') : null,
+        );
+
+        $this->celebrateFirstTransaction();
+
         return back();
+    }
+
+    private function celebrateFirstTransaction(): void
+    {
+        /** @var User $user */
+        $user = auth()->user();
+        $onboardingData = $user->onboarding_data ?? [];
+
+        if (empty($onboardingData['first_transaction_celebrated'])) {
+            $onboardingData['first_transaction_celebrated'] = true;
+            $user->update(['onboarding_data' => $onboardingData]);
+            session()->flash('first_transaction', true);
+        }
     }
 
     public function edit(Request $request, Ledger $ledger, Transaction $transaction): Response
@@ -132,7 +165,11 @@ class TransactionController extends Controller
         return Inertia::render('ledgers/transactions/edit', [
             'ledger' => $ledger,
             'transaction' => $transaction->load(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category']),
-            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
+            'accounts' => $ledger->accounts()
+                ->where(fn ($q) => $q->visible()->orWhere('id', $transaction->account_id))
+                ->with('accountType')
+                ->orderBy('name')
+                ->get(),
             'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
             'payees' => $ledger->payees()->orderBy('name')->get(),
             'tags' => $ledger->tags()->orderBy('name')->get(),
@@ -184,6 +221,11 @@ class TransactionController extends Controller
         }
 
         $transaction->tags()->sync($data['tag_ids'] ?? []);
+
+        $this->budgetService->checkThresholds(
+            $ledger,
+            $data['category_id'] ?? null,
+        );
 
         return to_route('ledgers.transactions.index', $ledger);
     }
@@ -293,6 +335,28 @@ class TransactionController extends Controller
 
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    public function bulkUpdate(BulkUpdateTransactionsRequest $request, Ledger $ledger): RedirectResponse
+    {
+        $this->authorize('update', $ledger);
+
+        $validated = $request->validated();
+
+        $field = match ($validated['action']) {
+            'change_category' => 'category_id',
+            'change_account' => 'account_id',
+            'change_payee' => 'payee_id',
+        };
+
+        DB::transaction(function () use ($validated, $ledger, $field) {
+            $ledger->transactions()
+                ->whereIn('id', $validated['ids'])
+                ->whereNull('transfer_pair_id')
+                ->update([$field => $validated['value']]);
+        });
+
+        return back();
     }
 
     public function bulkDestroy(Request $request, Ledger $ledger): RedirectResponse

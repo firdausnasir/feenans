@@ -15,18 +15,21 @@ export default function BillTrashIndex({
 }) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Bills', href: billsIndex.url(ledger.id) },
+        {
+            title: 'Recurring Transactions',
+            href: billsIndex.url(ledger.id),
+        },
         { title: 'Trash', href: '#' },
     ];
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`${ledger.name} bill trash`} />
+            <Head title={`Trash — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
-                    title="Bill Trash"
-                    description="Deleted bills remain here until restored or permanently removed."
+                    title="Trash"
+                    description="Deleted recurring transactions remain here until restored or permanently removed."
                 />
 
                 <div className="grid gap-3">

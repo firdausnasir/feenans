@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ParseImportRequest;
 use App\Http\Requests\StoreImportRequest;
 use App\Models\Account;
+use App\Models\ImportMapping;
 use App\Models\Ledger;
 use App\Services\TransactionService;
 use Carbon\CarbonImmutable;
@@ -19,6 +20,46 @@ use Inertia\Response;
 
 class ImportController extends Controller
 {
+    /**
+     * Malaysian bank header patterns for auto-detection.
+     *
+     * @var array<string, list<string>>
+     */
+    private const array BANK_HEADER_PATTERNS = [
+        'Maybank' => ['Transaction Date', 'Description', 'Debit', 'Credit'],
+        'CIMB' => ['Date', 'Description', 'Amount(DR)', 'Amount(CR)'],
+        'RHB' => ['Transaction Date', 'Transaction Description', 'Debit Amount', 'Credit Amount'],
+        'Public Bank' => ['Date', 'Particulars', 'Withdrawal', 'Deposit'],
+    ];
+
+    /**
+     * Mapping from detected bank headers to standard field names.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private const array BANK_MAPPINGS = [
+        'Maybank' => [
+            'date' => 'Transaction Date',
+            'amount' => 'Debit',
+            'description' => 'Description',
+        ],
+        'CIMB' => [
+            'date' => 'Date',
+            'amount' => 'Amount(DR)',
+            'description' => 'Description',
+        ],
+        'RHB' => [
+            'date' => 'Transaction Date',
+            'amount' => 'Debit Amount',
+            'description' => 'Transaction Description',
+        ],
+        'Public Bank' => [
+            'date' => 'Date',
+            'amount' => 'Withdrawal',
+            'description' => 'Particulars',
+        ],
+    ];
+
     public function __construct(private readonly TransactionService $transactionService) {}
 
     protected function ledgerDisk(): string
@@ -32,9 +73,13 @@ class ImportController extends Controller
 
         return Inertia::render('ledgers/import/index', [
             'ledger' => $ledger,
-            'accounts' => $ledger->accounts()->orderBy('name')->get(['id', 'name']),
+            'accounts' => $ledger->accounts()->visible()->orderBy('name')->get(['id', 'name']),
             'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
             'payees' => $ledger->payees()->orderBy('name')->get(['id', 'name']),
+            'importHistory' => $ledger->importRecords()
+                ->orderByDesc('imported_at')
+                ->limit(10)
+                ->get(),
         ]);
     }
 
@@ -70,12 +115,25 @@ class ImportController extends Controller
         // Store file in temp storage for later use
         $path = $file->store('imports/temp', $this->ledgerDisk());
 
-        return response()->json([
+        // Detect Malaysian bank format
+        $detectedBank = $this->detectBankFormat($headers);
+        $suggestedMapping = $detectedBank !== null
+            ? (self::BANK_MAPPINGS[$detectedBank] ?? null)
+            : null;
+
+        $response = [
             'headers' => $headers,
             'preview_rows' => $rows,
             'total_rows' => $total,
             'file_path' => $path,
-        ]);
+        ];
+
+        if ($detectedBank !== null && $suggestedMapping !== null) {
+            $response['detected_bank'] = $detectedBank;
+            $response['suggested_mapping'] = $suggestedMapping;
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -101,8 +159,10 @@ class ImportController extends Controller
         $skipDuplicates = $validated['skip_duplicates'] ?? true;
         $imported = 0;
         $skipped = 0;
+        $totalRows = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
+            $totalRows++;
             $rowAssoc = array_combine($headers, $row);
 
             if (! $rowAssoc) {
@@ -191,10 +251,99 @@ class ImportController extends Controller
 
         fclose($handle);
 
+        // Record import history
+        $ledger->importRecords()->create([
+            'filename' => basename($filePath),
+            'row_count' => $totalRows,
+            'imported_count' => $imported,
+            'skipped_count' => $skipped,
+            'mapping_used' => $mapping,
+            'imported_at' => CarbonImmutable::now(),
+        ]);
+
         // Clean up temp file
         Storage::disk($this->ledgerDisk())->delete($filePath);
 
         return to_route('ledgers.transactions.index', $ledger)
             ->with('success', "Imported {$imported} transactions".($skipped > 0 ? ", skipped {$skipped} duplicates" : '').'.');
+    }
+
+    /**
+     * Return saved import mappings for the ledger.
+     */
+    public function mappings(Ledger $ledger): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        $mappings = $ledger->importMappings()
+            ->orderBy('name')
+            ->get(['id', 'name', 'mapping']);
+
+        return response()->json($mappings);
+    }
+
+    /**
+     * Save a new import mapping configuration.
+     */
+    public function saveMapping(Request $request, Ledger $ledger): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'mapping' => ['required', 'array'],
+        ]);
+
+        $importMapping = $ledger->importMappings()->create([
+            'name' => $validated['name'],
+            'mapping' => $validated['mapping'],
+        ]);
+
+        return response()->json($importMapping, 201);
+    }
+
+    /**
+     * Delete a saved import mapping.
+     */
+    public function destroyMapping(Ledger $ledger, ImportMapping $importMapping): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        if ($importMapping->ledger_id !== $ledger->id) {
+            abort(404);
+        }
+
+        $importMapping->delete();
+
+        return response()->json(['message' => 'Mapping deleted.']);
+    }
+
+    /**
+     * Detect bank format by checking header patterns.
+     *
+     * @param  list<string>  $headers
+     */
+    private function detectBankFormat(array $headers): ?string
+    {
+        $normalizedHeaders = array_map(
+            fn (string $header): string => strtolower(trim($header)),
+            $headers,
+        );
+
+        foreach (self::BANK_HEADER_PATTERNS as $bank => $requiredHeaders) {
+            $allFound = true;
+            foreach ($requiredHeaders as $requiredHeader) {
+                if (! in_array(strtolower($requiredHeader), $normalizedHeaders, true)) {
+                    $allFound = false;
+                    break;
+                }
+            }
+
+            if ($allFound) {
+                return $bank;
+            }
+        }
+
+        return null;
     }
 }

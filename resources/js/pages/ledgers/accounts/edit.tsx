@@ -5,6 +5,7 @@ import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountCont
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -16,6 +17,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
@@ -39,7 +47,13 @@ export default function EditAccount({
     const selectedType = accountTypes.find(
         (t) => t.id === account.account_type_id,
     );
+    const [accountTypeId, setAccountTypeId] = useState(
+        String(account.account_type_id),
+    );
     const [isCredit, setIsCredit] = useState(selectedType?.is_credit ?? false);
+    const [includeInTotals, setIncludeInTotals] = useState(
+        account.include_in_totals,
+    );
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -63,8 +77,9 @@ export default function EditAccount({
         setShowDeleteDialog(false);
     }
 
-    function handleAccountTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
-        const typeId = parseInt(e.target.value, 10);
+    function handleAccountTypeChange(value: string) {
+        setAccountTypeId(value);
+        const typeId = parseInt(value, 10);
         const type = accountTypes.find((t) => t.id === typeId);
         setIsCredit(type?.is_credit ?? false);
     }
@@ -130,19 +145,32 @@ export default function EditAccount({
                                 <Label htmlFor="account_type_id">
                                     Account type
                                 </Label>
-                                <select
-                                    id="account_type_id"
+                                <input
+                                    type="hidden"
                                     name="account_type_id"
-                                    defaultValue={account.account_type_id}
-                                    onChange={handleAccountTypeChange}
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                    value={accountTypeId}
+                                />
+                                <Select
+                                    value={accountTypeId}
+                                    onValueChange={handleAccountTypeChange}
                                 >
-                                    {accountTypes.map((type) => (
-                                        <option key={type.id} value={type.id}>
-                                            {type.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    <SelectTrigger
+                                        id="account_type_id"
+                                        className="w-full"
+                                    >
+                                        <SelectValue placeholder="Select a type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accountTypes.map((type) => (
+                                            <SelectItem
+                                                key={type.id}
+                                                value={String(type.id)}
+                                            >
+                                                {type.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <InputError message={errors.account_type_id} />
                             </div>
 
@@ -167,7 +195,7 @@ export default function EditAccount({
                                 <Input
                                     id="initial_balance"
                                     name="initial_balance"
-                                    type="number"
+                                    type="number" inputMode="decimal"
                                     step="0.01"
                                     defaultValue={account.initial_balance}
                                     required
@@ -187,7 +215,7 @@ export default function EditAccount({
                                     <Input
                                         id="statement_day"
                                         name="statement_day"
-                                        type="number"
+                                        type="number" inputMode="decimal"
                                         min="1"
                                         max="31"
                                         defaultValue={
@@ -206,15 +234,14 @@ export default function EditAccount({
                                 <input
                                     type="hidden"
                                     name="include_in_totals"
-                                    value="0"
+                                    value={includeInTotals ? '1' : '0'}
                                 />
-                                <input
+                                <Checkbox
                                     id="include_in_totals"
-                                    name="include_in_totals"
-                                    type="checkbox"
-                                    value="1"
-                                    defaultChecked={account.include_in_totals}
-                                    className="size-4 rounded border-input"
+                                    checked={includeInTotals}
+                                    onCheckedChange={(checked) =>
+                                        setIncludeInTotals(checked === true)
+                                    }
                                 />
                                 <Label htmlFor="include_in_totals">
                                     Include in totals

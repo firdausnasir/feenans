@@ -33,6 +33,8 @@ class Transaction extends Model
         'notes',
         'transaction_date',
         'transfer_pair_id',
+        'bill_id',
+        'is_sample',
     ];
 
     /**
@@ -46,6 +48,7 @@ class Transaction extends Model
             'transaction_type' => TransactionType::class,
             'amount' => 'decimal:2',
             'transaction_date' => 'date',
+            'is_sample' => 'boolean',
         ];
     }
 
@@ -62,6 +65,11 @@ class Transaction extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(Bill::class);
     }
 
     public function payee(): BelongsTo

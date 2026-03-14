@@ -29,7 +29,7 @@ export default function ActivityIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} activity`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Activity"
                     description="Recent create, update, delete, and restore events for this ledger."

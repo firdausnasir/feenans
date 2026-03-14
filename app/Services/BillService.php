@@ -71,6 +71,7 @@ class BillService
                 'notes' => null,
                 'transaction_date' => $overrides['date'] ?? CarbonImmutable::today(),
                 'transfer_pair_id' => null,
+                'bill_id' => $bill->id,
             ]);
 
             $this->advanceToNextDue($bill);

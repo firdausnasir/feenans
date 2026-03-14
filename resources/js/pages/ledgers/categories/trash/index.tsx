@@ -23,7 +23,7 @@ export default function CategoryTrashIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} category trash`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Category Trash"
                     description="Recently deleted categories that can still be recovered."

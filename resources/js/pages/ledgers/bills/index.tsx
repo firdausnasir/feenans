@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Receipt } from 'lucide-react';
+import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import Heading from '@/components/heading';
 import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -24,8 +24,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
-import { formatAmount, formatDate } from '@/lib/format';
+import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     create,
@@ -35,6 +40,13 @@ import {
     toggle,
 } from '@/routes/ledgers/bills';
 import type { Account, Bill, BreadcrumbItem, Ledger } from '@/types';
+
+const COLUMN_COUNT = 9;
+
+const ACTION_LABELS: Record<string, { pay: string; paid: string }> = {
+    expense: { pay: 'Record Payment', paid: 'paid' },
+    income: { pay: 'Record Income', paid: 'received' },
+};
 
 function recurrenceDescription(
     type: Bill['recurrence_type'],
@@ -61,6 +73,220 @@ function recurrenceDescription(
     return plural.replace('{n}', String(interval));
 }
 
+function BillRow({
+    bill,
+    ledgerId,
+    onPay,
+    onDelete,
+    onToggle,
+}: {
+    bill: Bill;
+    ledgerId: number;
+    onPay: (bill: Bill) => void;
+    onDelete: (bill: Bill) => void;
+    onToggle: (bill: Bill) => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const transactions = bill.transactions ?? [];
+    const hasTransactions = transactions.length > 0;
+
+    return (
+        <>
+            <TableRow
+                className={hasTransactions ? 'cursor-pointer' : undefined}
+                onClick={() => {
+                    if (hasTransactions) {
+                        setExpanded((prev) => !prev);
+                    }
+                }}
+            >
+                <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                        {hasTransactions ? (
+                            expanded ? (
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                            )
+                        ) : (
+                            <span className="inline-block w-4 shrink-0" />
+                        )}
+                        {bill.name}
+                    </div>
+                </TableCell>
+                <TableCell>{formatAmount(bill.amount)}</TableCell>
+                <TableCell>
+                    <Badge
+                        variant="outline"
+                        className={
+                            bill.transaction_type === 'income'
+                                ? 'border-green-200 text-green-700 dark:border-green-800 dark:text-green-400'
+                                : 'border-red-200 text-red-700 dark:border-red-800 dark:text-red-400'
+                        }
+                    >
+                        {bill.transaction_type === 'income'
+                            ? 'Income'
+                            : 'Expense'}
+                    </Badge>
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground md:table-cell">
+                    {bill.account?.name ?? '-'}
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground md:table-cell">
+                    {recurrenceDescription(
+                        bill.recurrence_type,
+                        bill.recurrence_interval,
+                    )}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                    {formatDate(bill.next_due_date)}
+                </TableCell>
+                <TableCell className="hidden lg:table-cell">
+                    <Badge variant={bill.is_active ? 'default' : 'secondary'}>
+                        {bill.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                </TableCell>
+                <TableCell>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Badge
+                                variant={
+                                    bill.auto_create ? 'outline' : 'secondary'
+                                }
+                            >
+                                {bill.auto_create ? 'Auto' : 'Manual'}
+                            </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            {bill.auto_create
+                                ? 'Transactions are created automatically when due'
+                                : 'You must manually pay this bill each cycle'}
+                        </TooltipContent>
+                    </Tooltip>
+                </TableCell>
+                <TableCell>
+                    <div
+                        className="flex items-center gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {bill.is_active && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-auto px-2 py-0.5 text-xs"
+                                onClick={() => onPay(bill)}
+                            >
+                                {ACTION_LABELS[bill.transaction_type]?.pay ??
+                                    'Record Payment'}
+                            </Button>
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-2 py-0.5 text-xs"
+                            asChild
+                        >
+                            <Link
+                                href={editRoute.url({
+                                    ledger: ledgerId,
+                                    bill: bill.id,
+                                })}
+                            >
+                                Edit
+                            </Link>
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-2 py-0.5 text-xs"
+                            onClick={() => onToggle(bill)}
+                        >
+                            {bill.is_active ? 'Deactivate' : 'Activate'}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
+                            onClick={() => onDelete(bill)}
+                        >
+                            Delete
+                        </Button>
+                    </div>
+                </TableCell>
+            </TableRow>
+            {expanded && hasTransactions && (
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableCell colSpan={COLUMN_COUNT} className="p-0">
+                        <div className="px-10 py-3">
+                            <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                Payment History (last {transactions.length})
+                            </p>
+                            <div className="divide-y sm:hidden">
+                                {transactions.map((txn) => (
+                                    <div
+                                        key={txn.id}
+                                        className="flex items-center justify-between py-2"
+                                    >
+                                        <span className="text-xs text-muted-foreground">
+                                            {formatDate(txn.transaction_date)}
+                                        </span>
+                                        <div className="text-right">
+                                            <span className="text-xs font-medium tabular-nums">
+                                                {formatAbsAmount(txn.amount)}
+                                            </span>
+                                            <span className="ml-2 text-xs text-muted-foreground">
+                                                {txn.account?.name ?? '-'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Table className="hidden sm:table">
+                                <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="h-8 text-xs">
+                                            Date
+                                        </TableHead>
+                                        <TableHead className="h-8 text-xs">
+                                            Amount
+                                        </TableHead>
+                                        <TableHead className="h-8 text-xs">
+                                            Account
+                                        </TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {transactions.map((txn) => (
+                                        <TableRow
+                                            key={txn.id}
+                                            className="hover:bg-transparent"
+                                        >
+                                            <TableCell className="py-1.5 text-sm">
+                                                {formatDate(
+                                                    txn.transaction_date,
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="py-1.5 text-sm">
+                                                {formatAbsAmount(txn.amount)}
+                                            </TableCell>
+                                            <TableCell className="py-1.5 text-sm text-muted-foreground">
+                                                {txn.account?.name ?? '-'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </TableCell>
+                </TableRow>
+            )}
+        </>
+    );
+}
+
 export default function BillsIndex({
     ledger,
     bills,
@@ -75,7 +301,10 @@ export default function BillsIndex({
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Bills', href: billsIndex.url(ledger.id) },
+        {
+            title: 'Recurring Transactions',
+            href: billsIndex.url(ledger.id),
+        },
     ];
 
     function handleToggle(bill: Bill) {
@@ -113,42 +342,175 @@ export default function BillsIndex({
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`${ledger.name} bills`} />
+            <Head title={`Recurring Transactions — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <div className="flex items-center justify-between">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <Heading
-                        title="Bills"
-                        description="Manage recurring bills for this ledger."
+                        title="Recurring Transactions"
+                        description="Manage recurring expenses and income for this ledger."
                     />
 
-                    <Button asChild>
-                        <Link href={create.url(ledger.id)}>New Bill</Link>
+                    <Button className="w-full sm:w-auto" asChild>
+                        <Link href={create.url(ledger.id)}>
+                            New Recurring Transaction
+                        </Link>
                     </Button>
                 </div>
 
                 {bills.length === 0 ? (
                     <EmptyState
                         icon={<Receipt className="size-6" />}
-                        title="No bills yet"
-                        description="Set up recurring bills to never miss a payment."
+                        title="No recurring transactions yet"
+                        description="Set up recurring transactions to track regular expenses and income."
                         action={{
-                            label: 'New bill',
+                            label: 'New recurring transaction',
                             href: create.url(ledger.id),
                         }}
                     />
                 ) : (
                     <Card>
                         <CardContent className="p-0">
-                            <Table>
+                            <div className="divide-y px-4 sm:hidden">
+                                {bills.map((bill) => (
+                                    <div
+                                        key={bill.id}
+                                        className="space-y-2 py-3"
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-medium">
+                                                    {bill.name}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {bill.account?.name ?? '-'}{' '}
+                                                    ·{' '}
+                                                    {recurrenceDescription(
+                                                        bill.recurrence_type,
+                                                        bill.recurrence_interval,
+                                                    )}
+                                                </p>
+                                            </div>
+                                            <span
+                                                className={`shrink-0 text-sm font-semibold tabular-nums ${bill.transaction_type === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
+                                            >
+                                                {formatAmount(bill.amount)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Badge
+                                                    variant={
+                                                        bill.is_active
+                                                            ? 'default'
+                                                            : 'secondary'
+                                                    }
+                                                    className="text-[10px]"
+                                                >
+                                                    {bill.is_active
+                                                        ? 'Active'
+                                                        : 'Inactive'}
+                                                </Badge>
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-[10px]"
+                                                >
+                                                    {bill.transaction_type ===
+                                                    'expense'
+                                                        ? 'Expense'
+                                                        : 'Income'}
+                                                </Badge>
+                                                {bill.auto_create && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-[10px]"
+                                                    >
+                                                        Auto
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <span className="text-xs text-muted-foreground">
+                                                Due:{' '}
+                                                {formatDate(bill.next_due_date)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 pt-1">
+                                            {bill.is_active && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-7 text-xs"
+                                                    onClick={() =>
+                                                        setBillToPay(bill)
+                                                    }
+                                                >
+                                                    {ACTION_LABELS[
+                                                        bill.transaction_type
+                                                    ]?.pay ?? 'Record Payment'}
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                asChild
+                                            >
+                                                <Link
+                                                    href={editRoute.url({
+                                                        ledger: ledger.id,
+                                                        bill: bill.id,
+                                                    })}
+                                                >
+                                                    Edit
+                                                </Link>
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={() =>
+                                                    handleToggle(bill)
+                                                }
+                                            >
+                                                {bill.is_active
+                                                    ? 'Deactivate'
+                                                    : 'Activate'}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs text-destructive hover:text-destructive"
+                                                onClick={() =>
+                                                    setBillToDelete(bill)
+                                                }
+                                            >
+                                                Delete
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Table className="hidden sm:table">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Amount</TableHead>
-                                        <TableHead>Recurrence</TableHead>
+                                        <TableHead className="hidden lg:table-cell">
+                                            Type
+                                        </TableHead>
+                                        <TableHead className="hidden md:table-cell">
+                                            Account
+                                        </TableHead>
+                                        <TableHead className="hidden md:table-cell">
+                                            Recurrence
+                                        </TableHead>
                                         <TableHead>Next Due</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Auto</TableHead>
+                                        <TableHead className="hidden lg:table-cell">
+                                            Status
+                                        </TableHead>
+                                        <TableHead className="hidden sm:table-cell">
+                                            Auto
+                                        </TableHead>
                                         <TableHead className="sr-only">
                                             Actions
                                         </TableHead>
@@ -156,111 +518,14 @@ export default function BillsIndex({
                                 </TableHeader>
                                 <TableBody>
                                     {bills.map((bill) => (
-                                        <TableRow key={bill.id}>
-                                            <TableCell className="font-medium">
-                                                {bill.name}
-                                            </TableCell>
-                                            <TableCell>
-                                                {formatAmount(bill.amount)}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {recurrenceDescription(
-                                                    bill.recurrence_type,
-                                                    bill.recurrence_interval,
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {formatDate(bill.next_due_date)}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    variant={
-                                                        bill.is_active
-                                                            ? 'default'
-                                                            : 'secondary'
-                                                    }
-                                                >
-                                                    {bill.is_active
-                                                        ? 'Active'
-                                                        : 'Inactive'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    variant={
-                                                        bill.auto_create
-                                                            ? 'outline'
-                                                            : 'secondary'
-                                                    }
-                                                >
-                                                    {bill.auto_create
-                                                        ? 'Auto'
-                                                        : 'Manual'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    {bill.is_active && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="h-auto px-2 py-0.5 text-xs"
-                                                            onClick={() =>
-                                                                setBillToPay(
-                                                                    bill,
-                                                                )
-                                                            }
-                                                        >
-                                                            Pay
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-auto px-2 py-0.5 text-xs"
-                                                        asChild
-                                                    >
-                                                        <Link
-                                                            href={editRoute.url(
-                                                                {
-                                                                    ledger: ledger.id,
-                                                                    bill: bill.id,
-                                                                },
-                                                            )}
-                                                        >
-                                                            Edit
-                                                        </Link>
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-auto px-2 py-0.5 text-xs"
-                                                        onClick={() =>
-                                                            handleToggle(bill)
-                                                        }
-                                                    >
-                                                        {bill.is_active
-                                                            ? 'Deactivate'
-                                                            : 'Activate'}
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
-                                                        onClick={() =>
-                                                            setBillToDelete(
-                                                                bill,
-                                                            )
-                                                        }
-                                                    >
-                                                        Delete
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
+                                        <BillRow
+                                            key={bill.id}
+                                            bill={bill}
+                                            ledgerId={ledger.id}
+                                            onPay={setBillToPay}
+                                            onDelete={setBillToDelete}
+                                            onToggle={handleToggle}
+                                        />
                                     ))}
                                 </TableBody>
                             </Table>
@@ -287,7 +552,7 @@ export default function BillsIndex({
             >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Delete bill</DialogTitle>
+                        <DialogTitle>Delete recurring transaction</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to delete{' '}
                             <strong>{billToDelete?.name}</strong>? This action
