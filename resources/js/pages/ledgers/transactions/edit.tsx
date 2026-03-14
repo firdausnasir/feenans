@@ -108,7 +108,7 @@ export default function TransactionEdit({
 
     const [form, setForm] = useState<EditFormData>({
         transaction_type: transaction.transaction_type,
-        transaction_date: transaction.transaction_date,
+        transaction_date: transaction.transaction_date.slice(0, 10),
         account_id: String(transaction.account_id),
         to_account_id: transaction.transfer_pair
             ? String(transaction.transfer_pair.account_id)
