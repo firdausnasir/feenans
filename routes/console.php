@@ -12,3 +12,4 @@ Artisan::command('inspire', function () {
 Schedule::call(fn () => app(BillService::class)->processAutoBills())->daily();
 Schedule::command('bills:send-reminders')->dailyAt('08:00');
 Schedule::command('bills:check-reminders')->daily();
+Schedule::command('trash:purge')->daily();
