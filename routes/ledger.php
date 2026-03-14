@@ -3,6 +3,7 @@
 use App\Http\Controllers\Ledger\AccountController;
 use App\Http\Controllers\Ledger\AccountTypeController;
 use App\Http\Controllers\Ledger\ActivityLogController;
+use App\Http\Controllers\Ledger\ApiTokenController;
 use App\Http\Controllers\Ledger\AttachmentController;
 use App\Http\Controllers\Ledger\BillController;
 use App\Http\Controllers\Ledger\BudgetController;
@@ -166,6 +167,14 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.settings.index');
     Route::put('ledgers/{ledger}/settings', [SettingsController::class, 'update'])
         ->name('ledgers.settings.update');
+
+    // API Tokens
+    Route::post('api-tokens', [ApiTokenController::class, 'store'])
+        ->name('api-tokens.store');
+    Route::delete('api-tokens/{token}', [ApiTokenController::class, 'destroy'])
+        ->name('api-tokens.destroy');
+    Route::get('api-tokens', [ApiTokenController::class, 'json'])
+        ->name('api-tokens.json');
 
     // Account Types — reorder must come before {accountType} wildcard routes
     Route::post('ledgers/{ledger}/account-types/reorder', [AccountTypeController::class, 'reorder'])

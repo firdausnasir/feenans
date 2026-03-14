@@ -38,6 +38,13 @@ import type { AccountType, BreadcrumbItem, Ledger } from '@/types';
 
 type LedgerWithAccountTypes = Ledger & { account_types: AccountType[] };
 
+type ApiToken = {
+    id: number;
+    name: string;
+    last_used_at: string | null;
+    created_at: string | null;
+};
+
 type AccountTypeEditState = {
     accountTypeId: number;
     name: string;
@@ -72,8 +79,12 @@ function colorDot(color: string | null) {
 
 export default function SettingsIndex({
     ledger,
+    apiTokens,
+    newToken,
 }: {
     ledger: LedgerWithAccountTypes;
+    apiTokens: ApiToken[];
+    newToken: string | null;
 }) {
     // General settings state
     const [ledgerName, setLedgerName] = useState(ledger.name);
@@ -98,6 +109,14 @@ export default function SettingsIndex({
     const dragOverIdRef = useRef<number | null>(null);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
     const isReorderingRef = useRef(false);
+
+    // API token state
+    const [tokenName, setTokenName] = useState('');
+    const [isCreatingToken, setIsCreatingToken] = useState(false);
+    const [revealedToken, setRevealedToken] = useState<string | null>(
+        newToken ?? null,
+    );
+    const [deletingTokenId, setDeletingTokenId] = useState<number | null>(null);
 
     // Danger zone state
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -333,6 +352,50 @@ export default function SettingsIndex({
                 },
             },
         );
+    }
+
+    // ── API token handlers ────────────────────────────────────────────────────
+
+    function handleCreateToken() {
+        if (!tokenName.trim()) {
+            return;
+        }
+
+        setIsCreatingToken(true);
+
+        router.post(
+            '/api-tokens',
+            { name: tokenName.trim() },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsCreatingToken(false);
+                    setTokenName('');
+                    toast.success('API token created.');
+                },
+                onError: (errors) => {
+                    setIsCreatingToken(false);
+                    const msg = errors.name ?? 'Failed to create API token.';
+                    toast.error(msg);
+                },
+            },
+        );
+    }
+
+    function handleRevokeToken(tokenId: number) {
+        setDeletingTokenId(tokenId);
+
+        router.delete(`/api-tokens/${tokenId}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setDeletingTokenId(null);
+                toast.success('API token revoked.');
+            },
+            onError: () => {
+                setDeletingTokenId(null);
+                toast.error('Failed to revoke API token.');
+            },
+        });
     }
 
     // ── Ledger delete ─────────────────────────────────────────────────────────
@@ -697,6 +760,139 @@ export default function SettingsIndex({
                             >
                                 + Add Account Type
                             </Button>
+                        )}
+                    </div>
+                </section>
+
+                {/* ── API Tokens ──────────────────────────────────────────── */}
+                <section className="space-y-4">
+                    <h2 className="text-base font-semibold">API Tokens</h2>
+                    <Separator />
+
+                    <p className="text-sm text-muted-foreground">
+                        API tokens allow external applications to access your
+                        data via the REST API. Treat tokens like passwords
+                        &mdash; keep them secret.
+                    </p>
+
+                    {revealedToken && (
+                        <div className="rounded-lg border border-green-500/30 bg-green-50 p-4 dark:bg-green-950/20">
+                            <p className="mb-2 text-sm font-medium text-green-800 dark:text-green-200">
+                                Your new API token (copy it now &mdash; it
+                                won&apos;t be shown again):
+                            </p>
+                            <code className="block rounded bg-green-100 px-3 py-2 text-sm break-all dark:bg-green-900/40">
+                                {revealedToken}
+                            </code>
+                            <div className="mt-2 flex gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(
+                                            revealedToken,
+                                        );
+                                        toast.success(
+                                            'Token copied to clipboard.',
+                                        );
+                                    }}
+                                >
+                                    Copy
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setRevealedToken(null)}
+                                >
+                                    Dismiss
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="max-w-md space-y-3">
+                        <div className="flex items-end gap-2">
+                            <div className="flex-1 space-y-1.5">
+                                <Label htmlFor="token-name">Token name</Label>
+                                <Input
+                                    id="token-name"
+                                    value={tokenName}
+                                    onChange={(e) =>
+                                        setTokenName(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleCreateToken();
+                                        }
+                                    }}
+                                    placeholder="e.g. My App"
+                                />
+                            </div>
+                            <Button
+                                onClick={handleCreateToken}
+                                disabled={isCreatingToken || !tokenName.trim()}
+                            >
+                                {isCreatingToken
+                                    ? 'Creating...'
+                                    : 'Create Token'}
+                            </Button>
+                        </div>
+
+                        {apiTokens.length > 0 && (
+                            <div className="rounded-lg border">
+                                {apiTokens.map((token, idx) => (
+                                    <div
+                                        key={token.id}
+                                        className={`flex items-center justify-between px-4 py-3 ${
+                                            idx > 0 ? 'border-t' : ''
+                                        }`}
+                                    >
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                {token.name}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Created{' '}
+                                                {token.created_at
+                                                    ? new Date(
+                                                          token.created_at,
+                                                      ).toLocaleDateString()
+                                                    : 'unknown'}
+                                                {token.last_used_at && (
+                                                    <>
+                                                        {' '}
+                                                        &middot; Last used{' '}
+                                                        {new Date(
+                                                            token.last_used_at,
+                                                        ).toLocaleDateString()}
+                                                    </>
+                                                )}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive"
+                                            disabled={
+                                                deletingTokenId === token.id
+                                            }
+                                            onClick={() =>
+                                                handleRevokeToken(token.id)
+                                            }
+                                        >
+                                            {deletingTokenId === token.id
+                                                ? 'Revoking...'
+                                                : 'Revoke'}
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {apiTokens.length === 0 && (
+                            <p className="text-sm text-muted-foreground">
+                                No API tokens yet. Create one to get started.
+                            </p>
                         )}
                     </div>
                 </section>
