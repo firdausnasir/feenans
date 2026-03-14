@@ -363,9 +363,16 @@ export function AddTransactionModal({
                                         autoFocus
                                         required
                                         value={amount}
-                                        onChange={(event) =>
-                                            setAmount(event.target.value)
-                                        }
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            if (
+                                                value !== '' &&
+                                                Number(value) < 0
+                                            ) {
+                                                return;
+                                            }
+                                            setAmount(value);
+                                        }}
                                     />
                                     <InputError message={errors.amount} />
                                 </div>
@@ -828,15 +835,27 @@ export function AddTransactionModal({
                                                                     }
                                                                     onChange={(
                                                                         e,
-                                                                    ) =>
+                                                                    ) => {
+                                                                        const value =
+                                                                            e
+                                                                                .target
+                                                                                .value;
+                                                                        if (
+                                                                            value !==
+                                                                                '' &&
+                                                                            Number(
+                                                                                value,
+                                                                            ) <
+                                                                                0
+                                                                        ) {
+                                                                            return;
+                                                                        }
                                                                         updateSplitRow(
                                                                             split.id,
                                                                             'amount',
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
+                                                                            value,
+                                                                        );
+                                                                    }}
                                                                 />
                                                             </div>
 

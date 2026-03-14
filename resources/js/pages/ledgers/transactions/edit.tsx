@@ -417,12 +417,20 @@ export default function TransactionEdit({
                                             step="0.01"
                                             min="0.01"
                                             value={form.amount}
-                                            onChange={(event) =>
+                                            onChange={(event) => {
+                                                const value =
+                                                    event.target.value;
+                                                if (
+                                                    value !== '' &&
+                                                    Number(value) < 0
+                                                ) {
+                                                    return;
+                                                }
                                                 setForm((current) => ({
                                                     ...current,
-                                                    amount: event.target.value,
-                                                }))
-                                            }
+                                                    amount: value,
+                                                }));
+                                            }}
                                         />
                                     </div>
                                 </div>
@@ -597,15 +605,26 @@ export default function TransactionEdit({
                                                                 }
                                                                 onChange={(
                                                                     event,
-                                                                ) =>
+                                                                ) => {
+                                                                    const value =
+                                                                        event
+                                                                            .target
+                                                                            .value;
+                                                                    if (
+                                                                        value !==
+                                                                            '' &&
+                                                                        Number(
+                                                                            value,
+                                                                        ) < 0
+                                                                    ) {
+                                                                        return;
+                                                                    }
                                                                     updateSplit(
                                                                         split.id,
                                                                         'amount',
-                                                                        event
-                                                                            .target
-                                                                            .value,
-                                                                    )
-                                                                }
+                                                                        value,
+                                                                    );
+                                                                }}
                                                             />
                                                         </div>
 
