@@ -43,7 +43,7 @@ export default function CreateLedger({
                 <Form
                     {...LedgerController.store.form()}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Ledger created')}
+                    onSuccess={() => toast.success('Workspace created')}
                 >
                     {({ errors, processing }) => (
                         <>

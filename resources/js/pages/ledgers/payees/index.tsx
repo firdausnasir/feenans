@@ -81,6 +81,7 @@ export default function PayeesIndex({
                 onSuccess: () => {
                     setEditingId(null);
                     setEditingName('');
+                    toast.success('Payee updated');
                 },
                 onError: (errors) => {
                     const message = errors.name ?? 'Failed to update payee.';
@@ -104,6 +105,7 @@ export default function PayeesIndex({
                 onSuccess: () => {
                     setPayeeToDelete(null);
                     setIsDeleting(false);
+                    toast.success('Payee deleted');
                 },
                 onError: () => {
                     toast.error('Failed to delete payee.');
@@ -130,6 +132,7 @@ export default function PayeesIndex({
                 onSuccess: () => {
                     setNewPayeeName('');
                     setShowAddForm(false);
+                    toast.success('Payee added');
                 },
                 onError: (errors) => {
                     const message = errors.name ?? 'Failed to add payee.';

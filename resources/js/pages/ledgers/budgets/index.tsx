@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,12 +113,18 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                 updateBudget.url({ ledger: ledger.id, budget: editBudget.id }),
                 payload,
                 {
-                    onSuccess: () => setEditBudget(null),
+                    onSuccess: () => {
+                        setEditBudget(null);
+                        toast.success('Budget updated');
+                    },
                 },
             );
         } else {
             router.post(storeBudget.url(ledger.id), payload, {
-                onSuccess: () => setShowCreate(false),
+                onSuccess: () => {
+                    setShowCreate(false);
+                    toast.success('Budget created');
+                },
             });
         }
     };
@@ -128,6 +135,11 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         }
         router.delete(
             destroyBudget.url({ ledger: ledger.id, budget: budget.id }),
+            {
+                onSuccess: () => {
+                    toast.success('Budget deleted');
+                },
+            },
         );
     };
 

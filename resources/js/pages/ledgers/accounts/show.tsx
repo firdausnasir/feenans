@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
     Area,
     AreaChart,
@@ -154,7 +155,11 @@ export default function AccountShow({
     const initialBalance = parseFloat(account.initial_balance);
 
     function handleDelete() {
-        router.delete(destroy.url({ ledger: ledger.id, account: account.id }));
+        router.delete(destroy.url({ ledger: ledger.id, account: account.id }), {
+            onSuccess: () => {
+                toast.success('Account deleted');
+            },
+        });
         setShowDeleteDialog(false);
     }
 

@@ -317,6 +317,7 @@ function CategoryList({
                 preserveScroll: true,
                 onSuccess: () => {
                     setEditState(null);
+                    toast.success('Category updated');
                 },
                 onError: (errors) => {
                     const msg =
@@ -654,6 +655,9 @@ export default function CategoriesIndex({
             },
             {
                 preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Category created');
+                },
                 onError: (errors) => {
                     const msg =
                         errors.name ??
@@ -684,6 +688,7 @@ export default function CategoriesIndex({
                 onSuccess: () => {
                     setIsDeleting(false);
                     setDeleteTarget(null);
+                    toast.success('Category deleted');
                 },
                 onError: (errors) => {
                     setIsDeleting(false);

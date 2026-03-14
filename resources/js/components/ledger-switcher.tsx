@@ -38,11 +38,11 @@ export function LedgerSwitcher() {
                             </div>
                             <div className="grid flex-1 text-left text-sm leading-tight">
                                 <span className="truncate font-medium">
-                                    {currentLedger?.name ?? 'Choose ledger'}
+                                    {currentLedger?.name ?? 'Choose workspace'}
                                 </span>
                                 <span className="truncate text-xs text-muted-foreground">
                                     {currentLedger?.currency_code ??
-                                        'No active ledger'}
+                                        'No active workspace'}
                                 </span>
                             </div>
                             <ChevronDown className="ml-auto size-4" />
@@ -54,7 +54,7 @@ export function LedgerSwitcher() {
                         align="start"
                         side="bottom"
                     >
-                        <DropdownMenuLabel>Switch ledger</DropdownMenuLabel>
+                        <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
                         <DropdownMenuSeparator />
 
                         {availableLedgers.map((ledger) => (
@@ -80,12 +80,12 @@ export function LedgerSwitcher() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
                             <Link href={index.url()} prefetch>
-                                View all ledgers
+                                View all workspaces
                             </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                             <Link href={create.url()} prefetch>
-                                Create ledger
+                                Create workspace
                             </Link>
                         </DropdownMenuItem>
                     </DropdownMenuContent>

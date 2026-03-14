@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -359,7 +360,10 @@ function EditTransactionModal({
             },
             {
                 preserveScroll: true,
-                onSuccess: () => onClose(),
+                onSuccess: () => {
+                    toast.success('Transaction updated');
+                    onClose();
+                },
                 onError: () => setProcessing(false),
             },
         );
@@ -371,7 +375,10 @@ function EditTransactionModal({
             destroy.url({ ledger: ledger.id, transaction: transaction.id }),
             {
                 preserveScroll: true,
-                onSuccess: () => onClose(),
+                onSuccess: () => {
+                    toast.success('Transaction deleted');
+                    onClose();
+                },
                 onError: () => setDeleting(false),
             },
         );
@@ -946,6 +953,7 @@ export default function TransactionsIndex({
                 onSuccess: () => {
                     setSelectedIds([]);
                     setShowBulkDeleteConfirm(false);
+                    toast.success('Transactions deleted');
                 },
             },
         );
@@ -1560,6 +1568,12 @@ export default function TransactionsIndex({
                                                                     ),
                                                                     {
                                                                         preserveScroll: true,
+                                                                        onSuccess:
+                                                                            () => {
+                                                                                toast.success(
+                                                                                    'Transaction deleted',
+                                                                                );
+                                                                            },
                                                                     },
                                                                 )
                                                             }

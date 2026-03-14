@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,11 @@ export default function BillsIndex({
             {},
             {
                 preserveScroll: true,
+                onSuccess: () => {
+                    toast.success(
+                        bill.is_active ? 'Bill deactivated' : 'Bill activated',
+                    );
+                },
             },
         );
     }
@@ -91,7 +97,12 @@ export default function BillsIndex({
         router.post(
             pay.url({ ledger: ledger.id, bill: billToPay.id }),
             {},
-            { preserveScroll: true },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Bill paid');
+                },
+            },
         );
 
         setBillToPay(null);
@@ -104,7 +115,12 @@ export default function BillsIndex({
 
         router.delete(
             destroy.url({ ledger: ledger.id, bill: billToDelete.id }),
-            { preserveScroll: true },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Bill deleted');
+                },
+            },
         );
 
         setBillToDelete(null);

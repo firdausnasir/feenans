@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,7 +23,11 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import { create as importCreate, parse as importParse, store as importStore } from '@/routes/ledgers/import';
+import {
+    create as importCreate,
+    parse as importParse,
+    store as importStore,
+} from '@/routes/ledgers/import';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
 
@@ -43,7 +48,11 @@ type Mapping = {
 
 const NOT_MAPPED = '__not_mapped__';
 
-const TARGET_FIELDS: { key: keyof Mapping; label: string; required: boolean }[] = [
+const TARGET_FIELDS: {
+    key: keyof Mapping;
+    label: string;
+    required: boolean;
+}[] = [
     { key: 'date', label: 'Date', required: true },
     { key: 'amount', label: 'Amount', required: true },
     { key: 'description', label: 'Description', required: false },
@@ -90,7 +99,10 @@ export default function ImportIndex({
         formData.append('file', file);
 
         try {
-            const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+            const csrfToken =
+                document.querySelector<HTMLMetaElement>(
+                    'meta[name="csrf-token"]',
+                )?.content ?? '';
 
             const response = await fetch(importParse.url(ledger.id), {
                 method: 'POST',
@@ -127,20 +139,28 @@ export default function ImportIndex({
                 const lower = header.toLowerCase();
                 if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
                     autoMapping.date = header;
-                } else if (lower.includes('amount') && autoMapping.amount === NOT_MAPPED) {
+                } else if (
+                    lower.includes('amount') &&
+                    autoMapping.amount === NOT_MAPPED
+                ) {
                     autoMapping.amount = header;
                 } else if (
-                    (lower.includes('description') || lower.includes('memo') || lower.includes('narration')) &&
+                    (lower.includes('description') ||
+                        lower.includes('memo') ||
+                        lower.includes('narration')) &&
                     autoMapping.description === NOT_MAPPED
                 ) {
                     autoMapping.description = header;
                 } else if (
-                    (lower.includes('payee') || lower.includes('merchant') || lower.includes('vendor')) &&
+                    (lower.includes('payee') ||
+                        lower.includes('merchant') ||
+                        lower.includes('vendor')) &&
                     autoMapping.payee === NOT_MAPPED
                 ) {
                     autoMapping.payee = header;
                 } else if (
-                    (lower.includes('type') || lower.includes('transaction type')) &&
+                    (lower.includes('type') ||
+                        lower.includes('transaction type')) &&
                     autoMapping.type === NOT_MAPPED
                 ) {
                     autoMapping.type = header;
@@ -186,7 +206,9 @@ export default function ImportIndex({
     };
 
     const canProceedToPreview =
-        mapping.date !== NOT_MAPPED && mapping.amount !== NOT_MAPPED && accountId !== '';
+        mapping.date !== NOT_MAPPED &&
+        mapping.amount !== NOT_MAPPED &&
+        accountId !== '';
 
     const getPreviewValue = (row: string[], field: keyof Mapping): string => {
         if (!parseResult) {
@@ -211,7 +233,10 @@ export default function ImportIndex({
             mapping: {
                 date: mapping.date,
                 amount: mapping.amount,
-                description: mapping.description !== NOT_MAPPED ? mapping.description : null,
+                description:
+                    mapping.description !== NOT_MAPPED
+                        ? mapping.description
+                        : null,
                 category: null,
                 payee: mapping.payee !== NOT_MAPPED ? mapping.payee : null,
                 type: mapping.type !== NOT_MAPPED ? mapping.type : null,
@@ -219,7 +244,11 @@ export default function ImportIndex({
             skip_duplicates: skipDuplicates,
         };
 
-        router.post(importStore.url(ledger.id), payload);
+        router.post(importStore.url(ledger.id), payload, {
+            onSuccess: () => {
+                toast.success('Transactions imported');
+            },
+        });
     };
 
     return (
@@ -258,7 +287,9 @@ export default function ImportIndex({
                             >
                                 {label}
                             </span>
-                            {idx < 2 && <div className="mx-2 h-px w-8 bg-border" />}
+                            {idx < 2 && (
+                                <div className="mx-2 h-px w-8 bg-border" />
+                            )}
                         </div>
                     ))}
                 </div>
@@ -289,23 +320,29 @@ export default function ImportIndex({
                                     onChange={handleFileInput}
                                 />
                                 {isLoading ? (
-                                    <p className="text-muted-foreground">Parsing file...</p>
+                                    <p className="text-muted-foreground">
+                                        Parsing file...
+                                    </p>
                                 ) : (
                                     <>
                                         <div className="text-4xl">📄</div>
                                         <div className="text-center">
                                             <p className="font-medium">
-                                                Drop your CSV file here, or click to browse
+                                                Drop your CSV file here, or
+                                                click to browse
                                             </p>
                                             <p className="mt-1 text-sm text-muted-foreground">
-                                                Supports .csv and .txt files up to 5MB
+                                                Supports .csv and .txt files up
+                                                to 5MB
                                             </p>
                                         </div>
                                     </>
                                 )}
                             </div>
                             {parseError && (
-                                <p className="mt-3 text-sm text-destructive">{parseError}</p>
+                                <p className="mt-3 text-sm text-destructive">
+                                    {parseError}
+                                </p>
                             )}
                         </CardContent>
                     </Card>
@@ -320,15 +357,20 @@ export default function ImportIndex({
                         <CardContent className="flex flex-col gap-6">
                             <p className="text-sm text-muted-foreground">
                                 Your CSV has {parseResult.total_rows} rows and{' '}
-                                {parseResult.headers.length} columns. Map each field below.
+                                {parseResult.headers.length} columns. Map each
+                                field below.
                             </p>
 
                             {/* Account selector */}
                             <div className="flex flex-col gap-2">
                                 <Label>
-                                    Account <span className="text-destructive">*</span>
+                                    Account{' '}
+                                    <span className="text-destructive">*</span>
                                 </Label>
-                                <Select value={accountId} onValueChange={setAccountId}>
+                                <Select
+                                    value={accountId}
+                                    onValueChange={setAccountId}
+                                >
                                     <SelectTrigger className="w-full max-w-xs">
                                         <SelectValue placeholder="Select account..." />
                                     </SelectTrigger>
@@ -347,38 +389,55 @@ export default function ImportIndex({
 
                             {/* Field mappings */}
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {TARGET_FIELDS.map(({ key, label, required }) => (
-                                    <div key={key} className="flex flex-col gap-2">
-                                        <Label>
-                                            {label}{' '}
-                                            {required && (
-                                                <span className="text-destructive">*</span>
-                                            )}
-                                        </Label>
-                                        <Select
-                                            value={mapping[key]}
-                                            onValueChange={(val) =>
-                                                handleMappingChange(key, val)
-                                            }
+                                {TARGET_FIELDS.map(
+                                    ({ key, label, required }) => (
+                                        <div
+                                            key={key}
+                                            className="flex flex-col gap-2"
                                         >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="— not mapped —" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {!required && (
-                                                    <SelectItem value={NOT_MAPPED}>
-                                                        — not mapped —
-                                                    </SelectItem>
+                                            <Label>
+                                                {label}{' '}
+                                                {required && (
+                                                    <span className="text-destructive">
+                                                        *
+                                                    </span>
                                                 )}
-                                                {parseResult.headers.map((header) => (
-                                                    <SelectItem key={header} value={header}>
-                                                        {header}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                ))}
+                                            </Label>
+                                            <Select
+                                                value={mapping[key]}
+                                                onValueChange={(val) =>
+                                                    handleMappingChange(
+                                                        key,
+                                                        val,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="— not mapped —" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {!required && (
+                                                        <SelectItem
+                                                            value={NOT_MAPPED}
+                                                        >
+                                                            — not mapped —
+                                                        </SelectItem>
+                                                    )}
+                                                    {parseResult.headers.map(
+                                                        (header) => (
+                                                            <SelectItem
+                                                                key={header}
+                                                                value={header}
+                                                            >
+                                                                {header}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ),
+                                )}
                             </div>
 
                             {/* Skip duplicates */}
@@ -391,7 +450,8 @@ export default function ImportIndex({
                                     }
                                 />
                                 <Label htmlFor="skip-duplicates">
-                                    Skip duplicate transactions (same date, amount, and description)
+                                    Skip duplicate transactions (same date,
+                                    amount, and description)
                                 </Label>
                             </div>
 
@@ -421,8 +481,10 @@ export default function ImportIndex({
                         </CardHeader>
                         <CardContent className="flex flex-col gap-6">
                             <p className="text-sm text-muted-foreground">
-                                Showing the first {parseResult.preview_rows.length} of{' '}
-                                {parseResult.total_rows} rows. Review before importing.
+                                Showing the first{' '}
+                                {parseResult.preview_rows.length} of{' '}
+                                {parseResult.total_rows} rows. Review before
+                                importing.
                             </p>
 
                             <div className="overflow-x-auto rounded-md border">
@@ -437,21 +499,51 @@ export default function ImportIndex({
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {parseResult.preview_rows.map((row, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell>{getPreviewValue(row, 'date')}</TableCell>
-                                                <TableCell>{getPreviewValue(row, 'amount')}</TableCell>
-                                                <TableCell>{getPreviewValue(row, 'description')}</TableCell>
-                                                <TableCell>{getPreviewValue(row, 'payee')}</TableCell>
-                                                <TableCell>{getPreviewValue(row, 'type')}</TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {parseResult.preview_rows.map(
+                                            (row, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'date',
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'amount',
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'description',
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'payee',
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'type',
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ),
+                                        )}
                                     </TableBody>
                                 </Table>
                             </div>
 
                             <div className="flex gap-3">
-                                <Button variant="outline" onClick={() => setStep(2)}>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setStep(2)}
+                                >
                                     Back
                                 </Button>
                                 <Button onClick={handleConfirmImport}>

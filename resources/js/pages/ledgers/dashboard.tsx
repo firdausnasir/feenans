@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
     AlertTriangle,
     Bell,
@@ -134,7 +135,12 @@ export default function LedgerDashboard({
         router.post(
             pay.url({ ledger: ledger.id, bill: bill.id }),
             amount ? { amount } : {},
-            { preserveScroll: true, onSuccess: () => {} },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Bill paid');
+                },
+            },
         );
     }
 

@@ -1,4 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
+import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -36,6 +37,7 @@ export default function CreateAccount({
                 <Form
                     {...AccountController.store.form(ledger.id)}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
+                    onSuccess={() => toast.success('Account created')}
                 >
                     {({ errors, processing }) => (
                         <>

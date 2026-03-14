@@ -1,5 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import BillController from '@/actions/App/Http/Controllers/Ledger/BillController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -64,6 +65,7 @@ export default function EditBill({
                         bill: bill.id,
                     })}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
+                    onSuccess={() => toast.success('Bill updated')}
                 >
                     {({ errors, processing }) => (
                         <>

@@ -12,7 +12,7 @@ type Ledger = {
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Ledgers',
+        title: 'Workspaces',
         href: index.url(),
     },
 ];
@@ -20,17 +20,17 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function LedgersIndex({ ledgers }: { ledgers: Ledger[] }) {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Ledgers" />
+            <Head title="Workspaces" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold tracking-tight">
-                            Ledgers
+                            Workspaces
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Choose the ledger you want to work in. Each ledger
-                            acts as its own finance workspace.
+                            Choose the workspace you want to work in. Each
+                            workspace acts as its own financial space.
                         </p>
                     </div>
 
@@ -39,7 +39,7 @@ export default function LedgersIndex({ ledgers }: { ledgers: Ledger[] }) {
                         className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background"
                     >
                         <PlusCircle className="size-4" />
-                        New ledger
+                        New workspace
                     </Link>
                 </div>
 

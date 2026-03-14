@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -286,6 +287,9 @@ export default function TransactionEdit({
                 tag_ids: form.tag_ids,
             },
             {
+                onSuccess: () => {
+                    toast.success('Transaction updated');
+                },
                 onFinish: () => setProcessing(false),
             },
         );
@@ -297,6 +301,9 @@ export default function TransactionEdit({
         router.delete(
             destroy.url({ ledger: ledger.id, transaction: transaction.id }),
             {
+                onSuccess: () => {
+                    toast.success('Transaction deleted');
+                },
                 onFinish: () => setDeleting(false),
             },
         );

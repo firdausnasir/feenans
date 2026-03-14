@@ -1,5 +1,6 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -54,7 +55,11 @@ export default function EditAccount({
     ];
 
     function handleDelete() {
-        router.delete(destroy.url({ ledger: ledger.id, account: account.id }));
+        router.delete(destroy.url({ ledger: ledger.id, account: account.id }), {
+            onSuccess: () => {
+                toast.success('Account deleted');
+            },
+        });
         setShowDeleteDialog(false);
     }
 
@@ -116,6 +121,7 @@ export default function EditAccount({
                         account: account.id,
                     })}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
+                    onSuccess={() => toast.success('Account updated')}
                 >
                     {({ errors, processing }) => (
                         <>
