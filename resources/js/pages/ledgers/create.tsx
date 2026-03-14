@@ -46,7 +46,7 @@ export default function CreateLedger({
                                 <Input
                                     id="name"
                                     name="name"
-                                    placeholder="Personal"
+                                    defaultValue="My Finances"
                                     required
                                 />
                                 <InputError message={errors.name} />
