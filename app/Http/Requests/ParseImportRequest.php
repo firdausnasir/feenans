@@ -26,4 +26,16 @@ class ParseImportRequest extends FormRequest
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'file.required' => 'Please select a file to upload.',
+            'file.mimes' => 'The file must be a CSV or text file.',
+            'file.max' => 'The file must not be larger than 5 MB.',
+        ];
+    }
 }

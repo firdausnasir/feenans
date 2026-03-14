@@ -33,4 +33,28 @@ class ReportFilterRequest extends FormRequest
             'account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('ledger_id', $ledger->id)],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'date_from.date_format' => 'Please enter a valid start date (YYYY-MM-DD).',
+            'date_to.date_format' => 'Please enter a valid end date (YYYY-MM-DD).',
+            'date_to.gte' => 'The end date must be on or after the start date.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'date_from' => 'start date',
+            'date_to' => 'end date',
+            'account_id' => 'account',
+        ];
+    }
 }

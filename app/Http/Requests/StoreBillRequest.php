@@ -56,4 +56,45 @@ class StoreBillRequest extends FormRequest
             'end_after_occurrences' => ['nullable', 'integer', 'min:1', 'required_if:end_type,after_occurrences'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'account_id.required' => 'Please select an account.',
+            'transaction_type.required' => 'Please select a transaction type.',
+            'amount.required' => 'Please enter an amount.',
+            'amount.min' => 'The amount must be at least 0.01.',
+            'recurrence_type.required' => 'Please select how often this bill recurs.',
+            'recurrence_interval.required' => 'Please enter a recurrence interval.',
+            'recurrence_interval.min' => 'The recurrence interval must be at least 1.',
+            'next_due_date.required' => 'Please select the next due date.',
+            'next_due_date.date' => 'Please enter a valid due date.',
+            'end_date.required_if' => 'Please select an end date.',
+            'end_after_occurrences.required_if' => 'Please enter the number of occurrences.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'account_id' => 'account',
+            'category_id' => 'category',
+            'payee_id' => 'payee',
+            'transaction_type' => 'transaction type',
+            'recurrence_type' => 'recurrence type',
+            'recurrence_interval' => 'recurrence interval',
+            'recurrence_day' => 'recurrence day',
+            'next_due_date' => 'next due date',
+            'auto_create' => 'auto-create',
+            'end_type' => 'end type',
+            'end_date' => 'end date',
+            'end_after_occurrences' => 'number of occurrences',
+        ];
+    }
 }

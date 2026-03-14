@@ -67,6 +67,46 @@ class StoreTransactionRequest extends FormRequest
     }
 
     /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'account_id.required' => 'Please select an account.',
+            'to_account_id.required' => 'Please select a destination account for this transfer.',
+            'to_account_id.different' => 'The destination account must be different from the source account.',
+            'transaction_type.required' => 'Please select a transaction type.',
+            'transaction_type.in' => 'Please select a valid transaction type (expense, income, or transfer).',
+            'amount.required' => 'Please enter an amount.',
+            'amount.numeric' => 'Please enter a valid amount.',
+            'amount.not_in' => 'The amount cannot be zero.',
+            'transaction_date.required' => 'Please select a date.',
+            'transaction_date.date' => 'Please enter a valid date.',
+            'splits.min' => 'A split transaction must have at least two splits.',
+            'splits.*.amount.required' => 'Please enter an amount for each split.',
+            'splits.*.amount.not_in' => 'Split amounts cannot be zero.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'account_id' => 'account',
+            'to_account_id' => 'destination account',
+            'category_id' => 'category',
+            'payee_id' => 'payee',
+            'transaction_type' => 'transaction type',
+            'transaction_date' => 'date',
+            'tag_ids' => 'tags',
+            'splits.*.amount' => 'split amount',
+            'splits.*.category_id' => 'split category',
+        ];
+    }
+
+    /**
      * @return array<int, \Closure(Validator): void>
      */
     public function after(): array

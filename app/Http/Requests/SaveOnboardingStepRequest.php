@@ -41,4 +41,36 @@ class SaveOnboardingStepRequest extends FormRequest
             default => [],
         };
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'currency_code.size' => 'Please select a valid currency code.',
+            'cycle_start_day.required' => 'Please select a cycle start day.',
+            'cycle_start_day.between' => 'The cycle start day must be between 1 and 31.',
+            'account_type_id.required' => 'Please select an account type.',
+            'initial_balance.required' => 'Please enter an initial balance.',
+            'initial_balance.numeric' => 'Please enter a valid initial balance.',
+            'statement_day.between' => 'The statement day must be between 1 and 31.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'currency_code' => 'currency',
+            'cycle_start_day' => 'cycle start day',
+            'seed_categories' => 'default categories',
+            'account_type_id' => 'account type',
+            'initial_balance' => 'initial balance',
+            'statement_day' => 'statement day',
+            'include_in_totals' => 'include in totals',
+        ];
+    }
 }

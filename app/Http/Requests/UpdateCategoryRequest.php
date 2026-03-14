@@ -40,4 +40,25 @@ class UpdateCategoryRequest extends FormRequest
             'parent_id' => ['nullable', 'integer', $parentRule],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'transaction_type.in' => 'Please select a valid transaction type (expense or income).',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'transaction_type' => 'transaction type',
+            'parent_id' => 'parent category',
+        ];
+    }
 }

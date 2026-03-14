@@ -40,4 +40,36 @@ class StoreImportRequest extends FormRequest
             'skip_duplicates' => ['nullable', 'boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'file_path.required' => 'Please upload a file to import.',
+            'account_id.required' => 'Please select an account to import into.',
+            'mapping.required' => 'Please configure the column mapping.',
+            'mapping.date.required' => 'Please select which column contains the date.',
+            'mapping.amount.required' => 'Please select which column contains the amount.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'file_path' => 'file',
+            'account_id' => 'account',
+            'skip_duplicates' => 'skip duplicates',
+            'mapping.date' => 'date column',
+            'mapping.amount' => 'amount column',
+            'mapping.description' => 'description column',
+            'mapping.category' => 'category column',
+            'mapping.payee' => 'payee column',
+            'mapping.type' => 'type column',
+        ];
+    }
 }

@@ -28,4 +28,26 @@ class StoreLedgerRequest extends FormRequest
             'uses_seeded_categories' => ['required', 'boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'currency_code.required' => 'Please select a currency.',
+            'currency_code.size' => 'Please select a valid currency code.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'currency_code' => 'currency',
+            'uses_seeded_categories' => 'default categories',
+        ];
+    }
 }

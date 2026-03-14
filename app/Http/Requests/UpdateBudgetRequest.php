@@ -36,4 +36,30 @@ class UpdateBudgetRequest extends FormRequest
             'rollover' => ['boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'amount.required' => 'Please enter a budget amount.',
+            'amount.min' => 'The budget amount must be at least 0.01.',
+            'period.required' => 'Please select a budget period.',
+            'start_date.required' => 'Please select a start date.',
+            'end_date.after' => 'The end date must be after the start date.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'category_id' => 'category',
+            'start_date' => 'start date',
+            'end_date' => 'end date',
+        ];
+    }
 }

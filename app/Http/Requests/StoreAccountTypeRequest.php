@@ -28,4 +28,24 @@ class StoreAccountTypeRequest extends FormRequest
             'is_credit' => ['required', 'boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'is_credit.required' => 'Please specify whether this is a credit account type.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'is_credit' => 'credit type',
+        ];
+    }
 }

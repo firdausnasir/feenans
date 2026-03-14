@@ -28,4 +28,27 @@ class UpdateSettingsRequest extends FormRequest
             'currency_code' => ['sometimes', 'string', 'size:3'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'cycle_start_day.required' => 'Please select a cycle start day.',
+            'cycle_start_day.between' => 'The cycle start day must be between 1 and 31.',
+            'currency_code.size' => 'Please select a valid currency code.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'cycle_start_day' => 'cycle start day',
+            'currency_code' => 'currency',
+        ];
+    }
 }

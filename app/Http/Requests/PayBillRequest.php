@@ -35,4 +35,26 @@ class PayBillRequest extends FormRequest
             'date' => ['nullable', 'date'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'amount.min' => 'The amount must be at least 0.01.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'account_id' => 'account',
+            'category_id' => 'category',
+            'payee_id' => 'payee',
+        ];
+    }
 }

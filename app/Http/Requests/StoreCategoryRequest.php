@@ -30,4 +30,25 @@ class StoreCategoryRequest extends FormRequest
             'icon' => ['nullable', 'string', 'max:50'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'transaction_type.required' => 'Please select a transaction type.',
+            'transaction_type.in' => 'Please select a valid transaction type (expense or income).',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'transaction_type' => 'transaction type',
+        ];
+    }
 }

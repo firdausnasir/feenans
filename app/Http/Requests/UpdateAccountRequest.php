@@ -39,4 +39,31 @@ class UpdateAccountRequest extends FormRequest
             'include_in_totals' => ['required', 'boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'account_type_id.required' => 'Please select an account type.',
+            'initial_balance.required' => 'Please enter an initial balance.',
+            'initial_balance.numeric' => 'Please enter a valid initial balance.',
+            'statement_day.between' => 'The statement day must be between 1 and 31.',
+            'include_in_totals.required' => 'Please specify whether to include this account in totals.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'account_type_id' => 'account type',
+            'initial_balance' => 'initial balance',
+            'statement_day' => 'statement day',
+            'include_in_totals' => 'include in totals',
+        ];
+    }
 }

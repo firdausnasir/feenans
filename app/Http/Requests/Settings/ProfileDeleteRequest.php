@@ -21,4 +21,15 @@ class ProfileDeleteRequest extends FormRequest
             'password' => $this->currentPasswordRules(),
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'password.required' => 'Please enter your password to confirm account deletion.',
+            'password.current_password' => 'The password you entered is incorrect.',
+        ];
+    }
 }
