@@ -23,6 +23,8 @@ export type Account = {
     initial_balance: string;
     statement_day: number | null;
     include_in_totals: boolean;
+    is_hidden: boolean;
+    position: number;
     current_balance: string;
     accountType?: AccountType;
 };
@@ -37,6 +39,7 @@ export type Category = {
     position: number;
     parent_id: number | null;
     children?: Category[]; // optional, may not always be loaded
+    transactions_count?: number; // included when withCount('transactions') is used
 };
 
 export type Payee = {
@@ -83,6 +86,7 @@ export type Transaction = {
     notes: string | null;
     transaction_date: string;
     transfer_pair_id: string | null;
+    bill_id: number | null;
     account?: Account;
     category?: Category | null;
     payee?: Payee | null;
@@ -122,6 +126,7 @@ export type Bill = {
     account?: Account;
     category?: Category | null;
     payee?: Payee | null;
+    transactions?: Transaction[];
     created_at: string;
     updated_at: string;
 };

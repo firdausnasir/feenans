@@ -22,7 +22,20 @@ class Payee extends Model
     protected $fillable = [
         'ledger_id',
         'name',
+        'is_sample',
     ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_sample' => 'boolean',
+        ];
+    }
 
     public function ledger(): BelongsTo
     {

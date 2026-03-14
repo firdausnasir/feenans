@@ -11,6 +11,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -48,7 +50,7 @@ type FormState = {
 };
 
 const emptyForm = (): FormState => ({
-    category_id: '',
+    category_id: '__none__',
     amount: '',
     period: 'monthly',
     start_date: new Date().toISOString().slice(0, 10),
@@ -89,7 +91,9 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         setEditBudget(budget);
         setForm({
             category_id:
-                budget.category_id !== null ? String(budget.category_id) : '',
+                budget.category_id !== null
+                    ? String(budget.category_id)
+                    : '__none__',
             amount: String(budget.amount),
             period: budget.period,
             start_date: new Date().toISOString().slice(0, 10),
@@ -100,7 +104,10 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
 
     const handleSubmit = () => {
         const payload = {
-            category_id: form.category_id ? Number(form.category_id) : null,
+            category_id:
+                form.category_id && form.category_id !== '__none__'
+                    ? Number(form.category_id)
+                    : null,
             amount: Number(form.amount),
             period: form.period,
             start_date: form.start_date,
@@ -151,13 +158,15 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Budgets — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4">
-                <div className="flex items-center justify-between">
+            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <Heading
                         title="Budgets"
                         description="Set spending limits and track your progress."
                     />
-                    <Button onClick={handleCreate}>+ New Budget</Button>
+                    <Button className="w-full sm:w-auto" onClick={handleCreate}>
+                        + New Budget
+                    </Button>
                 </div>
 
                 {budgets.length === 0 ? (
@@ -273,7 +282,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                         <SelectValue placeholder="Overall budget" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">
+                                        <SelectItem value="__none__">
                                             Overall budget
                                         </SelectItem>
                                         {flatCategories.map((c) => (
@@ -295,6 +304,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                 <Input
                                     id="amount"
                                     type="number"
+                                    inputMode="decimal"
                                     min="0.01"
                                     step="0.01"
                                     value={form.amount}
@@ -335,17 +345,33 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
 
                             <div className="grid gap-2">
                                 <Label htmlFor="start_date">Start Date</Label>
-                                <Input
+                                <DatePicker
                                     id="start_date"
-                                    type="date"
                                     value={form.start_date}
-                                    onChange={(e) =>
+                                    onChange={(date) =>
                                         setForm((f) => ({
                                             ...f,
-                                            start_date: e.target.value,
+                                            start_date: date,
+                                        }))
+                                    }
+                                    placeholder="Pick a start date"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <Checkbox
+                                    id="rollover"
+                                    checked={form.rollover}
+                                    onCheckedChange={(checked) =>
+                                        setForm((f) => ({
+                                            ...f,
+                                            rollover: checked === true,
                                         }))
                                     }
                                 />
+                                <Label htmlFor="rollover">
+                                    Roll over unspent amount to next period
+                                </Label>
                             </div>
                         </div>
 

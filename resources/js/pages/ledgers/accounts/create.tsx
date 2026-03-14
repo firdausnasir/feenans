@@ -1,4 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
@@ -6,6 +7,13 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { create, index as accountsIndex } from '@/routes/ledgers/accounts';
@@ -18,6 +26,10 @@ export default function CreateAccount({
     ledger: Ledger;
     accountTypes: AccountType[];
 }) {
+    const [accountTypeId, setAccountTypeId] = useState(
+        String(accountTypes[0]?.id ?? ''),
+    );
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Accounts', href: accountsIndex.url(ledger.id) },
@@ -45,20 +57,32 @@ export default function CreateAccount({
                                 <Label htmlFor="account_type_id">
                                     Account type
                                 </Label>
-                                <select
-                                    id="account_type_id"
+                                <input
+                                    type="hidden"
                                     name="account_type_id"
-                                    className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                                    value={accountTypeId}
+                                />
+                                <Select
+                                    value={accountTypeId}
+                                    onValueChange={setAccountTypeId}
                                 >
-                                    {accountTypes.map((accountType) => (
-                                        <option
-                                            key={accountType.id}
-                                            value={accountType.id}
-                                        >
-                                            {accountType.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    <SelectTrigger
+                                        id="account_type_id"
+                                        className="w-full"
+                                    >
+                                        <SelectValue placeholder="Select a type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accountTypes.map((accountType) => (
+                                            <SelectItem
+                                                key={accountType.id}
+                                                value={String(accountType.id)}
+                                            >
+                                                {accountType.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <InputError message={errors.account_type_id} />
                             </div>
 
@@ -75,7 +99,7 @@ export default function CreateAccount({
                                 <Input
                                     id="initial_balance"
                                     name="initial_balance"
-                                    type="number"
+                                    type="number" inputMode="decimal"
                                     step="0.01"
                                     defaultValue="0"
                                     required

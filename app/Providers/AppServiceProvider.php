@@ -4,10 +4,14 @@ namespace App\Providers;
 
 use App\Models\Account;
 use App\Models\Bill;
+use App\Models\Budget;
+use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Observers\AccountObserver;
 use App\Observers\BillObserver;
+use App\Observers\BudgetObserver;
+use App\Observers\CategoryObserver;
 use App\Observers\TransactionObserver;
 use App\Policies\LedgerPolicy;
 use Carbon\CarbonImmutable;
@@ -36,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
         Transaction::observe(TransactionObserver::class);
         Account::observe(AccountObserver::class);
         Bill::observe(BillObserver::class);
+        Category::observe(CategoryObserver::class);
+        Budget::observe(BudgetObserver::class);
 
         $this->configureDefaults();
     }

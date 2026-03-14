@@ -11,8 +11,10 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
@@ -107,18 +109,29 @@ export default function TransactionEdit({
         },
     ];
 
+    const isTransfer = transaction.transfer_pair_id !== null;
+    const isIncomingSide =
+        isTransfer && parseFloat(transaction.amount || '0') > 0;
+
     const [form, setForm] = useState<EditFormData>({
         transaction_type: transaction.transaction_type,
         transaction_date: transaction.transaction_date.slice(0, 10),
-        account_id: String(transaction.account_id),
-        to_account_id: transaction.transfer_pair
-            ? String(transaction.transfer_pair.account_id)
-            : '',
+        account_id:
+            isIncomingSide && transaction.transfer_pair
+                ? String(transaction.transfer_pair.account_id)
+                : String(transaction.account_id),
+        to_account_id: isIncomingSide
+            ? String(transaction.account_id)
+            : transaction.transfer_pair
+              ? String(transaction.transfer_pair.account_id)
+              : '',
         category_id: transaction.category_id
             ? String(transaction.category_id)
             : '',
         payee_id: transaction.payee_id ? String(transaction.payee_id) : '',
-        amount: transaction.amount,
+        amount: isTransfer
+            ? String(Math.abs(parseFloat(transaction.amount || '0')))
+            : transaction.amount,
         description: transaction.description ?? '',
         notes: transaction.notes ?? '',
         tag_ids: (transaction.tags ?? []).map((tag) => tag.id),
@@ -313,7 +326,7 @@ export default function TransactionEdit({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Edit Transaction" />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-semibold tracking-tight">
@@ -397,14 +410,12 @@ export default function TransactionEdit({
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="grid gap-2">
                                         <Label>Date</Label>
-                                        <Input
-                                            type="date"
+                                        <DatePicker
                                             value={form.transaction_date}
-                                            onChange={(event) =>
+                                            onChange={(date) =>
                                                 setForm((current) => ({
                                                     ...current,
-                                                    transaction_date:
-                                                        event.target.value,
+                                                    transaction_date: date,
                                                 }))
                                             }
                                         />
@@ -413,16 +424,24 @@ export default function TransactionEdit({
                                     <div className="grid gap-2">
                                         <Label>Amount</Label>
                                         <Input
-                                            type="number"
+                                            type="number" inputMode="decimal"
                                             step="0.01"
                                             min="0.01"
                                             value={form.amount}
-                                            onChange={(event) =>
+                                            onChange={(event) => {
+                                                const value =
+                                                    event.target.value;
+                                                if (
+                                                    value !== '' &&
+                                                    Number(value) < 0
+                                                ) {
+                                                    return;
+                                                }
                                                 setForm((current) => ({
                                                     ...current,
-                                                    amount: event.target.value,
-                                                }))
-                                            }
+                                                    amount: value,
+                                                }));
+                                            }}
                                         />
                                     </div>
                                 </div>
@@ -589,7 +608,7 @@ export default function TransactionEdit({
                                                                 Amount
                                                             </Label>
                                                             <Input
-                                                                type="number"
+                                                                type="number" inputMode="decimal"
                                                                 step="0.01"
                                                                 min="0.01"
                                                                 value={
@@ -597,15 +616,26 @@ export default function TransactionEdit({
                                                                 }
                                                                 onChange={(
                                                                     event,
-                                                                ) =>
+                                                                ) => {
+                                                                    const value =
+                                                                        event
+                                                                            .target
+                                                                            .value;
+                                                                    if (
+                                                                        value !==
+                                                                            '' &&
+                                                                        Number(
+                                                                            value,
+                                                                        ) < 0
+                                                                    ) {
+                                                                        return;
+                                                                    }
                                                                     updateSplit(
                                                                         split.id,
                                                                         'amount',
-                                                                        event
-                                                                            .target
-                                                                            .value,
-                                                                    )
-                                                                }
+                                                                        value,
+                                                                    );
+                                                                }}
                                                             />
                                                         </div>
 
@@ -720,19 +750,18 @@ export default function TransactionEdit({
                                                     key={tag.id}
                                                     className="flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm"
                                                 >
-                                                    <input
-                                                        type="checkbox"
+                                                    <Checkbox
                                                         checked={form.tag_ids.includes(
                                                             tag.id,
                                                         )}
-                                                        onChange={(event) =>
+                                                        onCheckedChange={(
+                                                            checked,
+                                                        ) =>
                                                             setForm(
                                                                 (current) => ({
                                                                     ...current,
                                                                     tag_ids:
-                                                                        event
-                                                                            .target
-                                                                            .checked
+                                                                        checked
                                                                             ? [
                                                                                   ...current.tag_ids,
                                                                                   tag.id,

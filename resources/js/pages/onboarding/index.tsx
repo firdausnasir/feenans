@@ -123,7 +123,7 @@ function Step1({ savedData }: { savedData: OnboardingData | null }) {
                 <Label htmlFor="cycle_start_day">Cycle start day</Label>
                 <Input
                     id="cycle_start_day"
-                    type="number"
+                    type="number" inputMode="decimal"
                     min={1}
                     max={31}
                     value={form.data.cycle_start_day}
@@ -261,7 +261,7 @@ function Step2({
                 <Label htmlFor="initial_balance">Initial balance</Label>
                 <Input
                     id="initial_balance"
-                    type="number"
+                    type="number" inputMode="decimal"
                     step="0.01"
                     value={form.data.initial_balance}
                     onChange={(e) =>
@@ -276,7 +276,7 @@ function Step2({
                     <Label htmlFor="statement_day">Statement day</Label>
                     <Input
                         id="statement_day"
-                        type="number"
+                        type="number" inputMode="decimal"
                         min={1}
                         max={31}
                         value={form.data.statement_day}

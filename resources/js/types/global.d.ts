@@ -1,3 +1,4 @@
+import type { User } from '@/types/auth';
 import type { Ledger } from '@/types/ledger';
 
 declare module '@inertiajs/core' {
@@ -5,16 +6,12 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: {
-                user: {
-                    id: number;
-                    name: string;
-                    email: string;
-                    onboarding_step: number | null;
-                } | null;
+                user: User | null;
             };
             flash: {
                 success: string | null;
                 error: string | null;
+                first_transaction: boolean;
             };
             currentLedger: {
                 id: number;

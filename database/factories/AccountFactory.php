@@ -35,4 +35,11 @@ class AccountFactory extends Factory
             'statement_day' => 15,
         ]);
     }
+
+    public function hidden(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_hidden' => true,
+        ]);
+    }
 }

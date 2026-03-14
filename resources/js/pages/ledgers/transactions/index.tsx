@@ -1,7 +1,10 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { AddTransactionModal } from '@/components/add-transaction-modal';
+import {
+    AddTransactionModal,
+    type DuplicateData,
+} from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +25,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -42,15 +46,23 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
-import { MoreHorizontal, Paperclip, Receipt } from 'lucide-react';
+import {
+    MoreHorizontal,
+    Paperclip,
+    Receipt,
+    SlidersHorizontal,
+    ChevronDown,
+} from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import {
     bulkDestroy,
+    bulkUpdate,
     destroy,
     exportMethod as exportTransactions,
     index as transactionsIndex,
+    restore,
     update,
 } from '@/routes/ledgers/transactions';
 import { TagPill } from '@/components/tag-pill';
@@ -76,6 +88,7 @@ type Filters = {
     transaction_type: string | null;
     payee_id: string | null;
     tag_id: string | null;
+    uncategorized: string | null;
 };
 
 function amountColor(transaction: Transaction): string {
@@ -169,21 +182,32 @@ function EditTransactionModal({
     tags: Tag[];
     onClose: () => void;
 }) {
+    const isTransfer = transaction.transfer_pair_id !== null;
+    const isIncomingSide =
+        isTransfer && parseFloat(transaction.amount || '0') > 0;
+
     const [form, setForm] = useState<EditFormData>({
         transaction_type: transaction.transaction_type as
             | 'expense'
             | 'income'
             | 'transfer',
-        transaction_date: transaction.transaction_date,
-        account_id: String(transaction.account_id),
-        to_account_id: transaction.transfer_pair
-            ? String(transaction.transfer_pair.account_id)
-            : '',
+        transaction_date: transaction.transaction_date.slice(0, 10),
+        account_id:
+            isIncomingSide && transaction.transfer_pair
+                ? String(transaction.transfer_pair.account_id)
+                : String(transaction.account_id),
+        to_account_id: isIncomingSide
+            ? String(transaction.account_id)
+            : transaction.transfer_pair
+              ? String(transaction.transfer_pair.account_id)
+              : '',
         category_id: transaction.category_id
             ? String(transaction.category_id)
             : '',
         payee_id: transaction.payee_id ? String(transaction.payee_id) : '',
-        amount: transaction.amount,
+        amount: isTransfer
+            ? String(Math.abs(parseFloat(transaction.amount || '0')))
+            : transaction.amount,
         description: transaction.description ?? '',
         notes: transaction.notes ?? '',
         tag_ids: (transaction.tags ?? []).map((t) => t.id),
@@ -387,7 +411,7 @@ function EditTransactionModal({
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Edit Transaction</DialogTitle>
                     <DialogDescription>
@@ -450,13 +474,16 @@ function EditTransactionModal({
                     <div className="grid gap-2 sm:grid-cols-2">
                         <div className="grid gap-2">
                             <Label htmlFor="edit-date">Date</Label>
-                            <Input
+                            <DatePicker
                                 id="edit-date"
                                 name="transaction_date"
-                                type="date"
                                 value={form.transaction_date}
-                                onChange={handleInputChange}
-                                required
+                                onChange={(date) =>
+                                    setForm((prev) => ({
+                                        ...prev,
+                                        transaction_date: date,
+                                    }))
+                                }
                             />
                         </div>
 
@@ -466,6 +493,7 @@ function EditTransactionModal({
                                 id="edit-amount"
                                 name="amount"
                                 type="number"
+                                inputMode="decimal"
                                 step="0.01"
                                 min="0.01"
                                 value={form.amount}
@@ -575,12 +603,13 @@ function EditTransactionModal({
                                     {splits.map((split) => (
                                         <div
                                             key={split.id}
-                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 md:grid-cols-[120px_1fr_1fr_auto]"
+                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[120px_1fr_1fr_auto]"
                                         >
                                             <div className="grid gap-2">
                                                 <Label>Amount</Label>
                                                 <Input
                                                     type="number"
+                                                    inputMode="decimal"
                                                     step="0.01"
                                                     min="0.01"
                                                     value={split.amount}
@@ -889,11 +918,63 @@ export default function TransactionsIndex({
         null,
     );
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [bulkAction, setBulkAction] = useState<
+        'change_category' | 'change_account' | 'change_payee' | null
+    >(null);
+    const [bulkActionValue, setBulkActionValue] = useState<string | null>(null);
+    const [deleteConfirmTransaction, setDeleteConfirmTransaction] =
+        useState<Transaction | null>(null);
+    const [duplicateTransaction, setDuplicateTransaction] =
+        useState<DuplicateData | null>(null);
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(false);
     const [localFilters, setLocalFilters] = useState<Filters>(filters);
 
     useEffect(() => {
         setLocalFilters(filters);
     }, [filters]);
+
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+        null,
+    );
+    // Track the last search value that triggered a navigation so that syncing
+    // `localFilters` from the server props (e.g. after a page change) doesn't
+    // accidentally fire a new search and reset the page back to 1.
+    const lastNavigatedSearch = useRef<string | null>(filters.search);
+
+    useEffect(() => {
+        // Skip if the search value hasn't actually changed from what was last
+        // navigated (covers the case where localFilters is reset from props).
+        if (localFilters.search === lastNavigatedSearch.current) {
+            return;
+        }
+
+        if (searchDebounceRef.current) {
+            clearTimeout(searchDebounceRef.current);
+        }
+
+        searchDebounceRef.current = setTimeout(() => {
+            lastNavigatedSearch.current = localFilters.search;
+
+            const params = Object.fromEntries(
+                Object.entries({
+                    ...localFilters,
+                    search: localFilters.search,
+                }).filter(([, v]) => v !== null && v !== ''),
+            ) as Record<string, string>;
+
+            router.get(transactionsIndex.url(ledger.id), params, {
+                preserveState: true,
+                preserveScroll: true,
+            });
+        }, 300);
+
+        return () => {
+            if (searchDebounceRef.current) {
+                clearTimeout(searchDebounceRef.current);
+            }
+        };
+    }, [localFilters.search]);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -958,6 +1039,104 @@ export default function TransactionsIndex({
                 },
             },
         );
+    }
+
+    function handleBulkUpdate() {
+        if (!bulkAction || !bulkActionValue) {
+            return;
+        }
+
+        router.post(
+            bulkUpdate.url(ledger.id),
+            {
+                ids: selectedIds,
+                action: bulkAction,
+                value: Number(bulkActionValue),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    const actionLabel = {
+                        change_category: 'Category',
+                        change_account: 'Account',
+                        change_payee: 'Payee',
+                    }[bulkAction];
+
+                    setSelectedIds([]);
+                    setBulkAction(null);
+                    setBulkActionValue(null);
+                    toast.success(
+                        `${actionLabel} updated for selected transactions`,
+                    );
+                },
+            },
+        );
+    }
+
+    function openBulkActionModal(
+        action: 'change_category' | 'change_account' | 'change_payee',
+    ) {
+        setBulkAction(action);
+        setBulkActionValue(null);
+    }
+
+    function handleContextDelete() {
+        const transaction = deleteConfirmTransaction;
+
+        if (!transaction) {
+            return;
+        }
+
+        const transactionId = transaction.id;
+
+        setDeleteConfirmTransaction(null);
+        router.delete(
+            destroy.url({ ledger: ledger.id, transaction: transactionId }),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Transaction deleted', {
+                        action: {
+                            label: 'Undo',
+                            onClick: () => {
+                                router.patch(
+                                    restore.url({
+                                        ledger: ledger.id,
+                                        transaction: transactionId,
+                                    }),
+                                    {},
+                                    {
+                                        preserveScroll: true,
+                                        onSuccess: () =>
+                                            toast.success(
+                                                'Transaction restored',
+                                            ),
+                                    },
+                                );
+                            },
+                        },
+                        duration: 5000,
+                    });
+                },
+            },
+        );
+    }
+
+    function handleDuplicate(transaction: Transaction) {
+        setDuplicateTransaction({
+            transaction_type: transaction.transaction_type,
+            account_id: transaction.account_id,
+            to_account_id: transaction.transfer_pair
+                ? transaction.transfer_pair.account_id
+                : null,
+            category_id: transaction.category_id,
+            payee_id: transaction.payee_id,
+            amount: transaction.amount,
+            description: transaction.description,
+            notes: transaction.notes,
+            tag_ids: (transaction.tags ?? []).map((t) => t.id),
+        });
+        setShowDuplicateModal(true);
     }
 
     // Flat categories for filter dropdown (all, not grouped)
@@ -1043,6 +1222,7 @@ export default function TransactionsIndex({
             localFilters.transaction_type,
             localFilters.payee_id,
             localFilters.tag_id,
+            localFilters.uncategorized,
         ].filter((v) => v !== null && v !== '' && v !== 'all').length +
         (localFilters.date_from || localFilters.date_to ? 1 : 0);
 
@@ -1050,15 +1230,20 @@ export default function TransactionsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transactions`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <Heading
                         title="Transactions"
                         description={`Review all activity in ${ledger.name}.`}
                     />
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" asChild>
+                    <div className="flex w-full items-center gap-2 sm:w-auto">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 sm:flex-initial"
+                            asChild
+                        >
                             <a
                                 href={
                                     exportTransactions.url(ledger.id) +
@@ -1091,214 +1276,287 @@ export default function TransactionsIndex({
                 <Card>
                     <CardContent className="pt-6">
                         <div className="flex flex-col gap-3">
-                            <div className="mb-3">
-                                <Input
-                                    placeholder="Search description or notes..."
-                                    value={localFilters.search ?? ''}
-                                    onChange={(e) =>
-                                        setLocalFilters((prev) => ({
-                                            ...prev,
-                                            search: e.target.value || null,
-                                        }))
-                                    }
+                            {/* Mobile filter toggle */}
+                            <button
+                                type="button"
+                                className="flex items-center justify-between sm:hidden"
+                                onClick={() => setFiltersOpen(!filtersOpen)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <SlidersHorizontal className="size-4 text-muted-foreground" />
+                                    <span className="text-sm font-medium">
+                                        {localFilters.date_from ||
+                                        localFilters.date_to
+                                            ? `${localFilters.date_from ? formatDate(localFilters.date_from) : 'Start'} – ${localFilters.date_to ? formatDate(localFilters.date_to) : 'Now'}`
+                                            : 'All dates'}
+                                    </span>
+                                    {activeFilterCount > 0 && (
+                                        <Badge
+                                            variant="secondary"
+                                            className="text-xs"
+                                        >
+                                            {activeFilterCount}
+                                        </Badge>
+                                    )}
+                                </div>
+                                <ChevronDown
+                                    className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
                                 />
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">From</Label>
+                            </button>
+
+                            <div
+                                className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'} sm:flex`}
+                            >
+                                <div className="mb-3">
                                     <Input
-                                        type="date"
-                                        value={localFilters.date_from}
+                                        placeholder="Search description or notes..."
+                                        value={localFilters.search ?? ''}
                                         onChange={(e) =>
                                             setLocalFilters((prev) => ({
                                                 ...prev,
-                                                date_from: e.target.value,
+                                                search: e.target.value || null,
                                             }))
                                         }
                                     />
                                 </div>
-
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">To</Label>
-                                    <Input
-                                        type="date"
-                                        value={localFilters.date_to}
-                                        onChange={(e) =>
-                                            setLocalFilters((prev) => ({
-                                                ...prev,
-                                                date_to: e.target.value,
-                                            }))
-                                        }
-                                    />
-                                </div>
-
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">Account</Label>
-                                    <SearchableSelect
-                                        options={accounts.map((a) => ({
-                                            value: String(a.id),
-                                            label: a.name,
-                                        }))}
-                                        value={localFilters.account_id}
-                                        onValueChange={(value) =>
-                                            setLocalFilters((prev) => ({
-                                                ...prev,
-                                                account_id: value,
-                                            }))
-                                        }
-                                        placeholder="All accounts"
-                                        searchPlaceholder="Search accounts..."
-                                        emptyMessage="No accounts found."
-                                        allOption="All accounts"
-                                    />
-                                </div>
-
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">Category</Label>
-                                    <SearchableSelect
-                                        options={flatCategories.map((c) => ({
-                                            value: String(c.id),
-                                            label: c.name,
-                                            group: c.parent_id
-                                                ? categories.find(
-                                                      (p) =>
-                                                          p.id === c.parent_id,
-                                                  )?.name
-                                                : undefined,
-                                        }))}
-                                        value={localFilters.category_id}
-                                        onValueChange={(value) =>
-                                            setLocalFilters((prev) => ({
-                                                ...prev,
-                                                category_id: value,
-                                            }))
-                                        }
-                                        placeholder="All categories"
-                                        searchPlaceholder="Search categories..."
-                                        emptyMessage="No categories found."
-                                        allOption="All categories"
-                                    />
-                                </div>
-
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">Type</Label>
-                                    <Select
-                                        value={
-                                            localFilters.transaction_type ??
-                                            'all'
-                                        }
-                                        onValueChange={(value) =>
-                                            setLocalFilters((prev) => ({
-                                                ...prev,
-                                                transaction_type:
-                                                    value === 'all'
-                                                        ? null
-                                                        : value,
-                                            }))
-                                        }
-                                    >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="All types" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">
-                                                All types
-                                            </SelectItem>
-                                            <SelectItem value="expense">
-                                                Expense
-                                            </SelectItem>
-                                            <SelectItem value="income">
-                                                Income
-                                            </SelectItem>
-                                            <SelectItem value="transfer">
-                                                Transfer
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">Payee</Label>
-                                    <SearchableSelect
-                                        options={payees.map((p) => ({
-                                            value: String(p.id),
-                                            label: p.name,
-                                        }))}
-                                        value={localFilters.payee_id}
-                                        onValueChange={(value) =>
-                                            setLocalFilters((prev) => ({
-                                                ...prev,
-                                                payee_id: value,
-                                            }))
-                                        }
-                                        placeholder="All payees"
-                                        searchPlaceholder="Search payees..."
-                                        emptyMessage="No payees found."
-                                        allOption="All payees"
-                                    />
-                                </div>
-
-                                {tags.length > 0 && (
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                                     <div className="grid gap-1">
-                                        <Label className="text-xs">Tag</Label>
+                                        <Label className="text-xs">From</Label>
+                                        <DatePicker
+                                            value={localFilters.date_from}
+                                            onChange={(date) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    date_from: date,
+                                                }))
+                                            }
+                                            placeholder="From date"
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">To</Label>
+                                        <DatePicker
+                                            value={localFilters.date_to}
+                                            onChange={(date) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    date_to: date,
+                                                }))
+                                            }
+                                            placeholder="To date"
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">
+                                            Account
+                                        </Label>
                                         <SearchableSelect
-                                            options={tags.map((t) => ({
-                                                value: String(t.id),
-                                                label: t.name,
+                                            options={accounts.map((a) => ({
+                                                value: String(a.id),
+                                                label: a.name,
                                             }))}
-                                            value={localFilters.tag_id}
+                                            value={localFilters.account_id}
                                             onValueChange={(value) =>
                                                 setLocalFilters((prev) => ({
                                                     ...prev,
-                                                    tag_id: value,
+                                                    account_id: value,
                                                 }))
                                             }
-                                            placeholder="All tags"
-                                            searchPlaceholder="Search tags..."
-                                            emptyMessage="No tags found."
-                                            allOption="All tags"
+                                            placeholder="All accounts"
+                                            searchPlaceholder="Search accounts..."
+                                            emptyMessage="No accounts found."
+                                            allOption="All accounts"
                                         />
                                     </div>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Button size="sm" onClick={handleApplyFilters}>
-                                    Apply filters
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleResetFilters}
-                                >
-                                    Reset
-                                </Button>
-                                {activeFilterCount > 0 && (
-                                    <span className="text-xs text-muted-foreground">
-                                        {activeFilterCount} filter
-                                        {activeFilterCount !== 1
-                                            ? 's'
-                                            : ''}{' '}
-                                        active
-                                    </span>
-                                )}
+
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">
+                                            Category
+                                        </Label>
+                                        <SearchableSelect
+                                            options={flatCategories.map(
+                                                (c) => ({
+                                                    value: String(c.id),
+                                                    label: c.name,
+                                                    group: c.parent_id
+                                                        ? categories.find(
+                                                              (p) =>
+                                                                  p.id ===
+                                                                  c.parent_id,
+                                                          )?.name
+                                                        : undefined,
+                                                }),
+                                            )}
+                                            value={localFilters.category_id}
+                                            onValueChange={(value) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    category_id: value,
+                                                }))
+                                            }
+                                            placeholder="All categories"
+                                            searchPlaceholder="Search categories..."
+                                            emptyMessage="No categories found."
+                                            allOption="All categories"
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">Type</Label>
+                                        <Select
+                                            value={
+                                                localFilters.transaction_type ??
+                                                'all'
+                                            }
+                                            onValueChange={(value) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    transaction_type:
+                                                        value === 'all'
+                                                            ? null
+                                                            : value,
+                                                }))
+                                            }
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="All types" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">
+                                                    All types
+                                                </SelectItem>
+                                                <SelectItem value="expense">
+                                                    Expense
+                                                </SelectItem>
+                                                <SelectItem value="income">
+                                                    Income
+                                                </SelectItem>
+                                                <SelectItem value="transfer">
+                                                    Transfer
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">Payee</Label>
+                                        <SearchableSelect
+                                            options={payees.map((p) => ({
+                                                value: String(p.id),
+                                                label: p.name,
+                                            }))}
+                                            value={localFilters.payee_id}
+                                            onValueChange={(value) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    payee_id: value,
+                                                }))
+                                            }
+                                            placeholder="All payees"
+                                            searchPlaceholder="Search payees..."
+                                            emptyMessage="No payees found."
+                                            allOption="All payees"
+                                        />
+                                    </div>
+
+                                    {tags.length > 0 && (
+                                        <div className="grid gap-1">
+                                            <Label className="text-xs">
+                                                Tag
+                                            </Label>
+                                            <SearchableSelect
+                                                options={tags.map((t) => ({
+                                                    value: String(t.id),
+                                                    label: t.name,
+                                                }))}
+                                                value={localFilters.tag_id}
+                                                onValueChange={(value) =>
+                                                    setLocalFilters((prev) => ({
+                                                        ...prev,
+                                                        tag_id: value,
+                                                    }))
+                                                }
+                                                placeholder="All tags"
+                                                searchPlaceholder="Search tags..."
+                                                emptyMessage="No tags found."
+                                                allOption="All tags"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        onClick={handleApplyFilters}
+                                    >
+                                        Apply filters
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleResetFilters}
+                                    >
+                                        Reset
+                                    </Button>
+                                    {activeFilterCount > 0 && (
+                                        <span className="text-xs text-muted-foreground">
+                                            {activeFilterCount} filter
+                                            {activeFilterCount !== 1
+                                                ? 's'
+                                                : ''}{' '}
+                                            active
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Bulk delete bar */}
+                {/* Bulk actions bar */}
                 {selectedIds.length > 0 && (
-                    <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2">
-                        <span className="text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
+                        <span className="text-sm font-medium text-muted-foreground">
                             {selectedIds.length} selected
                         </span>
-                        <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setShowBulkDeleteConfirm(true)}
-                        >
-                            Delete selected
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                    openBulkActionModal('change_category')
+                                }
+                            >
+                                Change category
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                    openBulkActionModal('change_account')
+                                }
+                            >
+                                Change account
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                    openBulkActionModal('change_payee')
+                                }
+                            >
+                                Change payee
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setShowBulkDeleteConfirm(true)}
+                            >
+                                Delete selected
+                            </Button>
+                        </div>
                         <Button
                             size="sm"
                             variant="ghost"
@@ -1320,7 +1578,243 @@ export default function TransactionsIndex({
                     )}
 
                     <CardContent className="p-0">
-                        <Table>
+                        {/* Mobile card list */}
+                        <div className="divide-y sm:hidden">
+                            {transactions.data.length === 0 ? (
+                                <EmptyState
+                                    icon={<Receipt className="size-6" />}
+                                    title="No transactions yet"
+                                    description="Start tracking your spending by adding your first transaction."
+                                />
+                            ) : (
+                                <>
+                                    <div className="flex items-center gap-2 border-b px-4 py-2">
+                                        <Checkbox
+                                            checked={
+                                                allSelected
+                                                    ? true
+                                                    : someSelected
+                                                      ? 'indeterminate'
+                                                      : false
+                                            }
+                                            onCheckedChange={handleSelectAll}
+                                        />
+                                        <span className="text-xs text-muted-foreground">
+                                            Select all
+                                        </span>
+                                    </div>
+                                    {transactions.data.map((transaction) => (
+                                        <div
+                                            key={transaction.id}
+                                            className="space-y-1.5 px-4 py-3"
+                                            onClick={() =>
+                                                setEditTransaction(transaction)
+                                            }
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                                    <div
+                                                        className="pt-0.5"
+                                                        onClick={(e) =>
+                                                            e.stopPropagation()
+                                                        }
+                                                    >
+                                                        <Checkbox
+                                                            checked={selectedIds.includes(
+                                                                transaction.id,
+                                                            )}
+                                                            onCheckedChange={(
+                                                                checked,
+                                                            ) =>
+                                                                handleSelectOne(
+                                                                    transaction.id,
+                                                                    checked,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium">
+                                                            {transaction.description ??
+                                                                transaction
+                                                                    .payee
+                                                                    ?.name ??
+                                                                '—'}
+                                                        </p>
+                                                        <p className="mt-0.5 text-xs text-muted-foreground">
+                                                            {formatDate(
+                                                                transaction.transaction_date,
+                                                            )}
+                                                            {transaction.account
+                                                                ?.name
+                                                                ? ` · ${transaction.account.name}`
+                                                                : ''}
+                                                            {transaction
+                                                                .category?.name
+                                                                ? ` · ${transaction.category.name}`
+                                                                : ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-1">
+                                                    <span
+                                                        className={`text-sm font-semibold tabular-nums ${amountColor(transaction)}`}
+                                                    >
+                                                        {amountPrefix(
+                                                            transaction,
+                                                        )}
+                                                        {formatAbsAmount(
+                                                            transaction.amount,
+                                                        )}
+                                                    </span>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                            asChild
+                                                            onClick={(e) =>
+                                                                e.stopPropagation()
+                                                            }
+                                                        >
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7"
+                                                            >
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem
+                                                                onClick={(
+                                                                    e,
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    setEditTransaction(
+                                                                        transaction,
+                                                                    );
+                                                                }}
+                                                            >
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={(
+                                                                    e,
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    handleDuplicate(
+                                                                        transaction,
+                                                                    );
+                                                                }}
+                                                            >
+                                                                Duplicate
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="text-destructive"
+                                                                onClick={(
+                                                                    e,
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    setDeleteConfirmTransaction(
+                                                                        transaction,
+                                                                    );
+                                                                }}
+                                                            >
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </div>
+                                            {/* Tags */}
+                                            {(transaction.tags ?? []).length >
+                                                0 && (
+                                                <div className="flex flex-wrap gap-1 pl-8">
+                                                    {(
+                                                        transaction.tags ?? []
+                                                    ).map((tag) => (
+                                                        <TagPill
+                                                            key={tag.id}
+                                                            tag={tag}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {/* Badges row */}
+                                            <div className="flex flex-wrap items-center gap-1 pl-8">
+                                                <Badge
+                                                    variant={
+                                                        TYPE_BADGE_VARIANT[
+                                                            transaction
+                                                                .transaction_type
+                                                        ] ?? 'secondary'
+                                                    }
+                                                    className="text-[10px]"
+                                                >
+                                                    {
+                                                        transaction.transaction_type
+                                                    }
+                                                </Badge>
+                                                {(transaction.splits ?? [])
+                                                    .length > 0 && (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className="text-[10px]"
+                                                    >
+                                                        {
+                                                            transaction.splits
+                                                                ?.length
+                                                        }{' '}
+                                                        splits
+                                                    </Badge>
+                                                )}
+                                                {(transaction.attachments ?? [])
+                                                    .length > 0 && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-[10px]"
+                                                    >
+                                                        <Paperclip className="mr-0.5 h-2.5 w-2.5" />
+                                                        {
+                                                            transaction
+                                                                .attachments
+                                                                ?.length
+                                                        }
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            {/* Split details */}
+                                            {(transaction.splits ?? []).length >
+                                                0 && (
+                                                <div className="space-y-1 pl-8">
+                                                    {(
+                                                        transaction.splits ?? []
+                                                    ).map((split) => (
+                                                        <div
+                                                            key={split.id}
+                                                            className="flex items-center justify-between text-xs text-muted-foreground"
+                                                        >
+                                                            <span className="truncate">
+                                                                {split.description ??
+                                                                    split
+                                                                        .category
+                                                                        ?.name ??
+                                                                    'Uncategorized'}
+                                                            </span>
+                                                            <span className="ml-2 shrink-0 tabular-nums">
+                                                                {formatAbsAmount(
+                                                                    split.amount,
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </>
+                            )}
+                        </div>
+
+                        <Table className="hidden sm:table">
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="w-10 pl-4">
@@ -1338,14 +1832,20 @@ export default function TransactionsIndex({
                                     </TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Description</TableHead>
-                                    <TableHead>Account</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead>Payee</TableHead>
+                                    <TableHead className="hidden md:table-cell">
+                                        Account
+                                    </TableHead>
+                                    <TableHead className="hidden lg:table-cell">
+                                        Category
+                                    </TableHead>
+                                    <TableHead className="hidden lg:table-cell">
+                                        Payee
+                                    </TableHead>
                                     <TableHead className="text-right">
                                         Amount
                                     </TableHead>
                                     {runningBalances && (
-                                        <TableHead className="text-right">
+                                        <TableHead className="hidden text-right lg:table-cell">
                                             Balance
                                         </TableHead>
                                     )}
@@ -1493,15 +1993,15 @@ export default function TransactionsIndex({
                                                     </div>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-muted-foreground">
+                                            <TableCell className="hidden text-muted-foreground md:table-cell">
                                                 {transaction.account?.name ??
                                                     '—'}
                                             </TableCell>
-                                            <TableCell className="text-muted-foreground">
+                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
                                                 {transaction.category?.name ??
                                                     '—'}
                                             </TableCell>
-                                            <TableCell className="text-muted-foreground">
+                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
                                                 {transaction.payee?.name ?? '—'}
                                             </TableCell>
                                             <TableCell
@@ -1513,7 +2013,7 @@ export default function TransactionsIndex({
                                                 )}
                                             </TableCell>
                                             {runningBalances && (
-                                                <TableCell className="text-right text-muted-foreground tabular-nums">
+                                                <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
                                                     {formatAmount(
                                                         runningBalances.get(
                                                             transaction.id,
@@ -1554,7 +2054,7 @@ export default function TransactionsIndex({
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem
                                                             onClick={() =>
-                                                                setEditTransaction(
+                                                                handleDuplicate(
                                                                     transaction,
                                                                 )
                                                             }
@@ -1564,23 +2064,8 @@ export default function TransactionsIndex({
                                                         <DropdownMenuItem
                                                             className="text-destructive"
                                                             onClick={() =>
-                                                                router.delete(
-                                                                    destroy.url(
-                                                                        {
-                                                                            ledger: ledger.id,
-                                                                            transaction:
-                                                                                transaction.id,
-                                                                        },
-                                                                    ),
-                                                                    {
-                                                                        preserveScroll: true,
-                                                                        onSuccess:
-                                                                            () => {
-                                                                                toast.success(
-                                                                                    'Transaction deleted',
-                                                                                );
-                                                                            },
-                                                                    },
+                                                                setDeleteConfirmTransaction(
+                                                                    transaction,
                                                                 )
                                                             }
                                                         >
@@ -1634,6 +2119,7 @@ export default function TransactionsIndex({
                                         >
                                             <Link
                                                 href={link.url}
+                                                preserveState
                                                 preserveScroll
                                                 dangerouslySetInnerHTML={{
                                                     __html: link.label,
@@ -1661,6 +2147,56 @@ export default function TransactionsIndex({
                 />
             )}
 
+            {/* Single delete confirmation */}
+            <Dialog
+                open={deleteConfirmTransaction !== null}
+                onOpenChange={(open) =>
+                    !open && setDeleteConfirmTransaction(null)
+                }
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete this transaction?</DialogTitle>
+                        <DialogDescription>
+                            This transaction will be moved to trash. You can
+                            undo this action for a short time after deletion.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteConfirmTransaction(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleContextDelete}
+                        >
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Duplicate transaction modal */}
+            <AddTransactionModal
+                ledger={ledger}
+                accounts={accounts}
+                categories={flatCategories}
+                payees={payees}
+                tags={tags}
+                externalOpen={showDuplicateModal}
+                onExternalOpenChange={(open) => {
+                    setShowDuplicateModal(open);
+
+                    if (!open) {
+                        setDuplicateTransaction(null);
+                    }
+                }}
+                initialData={duplicateTransaction}
+            />
+
             {/* Bulk delete confirmation */}
             <Dialog
                 open={showBulkDeleteConfirm}
@@ -1672,10 +2208,10 @@ export default function TransactionsIndex({
                     <DialogHeader>
                         <DialogTitle>Delete transactions</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete{' '}
-                            <strong>{selectedIds.length}</strong> transaction
-                            {selectedIds.length !== 1 ? 's' : ''}? This action
-                            cannot be undone.
+                            Delete <strong>{selectedIds.length}</strong>{' '}
+                            transaction
+                            {selectedIds.length !== 1 ? 's' : ''}? This cannot
+                            be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -1690,6 +2226,92 @@ export default function TransactionsIndex({
                             onClick={handleBulkDelete}
                         >
                             Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk action modal (change category/account/payee) */}
+            <Dialog
+                open={bulkAction !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setBulkAction(null);
+                        setBulkActionValue(null);
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {bulkAction === 'change_category' &&
+                                'Change category'}
+                            {bulkAction === 'change_account' &&
+                                'Change account'}
+                            {bulkAction === 'change_payee' && 'Change payee'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Update <strong>{selectedIds.length}</strong>{' '}
+                            transaction
+                            {selectedIds.length !== 1 ? 's' : ''}. Transfer
+                            transactions will be skipped.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        {bulkAction === 'change_category' && (
+                            <SearchableSelect
+                                options={flatCategories.map((c) => ({
+                                    value: String(c.id),
+                                    label: c.parent_id
+                                        ? `${categories.find((p) => p.id === c.parent_id)?.name} > ${c.name}`
+                                        : c.name,
+                                }))}
+                                value={bulkActionValue}
+                                onValueChange={setBulkActionValue}
+                                placeholder="Select category..."
+                                searchPlaceholder="Search categories..."
+                            />
+                        )}
+                        {bulkAction === 'change_account' && (
+                            <SearchableSelect
+                                options={accounts.map((a) => ({
+                                    value: String(a.id),
+                                    label: a.name,
+                                }))}
+                                value={bulkActionValue}
+                                onValueChange={setBulkActionValue}
+                                placeholder="Select account..."
+                                searchPlaceholder="Search accounts..."
+                            />
+                        )}
+                        {bulkAction === 'change_payee' && (
+                            <SearchableSelect
+                                options={payees.map((p) => ({
+                                    value: String(p.id),
+                                    label: p.name,
+                                }))}
+                                value={bulkActionValue}
+                                onValueChange={setBulkActionValue}
+                                placeholder="Select payee..."
+                                searchPlaceholder="Search payees..."
+                            />
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setBulkAction(null);
+                                setBulkActionValue(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            disabled={!bulkActionValue}
+                            onClick={handleBulkUpdate}
+                        >
+                            Update
                         </Button>
                     </DialogFooter>
                 </DialogContent>

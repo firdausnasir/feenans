@@ -24,7 +24,18 @@ class BillController extends Controller
 
         return Inertia::render('ledgers/bills/index', [
             'ledger' => $ledger,
-            'bills' => $ledger->bills()->with(['account', 'category', 'payee'])->get(),
+            'bills' => $ledger->bills()
+                ->with([
+                    'account',
+                    'category',
+                    'payee',
+                    'transactions' => fn ($query) => $query
+                        ->with('account')
+                        ->latest('transaction_date')
+                        ->latest('id')
+                        ->limit(10),
+                ])
+                ->get(),
             'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
         ]);
     }
@@ -35,7 +46,7 @@ class BillController extends Controller
 
         return Inertia::render('ledgers/bills/create', [
             'ledger' => $ledger,
-            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
+            'accounts' => $ledger->accounts()->visible()->with('accountType')->orderBy('name')->get(),
             'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
             'payees' => $ledger->payees()->orderBy('name')->get(),
         ]);
@@ -57,7 +68,11 @@ class BillController extends Controller
         return Inertia::render('ledgers/bills/edit', [
             'ledger' => $ledger,
             'bill' => $bill,
-            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
+            'accounts' => $ledger->accounts()
+                ->where(fn ($q) => $q->visible()->orWhere('id', $bill->account_id))
+                ->with('accountType')
+                ->orderBy('name')
+                ->get(),
             'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
             'payees' => $ledger->payees()->orderBy('name')->get(),
         ]);

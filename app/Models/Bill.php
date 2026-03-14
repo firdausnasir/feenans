@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Bill extends Model
@@ -46,6 +47,7 @@ class Bill extends Model
         'end_date',
         'occurrences_count',
         'is_active',
+        'is_sample',
     ];
 
     /**
@@ -61,6 +63,7 @@ class Bill extends Model
             'end_date' => 'date',
             'auto_create' => 'boolean',
             'is_active' => 'boolean',
+            'is_sample' => 'boolean',
             'recurrence_type' => RecurrenceType::class,
             'transaction_type' => TransactionType::class,
         ];
@@ -84,6 +87,11 @@ class Bill extends Model
     public function payee(): BelongsTo
     {
         return $this->belongsTo(Payee::class);
+    }
+
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
     }
 
     public function scopeActive(Builder $query): Builder

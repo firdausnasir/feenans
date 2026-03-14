@@ -4,7 +4,11 @@ namespace App\Services;
 
 use App\Models\Budget;
 use App\Models\Ledger;
+use App\Models\User;
+use App\Notifications\BudgetExceeded;
+use App\Notifications\BudgetThresholdReached;
 use Carbon\CarbonImmutable;
+use Illuminate\Notifications\DatabaseNotification;
 
 class BudgetService
 {
@@ -78,6 +82,57 @@ class BudgetService
                 $ledger->cycleBounds($today)['end'],
             ],
         };
+    }
+
+    /**
+     * Check budget thresholds for a ledger and send notifications when exceeded.
+     */
+    public function checkThresholds(Ledger $ledger, ?int $categoryId = null): void
+    {
+        $user = $ledger->user;
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        $query = $ledger->budgets()
+            ->with('category')
+            ->where('is_active', true);
+
+        if ($categoryId !== null) {
+            $query->where('category_id', $categoryId);
+        }
+
+        $budgets = $query->get();
+
+        foreach ($budgets as $budget) {
+            $allocated = (float) $budget->amount;
+
+            if ($allocated <= 0) {
+                continue;
+            }
+
+            $spent = $this->getSpent($budget, $ledger);
+            $percentage = round(($spent / $allocated) * 100, 1);
+
+            if ($percentage >= 100 && ! $this->hasUnreadBudgetNotification($user, $budget->id, 'budget_exceeded')) {
+                $user->notify(new BudgetExceeded($budget, $percentage, $spent));
+            } elseif ($percentage >= 80 && $percentage < 100 && ! $this->hasUnreadBudgetNotification($user, $budget->id, 'budget_threshold')) {
+                $user->notify(new BudgetThresholdReached($budget, $percentage, $spent));
+            }
+        }
+    }
+
+    private function hasUnreadBudgetNotification(User $user, int $budgetId, string $type): bool
+    {
+        return $user->unreadNotifications()
+            ->get()
+            ->contains(function (DatabaseNotification $notification) use ($budgetId, $type): bool {
+                $data = $notification->data;
+
+                return ($data['type'] ?? null) === $type
+                    && ($data['budget_id'] ?? null) === $budgetId;
+            });
     }
 
     /**

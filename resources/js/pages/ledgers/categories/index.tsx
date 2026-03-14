@@ -1,7 +1,7 @@
 import { Head, router } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Tag } from 'lucide-react';
+import { Tag, Plus } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -15,6 +15,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -27,13 +34,14 @@ import {
 } from '@/routes/ledgers/categories';
 import type { BreadcrumbItem, Category, Ledger } from '@/types';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type EditState = {
     categoryId: number;
     name: string;
     color: string;
     icon: string;
+    parentId: number | null;
 };
 
 type AddSubState = {
@@ -45,7 +53,9 @@ type DeleteTarget = {
     category: Category;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type DeleteAction = 'uncategorize' | 'reassign';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function colorDot(color: string | null) {
     if (!color) {
@@ -62,22 +72,81 @@ function colorDot(color: string | null) {
     );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function countTotalTransactions(category: Category): number {
+    const own = category.transactions_count ?? 0;
+    const childTotal = (category.children ?? []).reduce(
+        (sum, child) => sum + (child.transactions_count ?? 0),
+        0,
+    );
+
+    return own + childTotal;
+}
+
+function getReassignableCategoriesForDelete(
+    allCategories: Category[],
+    deleteTarget: Category,
+): Category[] {
+    const excludeIds = new Set<number>([deleteTarget.id]);
+
+    for (const child of deleteTarget.children ?? []) {
+        excludeIds.add(child.id);
+    }
+
+    const result: Category[] = [];
+
+    for (const cat of allCategories) {
+        if (excludeIds.has(cat.id)) {
+            continue;
+        }
+
+        if (cat.transaction_type === deleteTarget.transaction_type) {
+            result.push(cat);
+
+            for (const child of cat.children ?? []) {
+                if (!excludeIds.has(child.id)) {
+                    result.push(child);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+function getAvailableParents(
+    allCategories: Category[],
+    currentCategory: Category,
+): Category[] {
+    return allCategories.filter(
+        (c) =>
+            c.id !== currentCategory.id &&
+            c.parent_id === null &&
+            c.transaction_type === currentCategory.transaction_type,
+    );
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
 
 function InlineEditForm({
     edit,
     onChangeName,
     onChangeColor,
     onChangeIcon,
+    onChangeParentId,
     onSave,
     onCancel,
+    availableParents,
+    isSubcategory,
 }: {
     edit: EditState;
     onChangeName: (v: string) => void;
     onChangeColor: (v: string) => void;
     onChangeIcon: (v: string) => void;
+    onChangeParentId: (v: number | null) => void;
     onSave: () => void;
     onCancel: () => void;
+    availableParents: Category[];
+    isSubcategory: boolean;
 }) {
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -120,6 +189,25 @@ function InlineEditForm({
                 placeholder="Icon (emoji)"
                 className="h-7 w-24 text-sm"
             />
+            {isSubcategory && availableParents.length > 0 && (
+                <Select
+                    value={String(edit.parentId ?? '')}
+                    onValueChange={(v) =>
+                        onChangeParentId(v ? Number(v) : null)
+                    }
+                >
+                    <SelectTrigger className="h-7 w-40 text-xs" size="sm">
+                        <SelectValue placeholder="Parent..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {availableParents.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>
+                                {p.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
             <Button size="sm" className="h-7 px-2 text-xs" onClick={onSave}>
                 Save
             </Button>
@@ -167,7 +255,7 @@ function AddCategoryForm({
                         onCancel();
                     }
                 }}
-                placeholder={`New ${transactionType} category…`}
+                placeholder={`New ${transactionType} category...`}
                 className="h-7 w-52 text-sm"
             />
             <input
@@ -227,7 +315,7 @@ function AddSubcategoryForm({
                         onCancel();
                     }
                 }}
-                placeholder="Subcategory name…"
+                placeholder="Subcategory name..."
                 className="h-7 w-44 text-sm"
             />
             <Button
@@ -253,7 +341,221 @@ function AddSubcategoryForm({
     );
 }
 
-// ─── Category list for one tab ────────────────────────────────────────────────
+// ── Delete confirmation dialog ───────────────────────────────────────────────
+
+function DeleteCategoryDialog({
+    deleteTarget,
+    allCategories,
+    ledgerId,
+    onClose,
+}: {
+    deleteTarget: DeleteTarget | null;
+    allCategories: Category[];
+    ledgerId: number;
+    onClose: () => void;
+}) {
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteAction, setDeleteAction] =
+        useState<DeleteAction>('uncategorize');
+    const [reassignCategoryId, setReassignCategoryId] = useState<string>('');
+
+    if (!deleteTarget) {
+        return null;
+    }
+
+    const { category } = deleteTarget;
+    const totalTransactions = countTotalTransactions(category);
+    const childCount = (category.children ?? []).length;
+    const reassignableCategories = getReassignableCategoriesForDelete(
+        allCategories,
+        category,
+    );
+
+    function handleDelete() {
+        if (!deleteTarget) {
+            return;
+        }
+
+        setIsDeleting(true);
+
+        const reassignValue =
+            deleteAction === 'reassign' && reassignCategoryId
+                ? Number(reassignCategoryId)
+                : null;
+
+        router.delete(
+            destroyRoute.url({
+                ledger: ledgerId,
+                category: deleteTarget.category.id,
+            }),
+            {
+                data: {
+                    reassign_category_id: reassignValue,
+                },
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsDeleting(false);
+                    setDeleteAction('uncategorize');
+                    setReassignCategoryId('');
+                    onClose();
+                    toast.success('Category deleted');
+                },
+                onError: (errors) => {
+                    setIsDeleting(false);
+                    const msg =
+                        errors.category ??
+                        errors.reassign_category_id ??
+                        errors.message ??
+                        Object.values(errors)[0] ??
+                        'Cannot delete this category.';
+                    toast.error(String(msg));
+                },
+            },
+        );
+    }
+
+    function handleOpenChange(open: boolean) {
+        if (!open) {
+            setDeleteAction('uncategorize');
+            setReassignCategoryId('');
+            onClose();
+        }
+    }
+
+    const canDelete =
+        deleteAction === 'uncategorize' ||
+        (deleteAction === 'reassign' && reassignCategoryId !== '');
+
+    return (
+        <Dialog open={deleteTarget !== null} onOpenChange={handleOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Delete category</DialogTitle>
+                    <DialogDescription>
+                        Are you sure you want to delete{' '}
+                        <strong>{category.name}</strong>?
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                    {childCount > 0 && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                            This category has {childCount}{' '}
+                            {childCount === 1 ? 'subcategory' : 'subcategories'}{' '}
+                            that will also be deleted.
+                        </p>
+                    )}
+
+                    {totalTransactions > 0 ? (
+                        <>
+                            <p className="text-sm text-muted-foreground">
+                                This category has{' '}
+                                <strong>{totalTransactions}</strong>{' '}
+                                {totalTransactions === 1
+                                    ? 'transaction'
+                                    : 'transactions'}
+                                . What should happen to them?
+                            </p>
+
+                            <div className="space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDeleteAction('uncategorize');
+                                        setReassignCategoryId('');
+                                    }}
+                                    className={`w-full rounded-lg border p-3 text-left text-sm transition-colors ${
+                                        deleteAction === 'uncategorize'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-border hover:bg-muted/50'
+                                    }`}
+                                >
+                                    <span className="font-medium">
+                                        Leave uncategorized
+                                    </span>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Transactions will have no category
+                                        assigned.
+                                    </p>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteAction('reassign')}
+                                    className={`w-full rounded-lg border p-3 text-left text-sm transition-colors ${
+                                        deleteAction === 'reassign'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-border hover:bg-muted/50'
+                                    }`}
+                                >
+                                    <span className="font-medium">
+                                        Reassign to another category
+                                    </span>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Move all transactions to a different
+                                        category.
+                                    </p>
+                                </button>
+
+                                {deleteAction === 'reassign' && (
+                                    <div className="pt-1 pl-3">
+                                        <Select
+                                            value={reassignCategoryId}
+                                            onValueChange={
+                                                setReassignCategoryId
+                                            }
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select a category..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {reassignableCategories.map(
+                                                    (c) => (
+                                                        <SelectItem
+                                                            key={c.id}
+                                                            value={String(c.id)}
+                                                        >
+                                                            {c.parent_id !==
+                                                            null
+                                                                ? `\u00A0\u00A0${c.name}`
+                                                                : c.name}
+                                                        </SelectItem>
+                                                    ),
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            This category has no transactions.
+                        </p>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => handleOpenChange(false)}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={handleDelete}
+                        disabled={isDeleting || !canDelete}
+                    >
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ── Category list for one tab ────────────────────────────────────────────────
 
 function CategoryList({
     ledgerId,
@@ -265,6 +567,7 @@ function CategoryList({
     setAddSubState,
     onDeleteRequest,
     onAddCategory,
+    openAddFormTrigger,
 }: {
     ledgerId: number;
     categories: Category[];
@@ -281,10 +584,26 @@ function CategoryList({
         parentId?: number,
         transactionType?: 'expense' | 'income',
     ) => void;
+    openAddFormTrigger?: number;
 }) {
     const [showAddForm, setShowAddForm] = useState(false);
     const dragOverIdRef = useRef<number | null>(null);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
+    const addFormRef = useRef<HTMLDivElement>(null);
+
+    // Open add form when parent triggers it
+    useEffect(() => {
+        if (openAddFormTrigger && openAddFormTrigger > 0) {
+            setShowAddForm(true);
+            // Scroll to form after it renders
+            setTimeout(() => {
+                addFormRef.current?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                });
+            }, 100);
+        }
+    }, [openAddFormTrigger]);
 
     // Only top-level categories for this tab
     const tabCats = categories.filter(
@@ -297,6 +616,7 @@ function CategoryList({
             name: cat.name,
             color: cat.color ?? '',
             icon: cat.icon ?? '',
+            parentId: cat.parent_id,
         });
     }
 
@@ -314,6 +634,7 @@ function CategoryList({
                 name: editState.name,
                 color: editState.color || null,
                 icon: editState.icon || null,
+                parent_id: editState.parentId,
             },
             {
                 preserveScroll: true,
@@ -326,6 +647,7 @@ function CategoryList({
                         errors.name ??
                         errors.color ??
                         errors.icon ??
+                        errors.parent_id ??
                         'Failed to update category.';
                     toast.error(msg);
                 },
@@ -413,6 +735,7 @@ function CategoryList({
                 const isEditing = editState?.categoryId === cat.id;
                 const isDragOver = dragOverId === cat.id;
                 const children = cat.children ?? [];
+                const availableParents = getAvailableParents(categories, cat);
 
                 return (
                     <div key={cat.id}>
@@ -438,7 +761,7 @@ function CategoryList({
                                 aria-hidden="true"
                                 className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100"
                             >
-                                ⋮⋮
+                                :::
                             </span>
 
                             {/* Color dot */}
@@ -467,8 +790,16 @@ function CategoryList({
                                     onChangeIcon={(v) =>
                                         setEditState({ ...editState, icon: v })
                                     }
+                                    onChangeParentId={(v) =>
+                                        setEditState({
+                                            ...editState,
+                                            parentId: v,
+                                        })
+                                    }
                                     onSave={saveEdit}
                                     onCancel={() => setEditState(null)}
+                                    availableParents={availableParents}
+                                    isSubcategory={cat.parent_id !== null}
                                 />
                             ) : (
                                 <>
@@ -480,7 +811,13 @@ function CategoryList({
                                         {cat.name}
                                     </button>
 
-                                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                    {(cat.transactions_count ?? 0) > 0 && (
+                                        <span className="text-xs text-muted-foreground">
+                                            {cat.transactions_count}
+                                        </span>
+                                    )}
+
+                                    <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -513,6 +850,10 @@ function CategoryList({
                         {children.map((child) => {
                             const isChildEditing =
                                 editState?.categoryId === child.id;
+                            const childAvailableParents = getAvailableParents(
+                                categories,
+                                child,
+                            );
 
                             return (
                                 <div
@@ -548,8 +889,18 @@ function CategoryList({
                                                     icon: v,
                                                 })
                                             }
+                                            onChangeParentId={(v) =>
+                                                setEditState({
+                                                    ...editState,
+                                                    parentId: v,
+                                                })
+                                            }
                                             onSave={saveEdit}
                                             onCancel={() => setEditState(null)}
+                                            availableParents={
+                                                childAvailableParents
+                                            }
+                                            isSubcategory={true}
                                         />
                                     ) : (
                                         <>
@@ -561,7 +912,14 @@ function CategoryList({
                                                 {child.name}
                                             </button>
 
-                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                            {(child.transactions_count ?? 0) >
+                                                0 && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {child.transactions_count}
+                                                </span>
+                                            )}
+
+                                            <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -598,31 +956,33 @@ function CategoryList({
             })}
 
             {/* Add parent category form */}
-            {showAddForm ? (
-                <AddCategoryForm
-                    transactionType={transactionType}
-                    onSave={(name, color, icon) => {
-                        onAddCategory(name, color, icon);
-                        setShowAddForm(false);
-                    }}
-                    onCancel={() => setShowAddForm(false)}
-                />
-            ) : (
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => setShowAddForm(true)}
-                >
-                    + Add Category
-                </Button>
-            )}
+            <div ref={addFormRef}>
+                {showAddForm ? (
+                    <AddCategoryForm
+                        transactionType={transactionType}
+                        onSave={(name, color, icon) => {
+                            onAddCategory(name, color, icon);
+                            setShowAddForm(false);
+                        }}
+                        onCancel={() => setShowAddForm(false)}
+                    />
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setShowAddForm(true)}
+                    >
+                        + Add Category
+                    </Button>
+                )}
+            </div>
         </div>
     );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ── Main page ────────────────────────────────────────────────────────────────
 
 export default function CategoriesIndex({
     ledger,
@@ -634,7 +994,8 @@ export default function CategoriesIndex({
     const [editState, setEditState] = useState<EditState | null>(null);
     const [addSubState, setAddSubState] = useState<AddSubState | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
+    const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
+    const [addFormTrigger, setAddFormTrigger] = useState(0);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -673,41 +1034,6 @@ export default function CategoriesIndex({
         );
     }
 
-    function handleDelete() {
-        if (!deleteTarget) {
-            return;
-        }
-
-        const { category } = deleteTarget;
-
-        setIsDeleting(true);
-
-        router.delete(
-            destroyRoute.url({
-                ledger: ledger.id,
-                category: category.id,
-            }),
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsDeleting(false);
-                    setDeleteTarget(null);
-                    toast.success('Category deleted');
-                },
-                onError: (errors) => {
-                    setIsDeleting(false);
-                    setDeleteTarget(null);
-                    const msg =
-                        errors.category ??
-                        errors.message ??
-                        Object.values(errors)[0] ??
-                        'Cannot delete this category.';
-                    toast.error(String(msg));
-                },
-            },
-        );
-    }
-
     function makeAddHandler(transactionType: 'expense' | 'income') {
         return (name: string, color: string, icon: string, parentId?: number) =>
             handleAddCategory(name, color, icon, parentId, transactionType);
@@ -717,15 +1043,27 @@ export default function CategoriesIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} categories`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Categories"
-                    description="Manage categories for this ledger."
-                />
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <Heading
+                        title="Categories"
+                        description="Manage categories for this ledger."
+                    />
+                    <Button
+                        className="w-full sm:w-auto"
+                        onClick={() => setAddFormTrigger((t) => t + 1)}
+                    >
+                        <Plus className="mr-1 size-4" />
+                        Add Category
+                    </Button>
+                </div>
 
                 <Tabs
                     defaultValue="expense"
-                    onValueChange={() => setEditState(null)}
+                    onValueChange={(v) => {
+                        setEditState(null);
+                        setActiveTab(v as 'expense' | 'income');
+                    }}
                 >
                     <TabsList>
                         <TabsTrigger value="expense">Expense</TabsTrigger>
@@ -745,6 +1083,11 @@ export default function CategoriesIndex({
                                 setDeleteTarget({ category: cat })
                             }
                             onAddCategory={makeAddHandler('expense')}
+                            openAddFormTrigger={
+                                activeTab === 'expense'
+                                    ? addFormTrigger
+                                    : undefined
+                            }
                         />
                     </TabsContent>
 
@@ -761,48 +1104,23 @@ export default function CategoriesIndex({
                                 setDeleteTarget({ category: cat })
                             }
                             onAddCategory={makeAddHandler('income')}
+                            openAddFormTrigger={
+                                activeTab === 'income'
+                                    ? addFormTrigger
+                                    : undefined
+                            }
                         />
                     </TabsContent>
                 </Tabs>
             </div>
 
             {/* Delete confirmation dialog */}
-            <Dialog
-                open={deleteTarget !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setDeleteTarget(null);
-                    }
-                }}
-            >
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Delete category</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete{' '}
-                            <strong>{deleteTarget?.category.name}</strong>? This
-                            cannot be undone. If transactions or subcategories
-                            reference this category, the deletion will be
-                            rejected.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => setDeleteTarget(null)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleDelete}
-                            disabled={isDeleting}
-                        >
-                            {isDeleting ? 'Deleting…' : 'Delete'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <DeleteCategoryDialog
+                deleteTarget={deleteTarget}
+                allCategories={categories}
+                ledgerId={ledger.id}
+                onClose={() => setDeleteTarget(null)}
+            />
         </AppLayout>
     );
 }

@@ -4,6 +4,7 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Category;
 use App\Models\Ledger;
+use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -295,4 +296,139 @@ test('report filters reject account ids from another ledger', function () {
     $this->actingAs($user)
         ->get(route('ledgers.reports.index', $ledger).'?account_id='.$foreignAccount->id)
         ->assertSessionHasErrors('account_id');
+});
+
+test('report page includes income category breakdown data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $salary = Category::factory()->for($ledger)->create(['name' => 'Salary', 'parent_id' => null]);
+    $freelance = Category::factory()->for($ledger)->create(['name' => 'Freelance', 'parent_id' => null]);
+
+    Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($salary)
+        ->create([
+            'transaction_type' => 'income',
+            'amount' => '3000.00',
+            'transaction_date' => '2026-03-01',
+        ]);
+
+    Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($freelance)
+        ->create([
+            'transaction_type' => 'income',
+            'amount' => '1000.00',
+            'transaction_date' => '2026-03-05',
+        ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31');
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/index')
+        ->has('incomeCategoryBreakdown.items', 2)
+        ->where('incomeCategoryBreakdown.items.0.name', 'Salary')
+        ->where('incomeCategoryBreakdown.items.0.total', fn ($v) => (float) $v === 3000.0)
+        ->where('incomeCategoryBreakdown.items.0.percentage', fn ($v) => (float) $v === 75.0)
+        ->has('incomeCategoryBreakdown.parents', 2)
+        ->etc()
+    );
+});
+
+test('income category breakdown only includes income not expenses', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->create([
+            'transaction_type' => 'expense',
+            'amount' => '-500.00',
+            'transaction_date' => '2026-03-01',
+        ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31');
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/index')
+        ->has('incomeCategoryBreakdown.items', 0)
+        ->has('incomeCategoryBreakdown.parents', 0)
+        ->etc()
+    );
+});
+
+test('report page includes income payee breakdown data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Employer']);
+
+    Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create([
+            'transaction_type' => 'income',
+            'amount' => '5000.00',
+            'transaction_date' => '2026-03-01',
+        ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31');
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/index')
+        ->has('incomePayeeBreakdown', 1)
+        ->where('incomePayeeBreakdown.0.name', 'Employer')
+        ->where('incomePayeeBreakdown.0.total', fn ($v) => (float) $v === 5000.0)
+        ->where('incomePayeeBreakdown.0.percentage', fn ($v) => (float) $v === 100.0)
+        ->etc()
+    );
+});
+
+test('income payee breakdown only includes income not expenses', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Store']);
+
+    Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create([
+            'transaction_type' => 'expense',
+            'amount' => '-200.00',
+            'transaction_date' => '2026-03-01',
+        ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31');
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/index')
+        ->has('incomePayeeBreakdown', 0)
+        ->etc()
+    );
 });

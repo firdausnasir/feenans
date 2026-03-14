@@ -2,9 +2,11 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     BarChart3,
     CreditCard,
+    Hash,
     LayoutGrid,
     PiggyBank,
     Receipt,
+    RefreshCw,
     Settings,
     Tag,
     Upload,
@@ -31,6 +33,7 @@ import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import { index as categoriesIndex } from '@/routes/ledgers/categories';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
+import { index as tagsIndex } from '@/routes/ledgers/tags';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
 import { create as importCreate } from '@/routes/ledgers/import';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
@@ -77,9 +80,14 @@ export function AppSidebar() {
                   icon: Tag,
               },
               {
-                  title: 'Bills',
+                  title: 'Tags',
+                  href: tagsIndex.url(ledgerId),
+                  icon: Hash,
+              },
+              {
+                  title: 'Recurring',
                   href: billsIndex.url(ledgerId),
-                  icon: Receipt,
+                  icon: RefreshCw,
               },
               {
                   title: 'Budgets',

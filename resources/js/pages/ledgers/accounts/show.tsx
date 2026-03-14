@@ -167,7 +167,7 @@ export default function AccountShow({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={account.name} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4">
                     <div>
@@ -193,6 +193,13 @@ export default function AccountShow({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                            <a
+                                href={`/ledgers/${ledger.id}/accounts/${account.id}/export`}
+                            >
+                                Export CSV
+                            </a>
+                        </Button>
                         <Button variant="outline" size="sm" asChild>
                             <Link
                                 href={editRoute.url({
@@ -414,6 +421,7 @@ export default function AccountShow({
                                                 href={
                                                     transactions.prev_page_url
                                                 }
+                                                preserveState
                                                 preserveScroll
                                             >
                                                 Previous
@@ -430,6 +438,7 @@ export default function AccountShow({
                                                 href={
                                                     transactions.next_page_url
                                                 }
+                                                preserveState
                                                 preserveScroll
                                             >
                                                 Next

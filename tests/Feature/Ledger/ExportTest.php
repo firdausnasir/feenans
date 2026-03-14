@@ -3,10 +3,12 @@
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
+use App\Models\Bill;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\BillService;
 
 test('export transactions returns CSV download', function () {
     $user = User::factory()->create();
@@ -72,18 +74,18 @@ test('recurring income bill creates income transaction when paid', function () {
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
 
-    $bill = \App\Models\Bill::factory()->for($ledger)->create([
+    $bill = Bill::factory()->for($ledger)->create([
         'account_id' => $account->id,
-        'transaction_type' => \App\Enums\TransactionType::Income,
+        'transaction_type' => TransactionType::Income,
         'amount' => 3000.00,
         'name' => 'Salary',
         'next_due_date' => now()->toDateString(),
     ]);
 
-    app(\App\Services\BillService::class)->payBill($bill);
+    app(BillService::class)->payBill($bill);
 
     $transaction = $ledger->transactions()->where('description', 'Salary')->first();
     expect($transaction)->not->toBeNull();
     expect((float) $transaction->amount)->toBe(3000.00);
-    expect($transaction->transaction_type)->toBe(\App\Enums\TransactionType::Income);
+    expect($transaction->transaction_type)->toBe(TransactionType::Income);
 });

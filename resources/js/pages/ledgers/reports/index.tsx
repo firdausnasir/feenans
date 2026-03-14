@@ -14,10 +14,18 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowUp,
+    BarChart3,
+    Minus,
+    SlidersHorizontal,
+    ChevronDown,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -96,6 +104,8 @@ type DateRange = {
     date_to: string;
     preset: string;
     account_id: string | null;
+    compare_start: string | null;
+    compare_end: string | null;
 };
 
 type ReportAccount = { id: number; name: string };
@@ -108,6 +118,44 @@ type PayeeBreakdownItem = {
 };
 
 type CreditAccount = Pick<Account, 'id' | 'name' | 'statement_day'>;
+
+type CategoryDelta = {
+    name: string;
+    current: number;
+    previous: number;
+    delta: number;
+    percentage_change: number;
+};
+
+type TrendOverlayItem = {
+    index: number;
+    current_month: string | null;
+    compare_month: string | null;
+    current_expense: number;
+    compare_expense: number;
+    current_income: number;
+    compare_income: number;
+};
+
+type ComparisonSummary = {
+    current_expense: number;
+    compare_expense: number;
+    expense_delta: number;
+    expense_percentage_change: number;
+    current_income: number;
+    compare_income: number;
+    income_delta: number;
+    income_percentage_change: number;
+    biggest_change: CategoryDelta | null;
+};
+
+type ComparisonData = {
+    current_period: { from: string; to: string };
+    compare_period: { from: string; to: string };
+    categoryDeltas: CategoryDelta[];
+    trendOverlay: TrendOverlayItem[];
+    summary: ComparisonSummary;
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -294,6 +342,10 @@ function DateRangeSelector({
 
     const [customFrom, setCustomFrom] = useState(dateRange.date_from);
     const [customTo, setCustomTo] = useState(dateRange.date_to);
+    const [compareFrom, setCompareFrom] = useState(
+        dateRange.compare_start ?? '',
+    );
+    const [compareTo, setCompareTo] = useState(dateRange.compare_end ?? '');
 
     function buildParams(
         overrides: Record<string, string | null> = {},
@@ -310,6 +362,21 @@ function DateRangeSelector({
 
         if (accountId) {
             params.account_id = accountId;
+        }
+
+        // Preserve comparison dates when they exist
+        const cStart =
+            'compare_start' in overrides
+                ? overrides.compare_start
+                : dateRange.compare_start;
+        const cEnd =
+            'compare_end' in overrides
+                ? overrides.compare_end
+                : dateRange.compare_end;
+
+        if (cStart && cEnd) {
+            params.compare_start = cStart;
+            params.compare_end = cEnd;
         }
 
         return params;
@@ -336,6 +403,39 @@ function DateRangeSelector({
         );
     }
 
+    function applyComparison() {
+        if (!compareFrom || !compareTo) {
+            return;
+        }
+
+        router.get(
+            reportsIndex.url(ledger.id),
+            buildParams({
+                compare_start: compareFrom,
+                compare_end: compareTo,
+            }),
+            { preserveState: true },
+        );
+    }
+
+    function clearComparison() {
+        router.get(
+            reportsIndex.url(ledger.id),
+            buildParams({
+                compare_start: null,
+                compare_end: null,
+            }),
+            { preserveState: true },
+        );
+    }
+
+    function handleCompareToggle() {
+        if (compareEnabled && dateRange.compare_start) {
+            clearComparison();
+        }
+        onCompareToggle();
+    }
+
     function handleAccountChange(value: string) {
         const accountId = value === 'all' ? null : value;
         router.get(
@@ -345,34 +445,69 @@ function DateRangeSelector({
         );
     }
 
+    /** Suggest the previous period with same duration as the current period */
+    function suggestPreviousPeriod() {
+        const from = new Date(dateRange.date_from + 'T00:00:00');
+        const to = new Date(dateRange.date_to + 'T00:00:00');
+        const durationMs = to.getTime() - from.getTime();
+        const prevEnd = new Date(from.getTime() - 86400000); // day before current start
+        const prevStart = new Date(prevEnd.getTime() - durationMs);
+        setCompareFrom(toDateString(prevStart));
+        setCompareTo(toDateString(prevEnd));
+    }
+
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
     return (
         <Card>
-            <CardContent className="pt-6">
-                <div className="flex flex-wrap items-center gap-2">
-                    {PRESETS.map((preset) => (
+            <CardContent className="space-y-3 pt-6">
+                {/* Mobile filter toggle */}
+                <button
+                    type="button"
+                    className="flex w-full items-center justify-between sm:hidden"
+                    onClick={() => setFiltersOpen(!filtersOpen)}
+                >
+                    <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                            {formatDate(dateRange.date_from)} &ndash;{' '}
+                            {formatDate(dateRange.date_to)}
+                        </span>
+                    </div>
+                    <ChevronDown
+                        className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
+                    />
+                </button>
+
+                <div
+                    className={`space-y-3 ${filtersOpen ? '' : 'hidden'} sm:block`}
+                >
+                    <div className="flex flex-wrap items-center gap-2">
+                        {PRESETS.map((preset) => (
+                            <Button
+                                key={preset.key}
+                                size="sm"
+                                variant={
+                                    dateRange.preset === preset.key
+                                        ? 'default'
+                                        : 'outline'
+                                }
+                                onClick={() => applyPreset(preset)}
+                            >
+                                {preset.label}
+                            </Button>
+                        ))}
+
                         <Button
-                            key={preset.key}
                             size="sm"
-                            variant={
-                                dateRange.preset === preset.key
-                                    ? 'default'
-                                    : 'outline'
-                            }
-                            onClick={() => applyPreset(preset)}
+                            variant={compareEnabled ? 'default' : 'outline'}
+                            onClick={handleCompareToggle}
                         >
-                            {preset.label}
+                            Compare
                         </Button>
-                    ))}
+                    </div>
 
-                    <Button
-                        size="sm"
-                        variant={compareEnabled ? 'default' : 'outline'}
-                        onClick={onCompareToggle}
-                    >
-                        Compare
-                    </Button>
-
-                    <div className="ml-auto flex items-end gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
                         {allAccounts.length > 0 && (
                             <div className="grid gap-1">
                                 <Label className="text-xs">Account</Label>
@@ -380,7 +515,7 @@ function DateRangeSelector({
                                     value={dateRange.account_id ?? 'all'}
                                     onValueChange={handleAccountChange}
                                 >
-                                    <SelectTrigger className="h-8 w-40 text-xs">
+                                    <SelectTrigger className="h-8 w-full text-xs sm:w-40">
                                         <SelectValue placeholder="All accounts" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -399,28 +534,82 @@ function DateRangeSelector({
                                 </Select>
                             </div>
                         )}
-                        <div className="grid gap-1">
-                            <Label className="text-xs">From</Label>
-                            <Input
-                                type="date"
-                                value={customFrom}
-                                onChange={(e) => setCustomFrom(e.target.value)}
-                                className="h-8 text-xs"
-                            />
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
+                            <div className="grid gap-1">
+                                <Label className="text-xs">From</Label>
+                                <DatePicker
+                                    value={customFrom}
+                                    onChange={(date) => setCustomFrom(date)}
+                                    placeholder="Start date"
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                            <div className="grid gap-1">
+                                <Label className="text-xs">To</Label>
+                                <DatePicker
+                                    value={customTo}
+                                    onChange={(date) => setCustomTo(date)}
+                                    placeholder="End date"
+                                    className="h-8 text-xs"
+                                />
+                            </div>
                         </div>
-                        <div className="grid gap-1">
-                            <Label className="text-xs">To</Label>
-                            <Input
-                                type="date"
-                                value={customTo}
-                                onChange={(e) => setCustomTo(e.target.value)}
-                                className="h-8 text-xs"
-                            />
-                        </div>
-                        <Button size="sm" onClick={applyCustomRange}>
+                        <Button
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            onClick={applyCustomRange}
+                        >
                             Apply
                         </Button>
                     </div>
+
+                    {/* Comparison date picker row */}
+                    {compareEnabled && (
+                        <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-end">
+                            <p className="text-xs font-medium text-muted-foreground sm:self-center">
+                                Compare with:
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">From</Label>
+                                    <DatePicker
+                                        value={compareFrom}
+                                        onChange={(date) =>
+                                            setCompareFrom(date)
+                                        }
+                                        placeholder="Start date"
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">To</Label>
+                                    <DatePicker
+                                        value={compareTo}
+                                        onChange={(date) => setCompareTo(date)}
+                                        placeholder="End date"
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    size="sm"
+                                    className="flex-1 sm:flex-initial"
+                                    onClick={applyComparison}
+                                >
+                                    Compare
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="flex-1 sm:flex-initial"
+                                    onClick={suggestPreviousPeriod}
+                                >
+                                    Previous period
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </CardContent>
         </Card>
@@ -567,7 +756,46 @@ function CategoryBreakdownSection({
 
                 {/* Table */}
                 <div className="w-full">
-                    <Table>
+                    {/* Mobile card list */}
+                    <div className="divide-y sm:hidden">
+                        {displayData.map((item, index) => (
+                            <div
+                                key={`${item.id}-${index}`}
+                                className="flex items-center justify-between gap-3 py-2.5"
+                            >
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                        className="inline-block size-2.5 shrink-0 rounded-full"
+                                        style={{
+                                            backgroundColor: getCategoryColor(
+                                                item.color,
+                                                index,
+                                            ),
+                                        }}
+                                    />
+                                    <span
+                                        className={`truncate text-sm ${
+                                            item.parent_id !== null
+                                                ? 'pl-3 text-muted-foreground'
+                                                : 'font-medium'
+                                        }`}
+                                    >
+                                        {item.name}
+                                    </span>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <span className="text-sm text-red-500 tabular-nums">
+                                        {formatAbsAmount(item.total)}
+                                    </span>
+                                    <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
+                                        {item.percentage.toFixed(1)}%
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <Table className="hidden sm:table">
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Category</TableHead>
@@ -734,49 +962,90 @@ function StatementCyclesSection({
                     No statement cycles found.
                 </p>
             ) : (
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Cycle start</TableHead>
-                            <TableHead>Cycle end</TableHead>
-                            {creditAccounts.length > 1 && (
-                                <TableHead>Account</TableHead>
-                            )}
-                            <TableHead className="text-right">Total</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                <>
+                    {/* Mobile card list */}
+                    <div className="divide-y sm:hidden">
                         {sortedCycles.map((cycle, i) => (
-                            <TableRow key={i}>
-                                <TableCell className="text-muted-foreground">
-                                    {formatDate(cycle.start_date)}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground">
-                                    {formatDate(cycle.end_date)}
-                                </TableCell>
+                            <div key={i} className="space-y-1 py-2.5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="text-sm text-muted-foreground">
+                                        {formatDate(cycle.start_date)} –{' '}
+                                        {formatDate(cycle.end_date)}
+                                    </div>
+                                    <span
+                                        className={`shrink-0 text-sm font-semibold tabular-nums ${
+                                            cycle.total >= 0
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-500'
+                                        }`}
+                                    >
+                                        {cycle.total < 0 ? '–' : ''}
+                                        {formatAbsAmount(Math.abs(cycle.total))}
+                                    </span>
+                                </div>
                                 {creditAccounts.length > 1 && (
-                                    <TableCell>{cycle.account_name}</TableCell>
+                                    <p className="text-xs text-muted-foreground">
+                                        {cycle.account_name}
+                                    </p>
                                 )}
-                                <TableCell
-                                    className={`text-right font-semibold tabular-nums ${
-                                        cycle.total >= 0
-                                            ? 'text-green-600 dark:text-green-400'
-                                            : 'text-red-500'
-                                    }`}
-                                >
-                                    {cycle.total < 0 ? '–' : ''}
-                                    {formatAbsAmount(Math.abs(cycle.total))}
-                                </TableCell>
-                            </TableRow>
+                            </div>
                         ))}
-                    </TableBody>
-                </Table>
+                    </div>
+
+                    <Table className="hidden sm:table">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Cycle start</TableHead>
+                                <TableHead>Cycle end</TableHead>
+                                {creditAccounts.length > 1 && (
+                                    <TableHead>Account</TableHead>
+                                )}
+                                <TableHead className="text-right">
+                                    Total
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedCycles.map((cycle, i) => (
+                                <TableRow key={i}>
+                                    <TableCell className="text-muted-foreground">
+                                        {formatDate(cycle.start_date)}
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {formatDate(cycle.end_date)}
+                                    </TableCell>
+                                    {creditAccounts.length > 1 && (
+                                        <TableCell>
+                                            {cycle.account_name}
+                                        </TableCell>
+                                    )}
+                                    <TableCell
+                                        className={`text-right font-semibold tabular-nums ${
+                                            cycle.total >= 0
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-500'
+                                        }`}
+                                    >
+                                        {cycle.total < 0 ? '–' : ''}
+                                        {formatAbsAmount(Math.abs(cycle.total))}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </>
             )}
         </div>
     );
 }
 
-function PayeeBreakdownSection({ data }: { data: PayeeBreakdownItem[] }) {
+function PayeeBreakdownSection({
+    data,
+    amountClassName = 'text-red-500',
+}: {
+    data: PayeeBreakdownItem[];
+    amountClassName?: string;
+}) {
     if (data.length === 0) {
         return (
             <EmptyState
@@ -788,39 +1057,648 @@ function PayeeBreakdownSection({ data }: { data: PayeeBreakdownItem[] }) {
     }
 
     return (
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead>Payee</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">%</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
+        <>
+            {/* Mobile card list */}
+            <div className="divide-y sm:hidden">
                 {data.map((item, index) => (
-                    <TableRow key={`payee-${item.id ?? 'none'}-${index}`}>
-                        <TableCell>
+                    <div
+                        key={`payee-${item.id ?? 'none'}-${index}`}
+                        className="flex items-center justify-between gap-3 py-2.5"
+                    >
+                        <span
+                            className={`min-w-0 truncate text-sm ${
+                                item.id === null
+                                    ? 'text-muted-foreground italic'
+                                    : 'font-medium'
+                            }`}
+                        >
+                            {item.name}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-3">
                             <span
-                                className={
-                                    item.id === null
-                                        ? 'text-muted-foreground italic'
-                                        : ''
-                                }
+                                className={`text-sm tabular-nums ${amountClassName}`}
                             >
+                                {formatAbsAmount(item.total)}
+                            </span>
+                            <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
+                                {item.percentage.toFixed(1)}%
+                            </span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <Table className="hidden sm:table">
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Payee</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">%</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {data.map((item, index) => (
+                        <TableRow key={`payee-${item.id ?? 'none'}-${index}`}>
+                            <TableCell>
+                                <span
+                                    className={
+                                        item.id === null
+                                            ? 'text-muted-foreground italic'
+                                            : ''
+                                    }
+                                >
+                                    {item.name}
+                                </span>
+                            </TableCell>
+                            <TableCell
+                                className={`text-right tabular-nums ${amountClassName}`}
+                            >
+                                {formatAbsAmount(item.total)}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground tabular-nums">
+                                {item.percentage.toFixed(1)}%
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </>
+    );
+}
+
+function IncomeCategoryBreakdownSection({
+    data,
+}: {
+    data: CategoryBreakdownResponse;
+}) {
+    const [showSubcategories, setShowSubcategories] = useState(false);
+
+    const isEmpty = data.items.length === 0 && data.parents.length === 0;
+
+    const displayData = showSubcategories ? data.items : data.parents;
+
+    const pieData = displayData.map((item, index) => ({
+        name: item.name,
+        value: item.total,
+        color: getCategoryColor(item.color, index),
+    }));
+
+    if (isEmpty) {
+        return (
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No category data"
+                description="No income categories found for this period."
+            />
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowSubcategories((prev) => !prev)}
+                >
+                    {showSubcategories ? 'Parent only' : 'Show subcategories'}
+                </Button>
+            </div>
+
+            <div className="flex flex-col items-center gap-6 lg:flex-row lg:items-start">
+                {/* Donut chart */}
+                <div className="shrink-0">
+                    <PieChart width={200} height={200}>
+                        <Pie
+                            data={pieData}
+                            cx={100}
+                            cy={100}
+                            innerRadius={55}
+                            outerRadius={90}
+                            dataKey="value"
+                            nameKey="name"
+                        >
+                            {pieData.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.color}
+                                />
+                            ))}
+                        </Pie>
+                        <Tooltip
+                            formatter={(value: any) => [
+                                formatAbsAmount(Number(value)),
+                                'Amount',
+                            ]}
+                        />
+                    </PieChart>
+                </div>
+
+                {/* Table */}
+                <div className="w-full">
+                    {/* Mobile card list */}
+                    <div className="divide-y sm:hidden">
+                        {displayData.map((item, index) => (
+                            <div
+                                key={`${item.id}-${index}`}
+                                className="flex items-center justify-between gap-3 py-2.5"
+                            >
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                        className="inline-block size-2.5 shrink-0 rounded-full"
+                                        style={{
+                                            backgroundColor: getCategoryColor(
+                                                item.color,
+                                                index,
+                                            ),
+                                        }}
+                                    />
+                                    <span
+                                        className={`truncate text-sm ${
+                                            item.parent_id !== null
+                                                ? 'pl-3 text-muted-foreground'
+                                                : 'font-medium'
+                                        }`}
+                                    >
+                                        {item.name}
+                                    </span>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <span className="text-sm text-green-600 tabular-nums dark:text-green-400">
+                                        {formatAbsAmount(item.total)}
+                                    </span>
+                                    <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
+                                        {item.percentage.toFixed(1)}%
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <Table className="hidden sm:table">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Category</TableHead>
+                                <TableHead className="text-right">
+                                    Amount
+                                </TableHead>
+                                <TableHead className="text-right">%</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {displayData.map((item, index) => (
+                                <TableRow key={`${item.id}-${index}`}>
+                                    <TableCell>
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className="inline-block size-2.5 shrink-0 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        getCategoryColor(
+                                                            item.color,
+                                                            index,
+                                                        ),
+                                                }}
+                                            />
+                                            <span
+                                                className={
+                                                    item.parent_id !== null
+                                                        ? 'pl-3 text-muted-foreground'
+                                                        : ''
+                                                }
+                                            >
+                                                {item.name}
+                                            </span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right text-green-600 tabular-nums dark:text-green-400">
+                                        {formatAbsAmount(item.total)}
+                                    </TableCell>
+                                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                                        {item.percentage.toFixed(1)}%
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+
+                    {/* Show children under each parent when in parent-only mode */}
+                    {!showSubcategories &&
+                        data.parents.some((p) => p.children.length > 0) && (
+                            <div className="mt-4 space-y-3 border-t pt-4">
+                                <p className="text-xs font-medium text-muted-foreground uppercase">
+                                    Breakdown by subcategory
+                                </p>
+                                {data.parents
+                                    .filter((p) => p.children.length > 0)
+                                    .map((parent, parentIndex) => (
+                                        <div
+                                            key={parent.id}
+                                            className="space-y-1"
+                                        >
+                                            <p className="text-sm font-medium">
+                                                {parent.name}
+                                            </p>
+                                            {parent.children.map(
+                                                (child, childIndex) => (
+                                                    <div
+                                                        key={child.id}
+                                                        className="flex items-center justify-between pl-4 text-sm"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span
+                                                                className="inline-block size-2 shrink-0 rounded-full"
+                                                                style={{
+                                                                    backgroundColor:
+                                                                        getCategoryColor(
+                                                                            child.color,
+                                                                            parentIndex *
+                                                                                10 +
+                                                                                childIndex,
+                                                                        ),
+                                                                }}
+                                                            />
+                                                            <span className="text-muted-foreground">
+                                                                {child.name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-green-600 tabular-nums dark:text-green-400">
+                                                                {formatAbsAmount(
+                                                                    child.total,
+                                                                )}
+                                                            </span>
+                                                            <span className="w-12 text-right text-muted-foreground tabular-nums">
+                                                                {child.percentage.toFixed(
+                                                                    1,
+                                                                )}
+                                                                %
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ),
+                                            )}
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Comparison ──────────────────────────────────────────────────────────────
+
+function DeltaIndicator({
+    value,
+    isExpense = true,
+}: {
+    value: number;
+    isExpense?: boolean;
+}) {
+    if (value === 0) {
+        return (
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                <Minus className="size-3" />
+                0%
+            </span>
+        );
+    }
+
+    // For expenses: increase is bad (red), decrease is good (green)
+    // For income: increase is good (green), decrease is bad (red)
+    const isPositive = value > 0;
+    const isGood = isExpense ? !isPositive : isPositive;
+
+    return (
+        <span
+            className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+                isGood ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+            }`}
+        >
+            {isPositive ? (
+                <ArrowUp className="size-3" />
+            ) : (
+                <ArrowDown className="size-3" />
+            )}
+            {Math.abs(value).toFixed(1)}%
+        </span>
+    );
+}
+
+function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
+    return (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Card>
+                <CardContent className="pt-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                        Total expenses
+                    </p>
+                    <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-2xl font-semibold tabular-nums">
+                            {formatAbsAmount(summary.current_expense)}
+                        </span>
+                        <DeltaIndicator
+                            value={summary.expense_percentage_change}
+                            isExpense={true}
+                        />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        vs {formatAbsAmount(summary.compare_expense)} previous
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardContent className="pt-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                        Total income
+                    </p>
+                    <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-2xl font-semibold tabular-nums">
+                            {formatAbsAmount(summary.current_income)}
+                        </span>
+                        <DeltaIndicator
+                            value={summary.income_percentage_change}
+                            isExpense={false}
+                        />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        vs {formatAbsAmount(summary.compare_income)} previous
+                    </p>
+                </CardContent>
+            </Card>
+
+            {summary.biggest_change && (
+                <Card>
+                    <CardContent className="pt-6">
+                        <p className="text-xs font-medium text-muted-foreground uppercase">
+                            Biggest change
+                        </p>
+                        <div className="mt-1 flex items-baseline gap-2">
+                            <span className="text-lg font-semibold">
+                                {summary.biggest_change.name}
+                            </span>
+                            <DeltaIndicator
+                                value={summary.biggest_change.percentage_change}
+                                isExpense={true}
+                            />
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {formatAbsAmount(summary.biggest_change.current)} vs{' '}
+                            {formatAbsAmount(summary.biggest_change.previous)}{' '}
+                            previous
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
+    );
+}
+
+function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
+    if (data.length === 0) {
+        return (
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No data"
+                description="Not enough data to compare trends."
+            />
+        );
+    }
+
+    const chartData = data.map((item) => ({
+        ...item,
+        label: `Month ${item.index}`,
+    }));
+
+    return (
+        <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart
+                data={chartData}
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+            >
+                <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-border"
+                />
+                <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11 }}
+                    className="text-muted-foreground"
+                />
+                <YAxis
+                    tick={{ fontSize: 11 }}
+                    className="text-muted-foreground"
+                />
+                <Tooltip
+                    formatter={(value: number, name: string) => [
+                        formatAbsAmount(value),
+                        name,
+                    ]}
+                />
+                <Legend />
+                <Line
+                    type="monotone"
+                    dataKey="current_expense"
+                    stroke="var(--color-chart-1)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    name="Current expense"
+                />
+                <Line
+                    type="monotone"
+                    dataKey="compare_expense"
+                    stroke="var(--color-chart-1)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={{ r: 3 }}
+                    name="Previous expense"
+                />
+                <Line
+                    type="monotone"
+                    dataKey="current_income"
+                    stroke="var(--color-chart-3)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    name="Current income"
+                />
+                <Line
+                    type="monotone"
+                    dataKey="compare_income"
+                    stroke="var(--color-chart-3)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={{ r: 3 }}
+                    name="Previous income"
+                />
+            </ComposedChart>
+        </ResponsiveContainer>
+    );
+}
+
+function CategoryDeltasTable({ deltas }: { deltas: CategoryDelta[] }) {
+    if (deltas.length === 0) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                No category data to compare.
+            </p>
+        );
+    }
+
+    return (
+        <>
+            {/* Mobile card list */}
+            <div className="divide-y sm:hidden">
+                {deltas.map((item) => (
+                    <div key={item.name} className="space-y-1 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="min-w-0 truncate text-sm font-medium">
                                 {item.name}
                             </span>
-                        </TableCell>
-                        <TableCell className="text-right text-red-500 tabular-nums">
-                            {formatAbsAmount(item.total)}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground tabular-nums">
-                            {item.percentage.toFixed(1)}%
-                        </TableCell>
-                    </TableRow>
+                            <div className="flex shrink-0 items-center gap-2">
+                                <span className="text-sm tabular-nums">
+                                    {item.delta > 0 ? '+' : ''}
+                                    {formatAbsAmount(Math.abs(item.delta))}
+                                </span>
+                                <DeltaIndicator
+                                    value={item.percentage_change}
+                                    isExpense={true}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="tabular-nums">
+                                Current: {formatAbsAmount(item.current)}
+                            </span>
+                            <span className="tabular-nums">
+                                Previous: {formatAbsAmount(item.previous)}
+                            </span>
+                        </div>
+                    </div>
                 ))}
-            </TableBody>
-        </Table>
+            </div>
+
+            <Table className="hidden sm:table">
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Current</TableHead>
+                        <TableHead className="text-right">Previous</TableHead>
+                        <TableHead className="text-right">Change</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {deltas.map((item) => (
+                        <TableRow key={item.name}>
+                            <TableCell className="font-medium">
+                                {item.name}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                                {formatAbsAmount(item.current)}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground tabular-nums">
+                                {formatAbsAmount(item.previous)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                    <span className="tabular-nums">
+                                        {item.delta > 0 ? '+' : ''}
+                                        {formatAbsAmount(Math.abs(item.delta))}
+                                    </span>
+                                    <DeltaIndicator
+                                        value={item.percentage_change}
+                                        isExpense={true}
+                                    />
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </>
     );
+}
+
+function ComparisonSection({ comparison }: { comparison: ComparisonData }) {
+    const { summary } = comparison;
+
+    // Build a human-readable summary sentence
+    const summaryText = buildSummarySentence(summary);
+
+    return (
+        <div className="space-y-6">
+            {/* Summary sentence */}
+            {summaryText && (
+                <Card>
+                    <CardContent className="pt-6">
+                        <p className="text-sm">{summaryText}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {formatDate(comparison.current_period.from)} &ndash;{' '}
+                            {formatDate(comparison.current_period.to)}
+                            {' vs '}
+                            {formatDate(
+                                comparison.compare_period.from,
+                            )} &ndash;{' '}
+                            {formatDate(comparison.compare_period.to)}
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Summary cards */}
+            <ComparisonSummaryCards summary={summary} />
+
+            <div className="grid gap-6 lg:grid-cols-2">
+                {/* Trend overlay */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Trend comparison</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ComparisonTrendChart data={comparison.trendOverlay} />
+                    </CardContent>
+                </Card>
+
+                {/* Category deltas */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Category changes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <CategoryDeltasTable
+                            deltas={comparison.categoryDeltas}
+                        />
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
+}
+
+function buildSummarySentence(summary: ComparisonSummary): string | null {
+    const parts: string[] = [];
+
+    if (summary.expense_delta !== 0) {
+        const direction = summary.expense_delta > 0 ? 'more' : 'less';
+        parts.push(
+            `You spent ${Math.abs(summary.expense_percentage_change).toFixed(1)}% ${direction} overall`,
+        );
+    }
+
+    if (summary.biggest_change && summary.biggest_change.delta !== 0) {
+        const direction = summary.biggest_change.delta > 0 ? 'more' : 'less';
+        parts.push(
+            `${Math.abs(summary.biggest_change.percentage_change).toFixed(1)}% ${direction} on ${summary.biggest_change.name}`,
+        );
+    }
+
+    if (parts.length === 0) {
+        return null;
+    }
+
+    return parts.join(', with ') + ' compared to the previous period.';
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -830,21 +1708,29 @@ export default function ReportsIndex({
     monthlyTrend,
     categoryBreakdown,
     payeeBreakdown,
+    incomeCategoryBreakdown,
+    incomePayeeBreakdown,
     statementCycles,
     creditAccounts,
     allAccounts,
+    comparison,
     dateRange,
 }: {
     ledger: Ledger;
     monthlyTrend: MonthlyTrend[];
     categoryBreakdown: CategoryBreakdownResponse;
     payeeBreakdown: PayeeBreakdownItem[];
+    incomeCategoryBreakdown: CategoryBreakdownResponse;
+    incomePayeeBreakdown: PayeeBreakdownItem[];
     statementCycles: StatementCycle[];
     creditAccounts: CreditAccount[];
     allAccounts: ReportAccount[];
+    comparison: ComparisonData | null;
     dateRange: DateRange;
 }) {
-    const [compareEnabled, setCompareEnabled] = useState(false);
+    const [compareEnabled, setCompareEnabled] = useState(
+        comparison !== null || dateRange.compare_start !== null,
+    );
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -855,16 +1741,25 @@ export default function ReportsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} reports`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                        Reports
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        Monthly trends, category totals, and credit statement
-                        cycles.
-                    </p>
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-semibold tracking-tight">
+                            Reports
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            Monthly trends, category totals, and credit
+                            statement cycles.
+                        </p>
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                        <a
+                            href={`/ledgers/${ledger.id}/reports/export-pdf?month=${dateRange.date_from.substring(0, 7)}`}
+                        >
+                            Export PDF
+                        </a>
+                    </Button>
                 </div>
 
                 {/* Date range selector */}
@@ -876,12 +1771,16 @@ export default function ReportsIndex({
                     onCompareToggle={() => setCompareEnabled((prev) => !prev)}
                 />
 
-                {/* Period comparison placeholder */}
-                {compareEnabled && (
+                {/* Period comparison */}
+                {compareEnabled && comparison && (
+                    <ComparisonSection comparison={comparison} />
+                )}
+                {compareEnabled && !comparison && (
                     <Card>
                         <CardContent className="flex items-center justify-center py-8">
                             <p className="text-sm text-muted-foreground">
-                                Period comparison coming soon.
+                                Select a comparison period above and click
+                                &quot;Compare&quot; to see differences.
                             </p>
                         </CardContent>
                     </Card>
@@ -902,7 +1801,7 @@ export default function ReportsIndex({
                     {/* Category breakdown */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Category breakdown</CardTitle>
+                            <CardTitle>Expense by category</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <CategoryBreakdownSection
@@ -915,12 +1814,40 @@ export default function ReportsIndex({
                 {/* Payee breakdown */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Payee breakdown</CardTitle>
+                        <CardTitle>Expense by payee</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <PayeeBreakdownSection data={payeeBreakdown} />
                     </CardContent>
                 </Card>
+
+                {/* Income breakdown */}
+                <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+                    {/* Income by category */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Income by category</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <IncomeCategoryBreakdownSection
+                                data={incomeCategoryBreakdown}
+                            />
+                        </CardContent>
+                    </Card>
+
+                    {/* Income by payee */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Income by payee</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <PayeeBreakdownSection
+                                data={incomePayeeBreakdown}
+                                amountClassName="text-green-600 dark:text-green-400"
+                            />
+                        </CardContent>
+                    </Card>
+                </div>
 
                 {/* Credit statement cycles */}
                 {creditAccounts.length > 0 && (

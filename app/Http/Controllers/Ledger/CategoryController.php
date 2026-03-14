@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\DestroyCategoryRequest;
 use App\Http\Requests\ReorderRequest;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
 use App\Models\Ledger;
+use App\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -22,7 +25,8 @@ class CategoryController extends Controller
         return Inertia::render('ledgers/categories/index', [
             'ledger' => $ledger,
             'categories' => $ledger->categories()
-                ->with('children')
+                ->withCount('transactions')
+                ->with(['children' => fn ($q) => $q->withCount('transactions')])
                 ->parents()
                 ->orderBy('position')
                 ->get(),
@@ -59,15 +63,21 @@ class CategoryController extends Controller
         return back();
     }
 
-    public function destroy(Request $request, Ledger $ledger, Category $category): RedirectResponse
+    public function destroy(DestroyCategoryRequest $request, Ledger $ledger, Category $category): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        if ($category->transactions()->exists() || $category->children()->exists()) {
-            return back()->withErrors(['category' => 'Cannot delete a category that has transactions or subcategories.']);
-        }
+        $reassignCategoryId = $request->validated('reassign_category_id');
 
-        $category->delete();
+        DB::transaction(function () use ($category, $reassignCategoryId) {
+            // Reassign transactions from this category (and its children) to the target or null
+            $categoryIds = $category->children()->pluck('id')->push($category->id);
+
+            Transaction::whereIn('category_id', $categoryIds)
+                ->update(['category_id' => $reassignCategoryId]);
+
+            $category->delete();
+        });
 
         return back();
     }

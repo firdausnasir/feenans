@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Ledger;
 use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
 use App\Models\Ledger;
+use App\Models\Transaction;
 use App\Services\BillService;
+use App\Services\BudgetService;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +16,7 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Ledger $ledger, Request $request, BillService $billService): Response
+    public function __invoke(Ledger $ledger, Request $request, BillService $billService, BudgetService $budgetService): Response
     {
         $this->authorize('view', $ledger);
         $request->session()->put('current_ledger_id', $ledger->id);
@@ -41,6 +43,7 @@ class DashboardController extends Controller
             ->sum('amount'));
 
         $flatAccounts = $ledger->accounts()
+            ->visible()
             ->with('accountType')
             ->withSum('transactions', 'amount')
             ->get()
@@ -59,8 +62,17 @@ class DashboardController extends Controller
             ])
             ->values();
 
+        $creditTypeIds = $flatAccounts->pluck('accountType')
+            ->filter()
+            ->where('is_credit', true)
+            ->pluck('id')
+            ->unique();
+        $totalAssets = $flatAccounts->reject(fn ($a) => $creditTypeIds->contains($a->account_type_id))->sum('balance');
+        $totalLiabilities = $flatAccounts->filter(fn ($a) => $creditTypeIds->contains($a->account_type_id))->sum('balance');
+
         $recentTransactions = $ledger->transactions()
             ->with(['account', 'category', 'payee'])
+            ->whereBetween('transaction_date', [$start, $end])
             ->orderBy('transaction_date', 'desc')
             ->orderBy('id', 'desc')
             ->limit(10)
@@ -133,6 +145,12 @@ class DashboardController extends Controller
             ->values()
             ->all();
 
+        $uncategorizedCount = Transaction::query()
+            ->where('ledger_id', $ledger->id)
+            ->whereNull('category_id')
+            ->where('transaction_type', '!=', TransactionType::Transfer)
+            ->count();
+
         return Inertia::render('ledgers/dashboard', [
             'ledger' => $ledger,
             'summary' => [
@@ -154,6 +172,13 @@ class DashboardController extends Controller
             ],
             'topCategories' => $topCategories,
             'cycleOffset' => $cycleOffset,
+            'topBudgets' => array_slice($budgetService->getBudgetsWithStats($ledger), 0, 3),
+            'uncategorizedCount' => $uncategorizedCount,
+            'netWorth' => [
+                'assets' => round($totalAssets, 2),
+                'liabilities' => round($totalLiabilities, 2),
+                'net' => round($totalAssets + $totalLiabilities, 2),
+            ],
         ]);
     }
 }

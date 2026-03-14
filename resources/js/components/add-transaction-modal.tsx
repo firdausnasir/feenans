@@ -1,6 +1,8 @@
 import { Form, Link, router } from '@inertiajs/react';
+import type { Page } from '@inertiajs/core';
+import confetti from 'canvas-confetti';
 import { Check, ChevronsUpDown, CreditCard, PlusCircle } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import PayeeController from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
@@ -24,6 +26,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -54,6 +57,18 @@ type SplitDraft = {
     description: string;
 };
 
+export type DuplicateData = {
+    transaction_type: TransactionMode;
+    account_id: number;
+    to_account_id?: number | null;
+    category_id: number | null;
+    payee_id: number | null;
+    amount: string;
+    description: string | null;
+    notes: string | null;
+    tag_ids: number[];
+};
+
 const NEW_PAYEE_SENTINEL = '__new__';
 
 export function AddTransactionModal({
@@ -62,14 +77,31 @@ export function AddTransactionModal({
     categories,
     payees: initialPayees,
     tags,
+    externalOpen,
+    onExternalOpenChange,
+    initialData,
 }: {
     ledger: Ledger;
     accounts: Account[];
     categories: Category[];
     payees: Payee[];
     tags: Tag[];
+    externalOpen?: boolean;
+    onExternalOpenChange?: (open: boolean) => void;
+    initialData?: DuplicateData | null;
 }) {
-    const [open, setOpen] = useState(false);
+    const isControlled = externalOpen !== undefined;
+    const [internalOpen, setInternalOpen] = useState(false);
+    const open = isControlled ? externalOpen : internalOpen;
+
+    function setOpen(value: boolean) {
+        if (isControlled) {
+            onExternalOpenChange?.(value);
+        } else {
+            setInternalOpen(value);
+        }
+    }
+
     const [mode, setMode] = useState<TransactionMode>('expense');
     const [accountId, setAccountId] = useState<string>(
         accounts.length > 0 ? String(accounts[0].id) : '',
@@ -92,8 +124,56 @@ export function AddTransactionModal({
         { id: 2, amount: '', category_id: '', description: '' },
     ]);
     const newPayeeInputRef = useRef<HTMLInputElement>(null);
+    const amountInputRef = useRef<HTMLInputElement>(null);
+    const [rapidEntry, setRapidEntry] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('rapid-entry') === 'true';
+        }
+        return false;
+    });
 
     const splitRowId = useRef(3);
+    const [duplicateDate, setDuplicateDate] = useState<string | null>(null);
+    const [transactionDate, setTransactionDate] = useState(
+        new Date().toISOString().slice(0, 10),
+    );
+
+    useEffect(() => {
+        if (initialData && open) {
+            setMode(initialData.transaction_type);
+            setAccountId(String(initialData.account_id));
+            setToAccountId(
+                initialData.to_account_id
+                    ? String(initialData.to_account_id)
+                    : accounts.length > 1
+                      ? String(accounts[1].id)
+                      : '',
+            );
+            setCategoryId(
+                initialData.category_id
+                    ? String(initialData.category_id)
+                    : 'none',
+            );
+            setSelectedPayeeId(
+                initialData.payee_id ? String(initialData.payee_id) : '',
+            );
+            setAmount(String(Math.abs(parseFloat(initialData.amount || '0'))));
+            setSelectedTagIds(initialData.tag_ids ?? []);
+            setDuplicateDate(new Date().toISOString().slice(0, 10));
+            setTransactionDate(new Date().toISOString().slice(0, 10));
+        }
+    }, [initialData, open, accounts]);
+
+    function handleSourceAccountChange(newAccountId: string) {
+        setAccountId(newAccountId);
+
+        if (newAccountId === toAccountId) {
+            const fallback = accounts.find(
+                (a) => String(a.id) !== newAccountId,
+            );
+            setToAccountId(fallback ? String(fallback.id) : '');
+        }
+    }
 
     // Build grouped category structure: parents with their children
     const groupedCategories = useMemo(() => {
@@ -251,26 +331,51 @@ export function AddTransactionModal({
             { id: 2, amount: '', category_id: '', description: '' },
         ]);
         splitRowId.current = 3;
+        setDuplicateDate(null);
+        setTransactionDate(new Date().toISOString().slice(0, 10));
     }
 
-    function handleSuccess() {
-        toast.success('Transaction saved');
+    function handleSuccess(page: Page) {
+        const flash = page.props.flash as {
+            first_transaction?: boolean;
+        };
+
+        if (flash?.first_transaction) {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 },
+            });
+            toast.success(
+                "Your first transaction! You're on your way to financial clarity.",
+                { duration: 5000 },
+            );
+        } else {
+            toast.success('Transaction saved');
+        }
+
         setOpen(false);
         resetForm();
     }
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button className="gap-2">
-                    <PlusCircle className="size-4" />
-                    Add transaction
-                </Button>
-            </DialogTrigger>
+            {!isControlled && (
+                <DialogTrigger asChild>
+                    <Button className="w-full gap-2 sm:w-auto">
+                        <PlusCircle className="size-4" />
+                        Add transaction
+                    </Button>
+                </DialogTrigger>
+            )}
 
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>Add transaction</DialogTitle>
+                    <DialogTitle>
+                        {initialData
+                            ? 'Duplicate transaction'
+                            : 'Add transaction'}
+                    </DialogTitle>
                     <DialogDescription>
                         Quickly log income, expenses, or transfers without
                         leaving the ledger.
@@ -357,15 +462,24 @@ export function AddTransactionModal({
                                     <Input
                                         id="amount"
                                         name="amount"
+                                        ref={amountInputRef}
                                         type="number"
+                                        inputMode="decimal"
                                         step="0.01"
                                         min="0.01"
                                         autoFocus
                                         required
                                         value={amount}
-                                        onChange={(event) =>
-                                            setAmount(event.target.value)
-                                        }
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            if (
+                                                value !== '' &&
+                                                Number(value) < 0
+                                            ) {
+                                                return;
+                                            }
+                                            setAmount(value);
+                                        }}
                                     />
                                     <InputError message={errors.amount} />
                                 </div>
@@ -382,7 +496,9 @@ export function AddTransactionModal({
                                         />
                                         <Select
                                             value={accountId}
-                                            onValueChange={setAccountId}
+                                            onValueChange={
+                                                handleSourceAccountChange
+                                            }
                                         >
                                             <SelectTrigger className="w-full">
                                                 <SelectValue placeholder="Select account" />
@@ -409,14 +525,13 @@ export function AddTransactionModal({
                                         <Label htmlFor="transaction_date">
                                             Date
                                         </Label>
-                                        <Input
+                                        <DatePicker
                                             id="transaction_date"
                                             name="transaction_date"
-                                            type="date"
-                                            defaultValue={new Date()
-                                                .toISOString()
-                                                .slice(0, 10)}
-                                            required
+                                            value={transactionDate}
+                                            onChange={(date) =>
+                                                setTransactionDate(date)
+                                            }
                                         />
                                         <InputError
                                             message={errors.transaction_date}
@@ -813,7 +928,7 @@ export function AddTransactionModal({
                                                     {splitRows.map((split) => (
                                                         <div
                                                             key={split.id}
-                                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 md:grid-cols-[120px_1fr_1fr_auto]"
+                                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[120px_1fr_1fr_auto]"
                                                         >
                                                             <div className="grid gap-2">
                                                                 <Label>
@@ -821,6 +936,7 @@ export function AddTransactionModal({
                                                                 </Label>
                                                                 <Input
                                                                     type="number"
+                                                                    inputMode="decimal"
                                                                     step="0.01"
                                                                     min="0.01"
                                                                     value={
@@ -828,15 +944,27 @@ export function AddTransactionModal({
                                                                     }
                                                                     onChange={(
                                                                         e,
-                                                                    ) =>
+                                                                    ) => {
+                                                                        const value =
+                                                                            e
+                                                                                .target
+                                                                                .value;
+                                                                        if (
+                                                                            value !==
+                                                                                '' &&
+                                                                            Number(
+                                                                                value,
+                                                                            ) <
+                                                                                0
+                                                                        ) {
+                                                                            return;
+                                                                        }
                                                                         updateSplitRow(
                                                                             split.id,
                                                                             'amount',
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
+                                                                            value,
+                                                                        );
+                                                                    }}
                                                                 />
                                                             </div>
 
@@ -1009,8 +1137,12 @@ export function AddTransactionModal({
                                         Description
                                     </Label>
                                     <Input
+                                        key={`desc-${duplicateDate ?? 'default'}`}
                                         id="description"
                                         name="description"
+                                        defaultValue={
+                                            initialData?.description ?? ''
+                                        }
                                         placeholder="Coffee, salary, or transfer note"
                                     />
                                     <InputError message={errors.description} />
@@ -1019,8 +1151,10 @@ export function AddTransactionModal({
                                 <div className="grid gap-2">
                                     <Label htmlFor="notes">Notes</Label>
                                     <Input
+                                        key={`notes-${duplicateDate ?? 'default'}`}
                                         id="notes"
                                         name="notes"
+                                        defaultValue={initialData?.notes ?? ''}
                                         placeholder="Optional details"
                                     />
                                     <InputError message={errors.notes} />
@@ -1074,6 +1208,26 @@ export function AddTransactionModal({
                                         </div>
                                     </div>
                                 )}
+
+                                <div className="flex items-center gap-2">
+                                    <Switch
+                                        id="rapid-entry"
+                                        checked={rapidEntry}
+                                        onCheckedChange={(checked) => {
+                                            setRapidEntry(checked);
+                                            localStorage.setItem(
+                                                'rapid-entry',
+                                                String(checked),
+                                            );
+                                        }}
+                                    />
+                                    <Label
+                                        htmlFor="rapid-entry"
+                                        className="cursor-pointer text-sm text-muted-foreground"
+                                    >
+                                        Keep open for rapid entry
+                                    </Label>
+                                </div>
 
                                 <Button
                                     disabled={processing || showNewPayeeInput}
