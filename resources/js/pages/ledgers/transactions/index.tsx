@@ -42,7 +42,8 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
-import { MoreHorizontal, Paperclip } from 'lucide-react';
+import { MoreHorizontal, Paperclip, Receipt } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import {
@@ -1356,9 +1357,14 @@ export default function TransactionsIndex({
                                     <TableRow>
                                         <TableCell
                                             colSpan={runningBalances ? 10 : 9}
-                                            className="py-8 text-center text-muted-foreground"
                                         >
-                                            No transactions found.
+                                            <EmptyState
+                                                icon={
+                                                    <Receipt className="size-6" />
+                                                }
+                                                title="No transactions yet"
+                                                description="Start tracking your spending by adding your first transaction."
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 ) : (

@@ -1,7 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
+import { CreditCard } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
 import { formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -115,9 +117,15 @@ export default function AccountsIndex({
                 </div>
 
                 {accounts.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                        No accounts yet. Create one to get started.
-                    </p>
+                    <EmptyState
+                        icon={<CreditCard className="size-6" />}
+                        title="No accounts yet"
+                        description="Add your bank accounts and wallets to start tracking."
+                        action={{
+                            label: 'New account',
+                            href: create.url(ledger.id),
+                        }}
+                    />
                 )}
 
                 {grouped.map(({ type, accounts: typeAccounts }) => {

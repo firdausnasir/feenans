@@ -1,8 +1,10 @@
 import { Head, router } from '@inertiajs/react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Tag } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -400,9 +402,11 @@ function CategoryList({
     return (
         <div className="space-y-1">
             {tabCats.length === 0 && !showAddForm && (
-                <p className="py-4 text-sm text-muted-foreground">
-                    No {transactionType} categories yet.
-                </p>
+                <EmptyState
+                    icon={<Tag className="size-6" />}
+                    title={`No ${transactionType} categories yet`}
+                    description="Organize your transactions with categories."
+                />
             )}
 
             {tabCats.map((cat) => {

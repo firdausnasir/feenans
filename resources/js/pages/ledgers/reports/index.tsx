@@ -14,8 +14,10 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -433,9 +435,11 @@ function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
 
     if (chartData.length === 0) {
         return (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                No data for this period.
-            </div>
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No data yet"
+                description="Add some transactions first to see your spending insights."
+            />
         );
     }
 
@@ -512,9 +516,11 @@ function CategoryBreakdownSection({
 
     if (isEmpty) {
         return (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                No expense categories for this period.
-            </div>
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No category data"
+                description="No expense categories found for this period."
+            />
         );
     }
 
@@ -773,9 +779,11 @@ function StatementCyclesSection({
 function PayeeBreakdownSection({ data }: { data: PayeeBreakdownItem[] }) {
     if (data.length === 0) {
         return (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                No payee data for this period.
-            </div>
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No payee data"
+                description="No payee data found for this period."
+            />
         );
     }
 

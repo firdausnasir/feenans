@@ -1,10 +1,13 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Receipt } from 'lucide-react';
 import Heading from '@/components/heading';
+import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -29,10 +32,9 @@ import {
     destroy,
     edit as editRoute,
     index as billsIndex,
-    pay,
     toggle,
 } from '@/routes/ledgers/bills';
-import type { Bill, BreadcrumbItem, Ledger } from '@/types';
+import type { Account, Bill, BreadcrumbItem, Ledger } from '@/types';
 
 function recurrenceDescription(
     type: Bill['recurrence_type'],
@@ -62,9 +64,11 @@ function recurrenceDescription(
 export default function BillsIndex({
     ledger,
     bills,
+    accounts,
 }: {
     ledger: Ledger;
     bills: Bill[];
+    accounts: Account[];
 }) {
     const [billToDelete, setBillToDelete] = useState<Bill | null>(null);
     const [billToPay, setBillToPay] = useState<Bill | null>(null);
@@ -87,25 +91,6 @@ export default function BillsIndex({
                 },
             },
         );
-    }
-
-    function handlePay() {
-        if (!billToPay) {
-            return;
-        }
-
-        router.post(
-            pay.url({ ledger: ledger.id, bill: billToPay.id }),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success('Bill paid');
-                },
-            },
-        );
-
-        setBillToPay(null);
     }
 
     function handleDelete() {
@@ -143,7 +128,15 @@ export default function BillsIndex({
                 </div>
 
                 {bills.length === 0 ? (
-                    <p className="text-muted-foreground">No bills yet.</p>
+                    <EmptyState
+                        icon={<Receipt className="size-6" />}
+                        title="No bills yet"
+                        description="Set up recurring bills to never miss a payment."
+                        action={{
+                            label: 'New bill',
+                            href: create.url(ledger.id),
+                        }}
+                    />
                 ) : (
                     <Card>
                         <CardContent className="p-0">
@@ -276,36 +269,12 @@ export default function BillsIndex({
                 )}
             </div>
 
-            {/* Pay confirmation dialog */}
-            <Dialog
-                open={billToPay !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setBillToPay(null);
-                    }
-                }}
-            >
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Pay bill</DialogTitle>
-                        <DialogDescription>
-                            This will create an expense transaction for{' '}
-                            <strong>{billToPay?.name}</strong> (
-                            {formatAmount(billToPay?.amount ?? 0)}) and advance
-                            the next due date.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => setBillToPay(null)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button onClick={handlePay}>Confirm Payment</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <PayBillDialog
+                bill={billToPay}
+                ledgerId={ledger.id}
+                accounts={accounts}
+                onClose={() => setBillToPay(null)}
+            />
 
             {/* Delete confirmation dialog */}
             <Dialog

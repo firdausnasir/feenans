@@ -1,9 +1,11 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Users } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -210,7 +212,11 @@ export default function PayeesIndex({
                 )}
 
                 {payees.length === 0 && !showAddForm ? (
-                    <p className="text-muted-foreground">No payees yet.</p>
+                    <EmptyState
+                        icon={<Users className="size-6" />}
+                        title="No payees yet"
+                        description="Payees will appear here as you create transactions."
+                    />
                 ) : (
                     <Card>
                         <CardContent className="p-0">
