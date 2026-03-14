@@ -25,6 +25,7 @@ class BillController extends Controller
         return Inertia::render('ledgers/bills/index', [
             'ledger' => $ledger,
             'bills' => $ledger->bills()->with(['account', 'category', 'payee'])->get(),
+            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
         ]);
     }
 

@@ -1,6 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import {
     AlertTriangle,
     Bell,
@@ -8,7 +7,6 @@ import {
     ChevronLeft,
     ChevronRight,
     CreditCard,
-    Pencil,
     TrendingDown,
     TrendingUp,
     Wallet,
@@ -24,6 +22,7 @@ import {
 } from 'recharts';
 
 import { AddTransactionModal } from '@/components/add-transaction-modal';
+import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,7 +32,6 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import {
     ChartContainer,
     ChartTooltip,
@@ -44,7 +42,6 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
 import { show as accountShow } from '@/routes/ledgers/accounts';
-import { pay } from '@/routes/ledgers/bills';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
 import {
     edit as transactionEdit,
@@ -123,6 +120,8 @@ export default function LedgerDashboard({
         { title: ledger.name, href: dashboard.url(ledger.id) },
     ];
 
+    const [payingBill, setPayingBill] = useState<Bill | null>(null);
+
     const hasAnyBills =
         upcomingBills.due.length > 0 ||
         upcomingBills.upcoming.length > 0 ||
@@ -131,17 +130,8 @@ export default function LedgerDashboard({
     const hasUrgentBills =
         upcomingBills.missed.length > 0 || upcomingBills.due.length > 0;
 
-    function handlePayBill(bill: Bill, amount?: string) {
-        router.post(
-            pay.url({ ledger: ledger.id, bill: bill.id }),
-            amount ? { amount } : {},
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success('Bill paid');
-                },
-            },
-        );
+    function handlePayBill(bill: Bill) {
+        setPayingBill(bill);
     }
 
     function navigateCycle(offset: number) {
@@ -687,6 +677,13 @@ export default function LedgerDashboard({
                     </CardContent>
                 </Card>
             </div>
+
+            <PayBillDialog
+                bill={payingBill}
+                ledgerId={ledger.id}
+                accounts={flatAccounts}
+                onClose={() => setPayingBill(null)}
+            />
         </AppLayout>
     );
 }
@@ -730,7 +727,7 @@ function BillSection({
     label: string;
     variant: 'destructive' | 'secondary' | 'outline';
     bills: Bill[];
-    onPay: (bill: Bill, amount?: string) => void;
+    onPay: (bill: Bill) => void;
 }) {
     return (
         <div>
@@ -746,34 +743,13 @@ function BillSection({
     );
 }
 
-function BillRow({
-    bill,
-    onPay,
-}: {
-    bill: Bill;
-    onPay: (bill: Bill, amount?: string) => void;
-}) {
-    const [isEditingAmount, setIsEditingAmount] = useState(false);
-    const [amount, setAmount] = useState(String(bill.amount));
-
+function BillRow({ bill, onPay }: { bill: Bill; onPay: (bill: Bill) => void }) {
     return (
         <div className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50">
             <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{bill.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {isEditingAmount ? (
-                        <Input
-                            type="number"
-                            step="0.01"
-                            value={amount}
-                            onChange={(
-                                event: React.ChangeEvent<HTMLInputElement>,
-                            ) => setAmount(event.target.value)}
-                            className="h-8 w-28"
-                        />
-                    ) : (
-                        <span>{formatAmount(bill.amount)}</span>
-                    )}
+                    <span>{formatAmount(bill.amount)}</span>
                     <span>&middot;</span>
                     <span>{formatDate(bill.next_due_date)}</span>
                 </div>
@@ -781,20 +757,9 @@ function BillRow({
             <div className="ml-3 flex shrink-0 items-center gap-2">
                 <Button
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8"
-                    onClick={() => setIsEditingAmount((current) => !current)}
-                >
-                    <Pencil className="size-4" />
-                </Button>
-                <Button
-                    type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                        onPay(bill, isEditingAmount ? amount : undefined)
-                    }
+                    onClick={() => onPay(bill)}
                     className="shrink-0"
                 >
                     Pay
