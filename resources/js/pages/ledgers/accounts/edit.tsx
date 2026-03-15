@@ -195,7 +195,8 @@ export default function EditAccount({
                                 <Input
                                     id="initial_balance"
                                     name="initial_balance"
-                                    type="number" inputMode="decimal"
+                                    type="number"
+                                    inputMode="decimal"
                                     step="0.01"
                                     defaultValue={account.initial_balance}
                                     required
@@ -215,7 +216,8 @@ export default function EditAccount({
                                     <Input
                                         id="statement_day"
                                         name="statement_day"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         max="31"
                                         defaultValue={

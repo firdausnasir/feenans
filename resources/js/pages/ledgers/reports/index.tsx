@@ -1,4 +1,12 @@
 import { Head, router } from '@inertiajs/react';
+import {
+    ArrowDown,
+    ArrowUp,
+    BarChart3,
+    Minus,
+    SlidersHorizontal,
+    ChevronDown,
+} from 'lucide-react';
 import { useState } from 'react';
 import {
     Bar,
@@ -14,19 +22,10 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import {
-    ArrowDown,
-    ArrowUp,
-    BarChart3,
-    Minus,
-    SlidersHorizontal,
-    ChevronDown,
-} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -433,6 +432,7 @@ function DateRangeSelector({
         if (compareEnabled && dateRange.compare_start) {
             clearComparison();
         }
+
         onCompareToggle();
     }
 

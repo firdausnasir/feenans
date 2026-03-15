@@ -126,7 +126,8 @@ export default function CreateBill({
                                 <Input
                                     id="amount"
                                     name="amount"
-                                    type="number" inputMode="decimal"
+                                    type="number"
+                                    inputMode="decimal"
                                     step="0.01"
                                     min="0.01"
                                     required
@@ -321,7 +322,8 @@ export default function CreateBill({
                                     <Input
                                         id="recurrence_interval"
                                         name="recurrence_interval"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         defaultValue="1"
                                         required
@@ -345,7 +347,8 @@ export default function CreateBill({
                                     <Input
                                         id="recurrence_day"
                                         name="recurrence_day"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         max="31"
                                         placeholder="e.g. 15"
@@ -443,7 +446,8 @@ export default function CreateBill({
                                     <Input
                                         id="end_after_occurrences"
                                         name="end_after_occurrences"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         required
                                     />

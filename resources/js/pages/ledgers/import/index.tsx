@@ -144,6 +144,7 @@ export default function ImportIndex({
                 if (res.ok) {
                     return res.json();
                 }
+
                 return [];
             })
             .then((data: SavedMapping[]) => setSavedMappings(data))
@@ -179,6 +180,7 @@ export default function ImportIndex({
                     errorData?.message ??
                     'Failed to parse CSV. Please check the file and try again.';
                 setParseError(message);
+
                 return;
             }
 
@@ -198,6 +200,7 @@ export default function ImportIndex({
                 };
                 setMapping(bankMapping);
                 setStep(2);
+
                 return;
             }
 
@@ -212,6 +215,7 @@ export default function ImportIndex({
 
             for (const header of data.headers) {
                 const lower = header.toLowerCase();
+
                 if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
                     autoMapping.date = header;
                 } else if (
@@ -253,6 +257,7 @@ export default function ImportIndex({
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+
         if (file) {
             void handleFile(file);
         }
@@ -262,6 +267,7 @@ export default function ImportIndex({
         e.preventDefault();
         setDragOver(false);
         const file = e.dataTransfer.files[0];
+
         if (file) {
             void handleFile(file);
         }
@@ -283,6 +289,7 @@ export default function ImportIndex({
 
     const handleLoadSavedMapping = (mappingId: string) => {
         const saved = savedMappings.find((m) => String(m.id) === mappingId);
+
         if (!saved) {
             return;
         }
@@ -383,11 +390,15 @@ export default function ImportIndex({
         if (!parseResult) {
             return '';
         }
+
         const col = mapping[field];
+
         if (!col || col === NOT_MAPPED) {
             return '\u2014';
         }
+
         const idx = parseResult.headers.indexOf(col);
+
         return idx >= 0 ? (row[idx] ?? '\u2014') : '\u2014';
     };
 

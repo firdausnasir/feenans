@@ -1,12 +1,11 @@
 import { Head, router } from '@inertiajs/react';
+import { Search, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, Users } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -15,6 +14,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import {
     Table,
@@ -93,11 +93,13 @@ export default function PayeesIndex({
     function toggleSelection(payeeId: number) {
         setSelectedIds((prev) => {
             const next = new Set(prev);
+
             if (next.has(payeeId)) {
                 next.delete(payeeId);
             } else {
                 next.add(payeeId);
             }
+
             return next;
         });
     }
@@ -119,6 +121,7 @@ export default function PayeesIndex({
         if (!mergeState) {
             return;
         }
+
         setMergeState({
             source: mergeState.target,
             target: mergeState.source,

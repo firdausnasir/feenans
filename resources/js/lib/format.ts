@@ -19,7 +19,11 @@ const currencyFormatter = new Intl.NumberFormat('en-MY', {
  */
 export function formatAmount(amount: number | string): string {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    if (isNaN(num)) return 'RM 0.00';
+
+    if (isNaN(num)) {
+        return 'RM 0.00';
+    }
+
     return currencyFormatter.format(num).replace('MYR', 'RM');
 }
 
@@ -29,7 +33,11 @@ export function formatAmount(amount: number | string): string {
  */
 export function formatAbsAmount(amount: number | string): string {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    if (isNaN(num)) return 'RM 0.00';
+
+    if (isNaN(num)) {
+        return 'RM 0.00';
+    }
+
     return currencyFormatter.format(Math.abs(num)).replace('MYR', 'RM');
 }
 
@@ -41,6 +49,7 @@ export function formatAbsAmount(amount: number | string): string {
 function parseDate(dateStr: string): Date {
     // Strip any time/timezone component and treat as local midnight
     const dateOnly = dateStr.slice(0, 10); // "YYYY-MM-DD"
+
     return new Date(dateOnly + 'T00:00:00');
 }
 

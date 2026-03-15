@@ -67,7 +67,18 @@ class CategoryController extends Controller
     {
         $this->authorize('delete', $ledger);
 
+        $hasReassignKey = $request->has('reassign_category_id');
         $reassignCategoryId = $request->validated('reassign_category_id');
+
+        // Reject deletion if category has children and no explicit reassignment acknowledged
+        if ($category->children()->exists() && ! $hasReassignKey) {
+            return back()->withErrors(['category' => 'Cannot delete a category that has subcategories. Remove or reassign them first.']);
+        }
+
+        // Reject deletion if category has transactions and no explicit reassignment acknowledged
+        if ($category->transactions()->exists() && ! $hasReassignKey) {
+            return back()->withErrors(['category' => 'Cannot delete a category that has transactions. Please reassign them first.']);
+        }
 
         DB::transaction(function () use ($category, $reassignCategoryId) {
             // Reassign transactions from this category (and its children) to the target or null

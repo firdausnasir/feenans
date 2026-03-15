@@ -18,7 +18,9 @@ type ActivityItem = {
     user?: { name: string } | null;
 };
 
-function actionVariant(action: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+function actionVariant(
+    action: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' {
     switch (action) {
         case 'created':
             return 'default';
@@ -52,23 +54,35 @@ function formatFieldName(field: string): string {
         .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function ChangeDiff({ oldValues, newValues, action }: {
+function ChangeDiff({
+    oldValues,
+    newValues,
+    action,
+}: {
     oldValues: Record<string, unknown>;
     newValues: Record<string, unknown>;
     action: string;
 }) {
     if (action === 'updated') {
-        const keys = [...new Set([...Object.keys(oldValues), ...Object.keys(newValues)])];
+        const keys = [
+            ...new Set([...Object.keys(oldValues), ...Object.keys(newValues)]),
+        ];
 
         if (keys.length === 0) {
-            return <p className="text-xs text-muted-foreground italic">No field changes recorded.</p>;
+            return (
+                <p className="text-xs text-muted-foreground italic">
+                    No field changes recorded.
+                </p>
+            );
         }
 
         return (
             <div className="space-y-1">
                 {keys.map((key) => (
                     <div key={key} className="text-xs">
-                        <span className="font-medium">{formatFieldName(key)}:</span>{' '}
+                        <span className="font-medium">
+                            {formatFieldName(key)}:
+                        </span>{' '}
                         <span className="text-red-600 line-through dark:text-red-400">
                             {formatValue(oldValues[key])}
                         </span>
@@ -96,7 +110,9 @@ function ChangeDiff({ oldValues, newValues, action }: {
             <div className="space-y-1">
                 {displayEntries.map(([key, value]) => (
                     <div key={key} className="text-xs">
-                        <span className="font-medium">{formatFieldName(key)}:</span>{' '}
+                        <span className="font-medium">
+                            {formatFieldName(key)}:
+                        </span>{' '}
                         <span className="text-green-600 dark:text-green-400">
                             {formatValue(value)}
                         </span>
@@ -120,7 +136,9 @@ function ChangeDiff({ oldValues, newValues, action }: {
             <div className="space-y-1">
                 {displayEntries.map(([key, value]) => (
                     <div key={key} className="text-xs">
-                        <span className="font-medium">{formatFieldName(key)}:</span>{' '}
+                        <span className="font-medium">
+                            {formatFieldName(key)}:
+                        </span>{' '}
                         <span className="text-red-600 line-through dark:text-red-400">
                             {formatValue(value)}
                         </span>
@@ -155,7 +173,9 @@ function ActivityEntry({ entry }: { entry: ActivityItem }) {
                         <div>
                             <p className="text-sm font-medium">
                                 {entry.subject_type}
-                                {entry.subject_id ? ` #${entry.subject_id}` : ''}
+                                {entry.subject_id
+                                    ? ` #${entry.subject_id}`
+                                    : ''}
                             </p>
                         </div>
                     </div>
@@ -165,17 +185,20 @@ function ActivityEntry({ entry }: { entry: ActivityItem }) {
                                 {entry.user?.name ?? 'System'}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                {new Date(entry.created_at).toLocaleDateString(undefined, {
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                })}
+                                {new Date(entry.created_at).toLocaleDateString(
+                                    undefined,
+                                    {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                    },
+                                )}
                             </p>
                         </div>
                         {hasDetails && (
-                            <span className="text-muted-foreground text-xs">
+                            <span className="text-xs text-muted-foreground">
                                 {expanded ? '▲' : '▼'}
                             </span>
                         )}

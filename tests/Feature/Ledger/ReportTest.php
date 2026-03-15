@@ -152,7 +152,8 @@ test('category breakdown only includes expenses not income', function () {
 
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/reports/index')
-        ->has('categoryBreakdown', 0)
+        ->has('categoryBreakdown.items', 0)
+        ->has('categoryBreakdown.parents', 0)
         ->etc()
     );
 });

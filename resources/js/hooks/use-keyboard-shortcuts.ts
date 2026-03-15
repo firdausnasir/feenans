@@ -20,23 +20,33 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
                 callbacks.onCommandPalette?.();
+
                 return;
             }
 
             // Escape always works
             if (e.key === 'Escape') {
                 callbacks.onEscape?.();
+
                 return;
             }
 
             // Other shortcuts only when not in input
-            if (isInput) return;
+            if (isInput) {
+                return;
+            }
 
-            if (e.key === 'n') callbacks.onNewTransaction?.();
-            if (e.key === '?') callbacks.onShowHelp?.();
+            if (e.key === 'n') {
+                callbacks.onNewTransaction?.();
+            }
+
+            if (e.key === '?') {
+                callbacks.onShowHelp?.();
+            }
         }
 
         document.addEventListener('keydown', handleKeyDown);
+
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [callbacks]);
 }

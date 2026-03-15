@@ -31,11 +31,11 @@ import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as billsIndex } from '@/routes/ledgers/bills';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import { index as categoriesIndex } from '@/routes/ledgers/categories';
+import { create as importCreate } from '@/routes/ledgers/import';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
-import { index as tagsIndex } from '@/routes/ledgers/tags';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
-import { create as importCreate } from '@/routes/ledgers/import';
+import { index as tagsIndex } from '@/routes/ledgers/tags';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { NavItem } from '@/types';
 

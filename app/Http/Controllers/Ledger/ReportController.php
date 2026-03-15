@@ -294,7 +294,7 @@ class ReportController extends Controller
         $transactions = $categoryQuery->get();
 
         if ($transactions->isEmpty()) {
-            return [];
+            return ['items' => [], 'parents' => []];
         }
 
         // Build per-category totals (subcategories and parents that have direct transactions)

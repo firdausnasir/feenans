@@ -1,22 +1,23 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import {
-    AddTransactionModal,
-    type DuplicateData,
-} from '@/components/add-transaction-modal';
+    MoreHorizontal,
+    Paperclip,
+    Receipt,
+    SlidersHorizontal,
+    ChevronDown,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { AddTransactionModal } from '@/components/add-transaction-modal';
+import type { DuplicateData } from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
+import { TagPill } from '@/components/tag-pill';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -25,10 +26,15 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/ui/date-picker';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import {
     Select,
     SelectContent,
@@ -36,6 +42,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
     Table,
     TableBody,
@@ -46,16 +53,7 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
-import {
-    MoreHorizontal,
-    Paperclip,
-    Receipt,
-    SlidersHorizontal,
-    ChevronDown,
-} from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import {
     bulkDestroy,
     bulkUpdate,
@@ -65,7 +63,7 @@ import {
     restore,
     update,
 } from '@/routes/ledgers/transactions';
-import { TagPill } from '@/components/tag-pill';
+import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
     Attachment,
@@ -942,6 +940,8 @@ export default function TransactionsIndex({
     // accidentally fire a new search and reset the page back to 1.
     const lastNavigatedSearch = useRef<string | null>(filters.search);
 
+    // Only re-run when `localFilters.search` changes — other filters are
+    // applied via explicit "Apply" actions, not this debounced effect.
     useEffect(() => {
         // Skip if the search value hasn't actually changed from what was last
         // navigated (covers the case where localFilters is reset from props).
@@ -974,6 +974,7 @@ export default function TransactionsIndex({
                 clearTimeout(searchDebounceRef.current);
             }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [localFilters.search]);
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -1155,9 +1156,15 @@ export default function TransactionsIndex({
 
     // Compute running balances when a single account is filtered
     const runningBalances = (() => {
-        if (!filteredAccount) return null;
+        if (!filteredAccount) {
+            return null;
+        }
+
         const txns = transactions.data;
-        if (txns.length === 0) return null;
+
+        if (txns.length === 0) {
+            return null;
+        }
 
         // current_balance reflects the account's balance after all transactions.
         // Transactions are ordered desc (newest first).
@@ -1202,6 +1209,7 @@ export default function TransactionsIndex({
 
         if (transactions.current_page === 1) {
             let cumulativeBefore = 0;
+
             for (const txn of txns) {
                 balances.set(txn.id, currentBalance - cumulativeBefore);
                 cumulativeBefore += parseFloat(txn.amount);
@@ -1224,7 +1232,10 @@ export default function TransactionsIndex({
             localFilters.tag_id,
             localFilters.uncategorized,
         ].filter((v) => v !== null && v !== '' && v !== 'all').length +
-        (localFilters.date_from || localFilters.date_to ? 1 : 0);
+        (localFilters.date_from !== filters.date_from ||
+        localFilters.date_to !== filters.date_to
+            ? 1
+            : 0);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>

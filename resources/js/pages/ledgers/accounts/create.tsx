@@ -88,7 +88,12 @@ export default function CreateAccount({
 
                             <div className="grid gap-2">
                                 <Label htmlFor="name">Account name</Label>
-                                <Input id="name" name="name" required />
+                                <Input
+                                    id="name"
+                                    name="name"
+                                    required
+                                    placeholder="e.g., Maybank Savings, Cash Wallet"
+                                />
                                 <InputError message={errors.name} />
                             </div>
 
@@ -99,12 +104,17 @@ export default function CreateAccount({
                                 <Input
                                     id="initial_balance"
                                     name="initial_balance"
-                                    type="number" inputMode="decimal"
+                                    type="number"
+                                    inputMode="decimal"
                                     step="0.01"
                                     defaultValue="0"
                                     required
                                 />
                                 <InputError message={errors.initial_balance} />
+                                <p className="text-xs text-muted-foreground">
+                                    Enter your current account balance. This is
+                                    your starting point for tracking.
+                                </p>
                             </div>
 
                             <input

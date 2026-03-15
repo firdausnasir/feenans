@@ -144,7 +144,8 @@ export default function EditBill({
                                 <Input
                                     id="amount"
                                     name="amount"
-                                    type="number" inputMode="decimal"
+                                    type="number"
+                                    inputMode="decimal"
                                     step="0.01"
                                     min="0.01"
                                     defaultValue={bill.amount}
@@ -340,7 +341,8 @@ export default function EditBill({
                                     <Input
                                         id="recurrence_interval"
                                         name="recurrence_interval"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         defaultValue={bill.recurrence_interval}
                                         required
@@ -364,7 +366,8 @@ export default function EditBill({
                                     <Input
                                         id="recurrence_day"
                                         name="recurrence_day"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         max="31"
                                         defaultValue={
@@ -465,7 +468,8 @@ export default function EditBill({
                                     <Input
                                         id="end_after_occurrences"
                                         name="end_after_occurrences"
-                                        type="number" inputMode="decimal"
+                                        type="number"
+                                        inputMode="decimal"
                                         min="1"
                                         defaultValue={
                                             bill.end_after_occurrences ??

@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -11,8 +13,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -140,6 +140,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         if (!confirm(`Delete budget for "${budget.category_name}"?`)) {
             return;
         }
+
         router.delete(
             destroyBudget.url({ ledger: ledger.id, budget: budget.id }),
             {

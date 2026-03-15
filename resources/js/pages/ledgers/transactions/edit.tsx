@@ -11,21 +11,21 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import {
     destroy,
     edit as transactionEdit,
     index as transactionsIndex,
     update,
 } from '@/routes/ledgers/transactions';
+import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
     Attachment,
@@ -424,19 +424,22 @@ export default function TransactionEdit({
                                     <div className="grid gap-2">
                                         <Label>Amount</Label>
                                         <Input
-                                            type="number" inputMode="decimal"
+                                            type="number"
+                                            inputMode="decimal"
                                             step="0.01"
                                             min="0.01"
                                             value={form.amount}
                                             onChange={(event) => {
                                                 const value =
                                                     event.target.value;
+
                                                 if (
                                                     value !== '' &&
                                                     Number(value) < 0
                                                 ) {
                                                     return;
                                                 }
+
                                                 setForm((current) => ({
                                                     ...current,
                                                     amount: value,
@@ -608,7 +611,8 @@ export default function TransactionEdit({
                                                                 Amount
                                                             </Label>
                                                             <Input
-                                                                type="number" inputMode="decimal"
+                                                                type="number"
+                                                                inputMode="decimal"
                                                                 step="0.01"
                                                                 min="0.01"
                                                                 value={
@@ -621,6 +625,7 @@ export default function TransactionEdit({
                                                                         event
                                                                             .target
                                                                             .value;
+
                                                                     if (
                                                                         value !==
                                                                             '' &&
@@ -630,6 +635,7 @@ export default function TransactionEdit({
                                                                     ) {
                                                                         return;
                                                                     }
+
                                                                     updateSplit(
                                                                         split.id,
                                                                         'amount',

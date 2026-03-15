@@ -1,6 +1,4 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
-import { toast } from 'sonner';
 import {
     AlertTriangle,
     Bell,
@@ -15,6 +13,7 @@ import {
     Wallet,
     X,
 } from 'lucide-react';
+import { useState } from 'react';
 import {
     Area,
     AreaChart,
@@ -24,6 +23,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { toast } from 'sonner';
 
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import { PayBillDialog } from '@/components/pay-bill-dialog';
@@ -40,8 +40,9 @@ import {
     ChartContainer,
     ChartTooltip,
     ChartTooltipContent,
-    type ChartConfig,
 } from '@/components/ui/chart';
+import type { ChartConfig } from '@/components/ui/chart';
+import { Progress } from '@/components/ui/progress';
 import {
     Table,
     TableBody,
@@ -59,17 +60,17 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
 import {
+    create as createAccount,
     index as accountsIndex,
     show as accountShow,
 } from '@/routes/ledgers/accounts';
+import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
 import { store as storeSampleData } from '@/routes/ledgers/sample-data';
 import {
     edit as transactionEdit,
     index as transactionsIndex,
 } from '@/routes/ledgers/transactions';
-import { Progress } from '@/components/ui/progress';
-import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import type {
     Account,
     AccountType,
@@ -108,6 +109,7 @@ const expenseChartConfig: ChartConfig = {
 
 function formatChartDate(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
+
     return d.toLocaleDateString('en-MY', { month: 'short', day: 'numeric' });
 }
 
@@ -259,16 +261,24 @@ export default function LedgerDashboard({
                                     how everything works.
                                 </p>
                             </div>
-                            <Button
-                                onClick={handleLoadSampleData}
-                                disabled={isLoadingSampleData}
-                                variant="outline"
-                            >
-                                <DatabaseZap className="mr-2 size-4" />
-                                {isLoadingSampleData
-                                    ? 'Loading...'
-                                    : 'Load Sample Data'}
-                            </Button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <Button asChild>
+                                    <Link href={createAccount.url(ledger.id)}>
+                                        <CreditCard className="mr-2 size-4" />
+                                        Add Your First Account
+                                    </Link>
+                                </Button>
+                                <Button
+                                    onClick={handleLoadSampleData}
+                                    disabled={isLoadingSampleData}
+                                    variant="outline"
+                                >
+                                    <DatabaseZap className="mr-2 size-4" />
+                                    {isLoadingSampleData
+                                        ? 'Loading...'
+                                        : 'Load Sample Data'}
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 )}
@@ -462,7 +472,7 @@ export default function LedgerDashboard({
                             <div className="space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1">
                                 {!hasAnyBills && (
                                     <p className="text-sm text-muted-foreground">
-                                        No upcoming bills.
+                                        No upcoming recurring transactions.
                                     </p>
                                 )}
 
@@ -566,10 +576,11 @@ export default function LedgerDashboard({
                                                 vertical={false}
                                             />
                                             <XAxis
-                                                type="number"
+                                                dataKey="date"
                                                 tickLine={false}
                                                 axisLine={false}
                                                 fontSize={12}
+                                                tickFormatter={formatChartDate}
                                             />
                                             <YAxis
                                                 tickLine={false}
@@ -579,7 +590,15 @@ export default function LedgerDashboard({
                                             />
                                             <ChartTooltip
                                                 content={
-                                                    <ChartTooltipContent />
+                                                    <ChartTooltipContent
+                                                        labelFormatter={(
+                                                            value,
+                                                        ) =>
+                                                            formatChartDate(
+                                                                String(value),
+                                                            )
+                                                        }
+                                                    />
                                                 }
                                             />
                                             <defs>
@@ -797,6 +816,7 @@ export default function LedgerDashboard({
                                                                 c.name ===
                                                                 data.name,
                                                         );
+
                                                     if (category) {
                                                         router.visit(
                                                             transactionsIndex.url(
@@ -848,6 +868,7 @@ export default function LedgerDashboard({
                                             danger: 'text-orange-600 dark:text-orange-400',
                                             over: 'text-red-600 dark:text-red-400',
                                         };
+
                                     return (
                                         <div
                                             key={budget.id}

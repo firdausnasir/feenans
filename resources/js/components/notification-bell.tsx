@@ -204,13 +204,13 @@ export function NotificationBell() {
                                     {notificationIcon(notification.data.type)}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="font-medium leading-tight">
+                                    <p className="leading-tight font-medium">
                                         {notificationTitle(notification.data)}
                                     </p>
-                                    <p className="text-muted-foreground truncate text-xs">
+                                    <p className="truncate text-xs text-muted-foreground">
                                         {notificationBody(notification.data)}
                                     </p>
-                                    <p className="text-muted-foreground mt-0.5 text-[10px]">
+                                    <p className="mt-0.5 text-[10px] text-muted-foreground">
                                         {relativeTime(notification.created_at)}
                                     </p>
                                 </div>
@@ -219,9 +219,7 @@ export function NotificationBell() {
                                     variant="ghost"
                                     size="icon"
                                     className="size-6 shrink-0"
-                                    onClick={() =>
-                                        markOneRead(notification.id)
-                                    }
+                                    onClick={() => markOneRead(notification.id)}
                                     title="Mark as read"
                                 >
                                     <Check className="size-3" />
@@ -232,7 +230,7 @@ export function NotificationBell() {
                 )}
 
                 {hasMore && (
-                    <p className="text-muted-foreground text-center text-xs">
+                    <p className="text-center text-xs text-muted-foreground">
                         View all ({totalCount} total)
                     </p>
                 )}
