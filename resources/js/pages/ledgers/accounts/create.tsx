@@ -1,5 +1,5 @@
-import { Form, Head } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
@@ -26,15 +26,25 @@ export default function CreateAccount({
     ledger: Ledger;
     accountTypes: AccountType[];
 }) {
-    const [accountTypeId, setAccountTypeId] = useState(
-        String(accountTypes[0]?.id ?? ''),
-    );
+    const { data, setData, post, processing, errors, clearErrors } = useForm({
+        account_type_id: String(accountTypes[0]?.id ?? ''),
+        name: '',
+        initial_balance: '0',
+        include_in_totals: '1',
+    });
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Accounts', href: accountsIndex.url(ledger.id) },
         { title: 'Create account', href: create.url(ledger.id) },
     ];
+
+    function submit(e: FormEvent) {
+        e.preventDefault();
+        post(AccountController.store.url(ledger.id), {
+            onSuccess: () => toast.success('Account created'),
+        });
+    }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -46,89 +56,85 @@ export default function CreateAccount({
                     description="Add a new account to this ledger."
                 />
 
-                <Form
-                    {...AccountController.store.form(ledger.id)}
+                <form
+                    onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Account created')}
                 >
-                    {({ errors, processing }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="account_type_id">
-                                    Account type
-                                </Label>
-                                <input
-                                    type="hidden"
-                                    name="account_type_id"
-                                    value={accountTypeId}
-                                />
-                                <Select
-                                    value={accountTypeId}
-                                    onValueChange={setAccountTypeId}
-                                >
-                                    <SelectTrigger
-                                        id="account_type_id"
-                                        className="w-full"
+                    <div className="grid gap-2">
+                        <Label htmlFor="account_type_id">
+                            Account type
+                        </Label>
+                        <Select
+                            value={data.account_type_id}
+                            onValueChange={(value) => {
+                                setData('account_type_id', value);
+                                clearErrors('account_type_id');
+                            }}
+                        >
+                            <SelectTrigger
+                                id="account_type_id"
+                                className="w-full"
+                            >
+                                <SelectValue placeholder="Select a type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {accountTypes.map((accountType) => (
+                                    <SelectItem
+                                        key={accountType.id}
+                                        value={String(accountType.id)}
                                     >
-                                        <SelectValue placeholder="Select a type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {accountTypes.map((accountType) => (
-                                            <SelectItem
-                                                key={accountType.id}
-                                                value={String(accountType.id)}
-                                            >
-                                                {accountType.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.account_type_id} />
-                            </div>
+                                        {accountType.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.account_type_id} />
+                    </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Account name</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    required
-                                    placeholder="e.g., Maybank Savings, Cash Wallet"
-                                />
-                                <InputError message={errors.name} />
-                            </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="name">Account name</Label>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={data.name}
+                            onChange={(e) => {
+                                setData('name', e.target.value);
+                                clearErrors('name');
+                            }}
+                            required
+                            placeholder="e.g., Maybank Savings, Cash Wallet"
+                        />
+                        <InputError message={errors.name} />
+                    </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="initial_balance">
-                                    Initial balance
-                                </Label>
-                                <Input
-                                    id="initial_balance"
-                                    name="initial_balance"
-                                    type="number"
-                                    inputMode="decimal"
-                                    step="0.01"
-                                    defaultValue="0"
-                                    required
-                                />
-                                <InputError message={errors.initial_balance} />
-                                <p className="text-xs text-muted-foreground">
-                                    Enter your current account balance. This is
-                                    your starting point for tracking.
-                                </p>
-                            </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="initial_balance">
+                            Initial balance
+                        </Label>
+                        <Input
+                            id="initial_balance"
+                            name="initial_balance"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            value={data.initial_balance}
+                            onChange={(e) => {
+                                setData('initial_balance', e.target.value);
+                                clearErrors('initial_balance');
+                            }}
+                            required
+                        />
+                        <InputError message={errors.initial_balance} />
+                        <p className="text-xs text-muted-foreground">
+                            Enter your current account balance. This is
+                            your starting point for tracking.
+                        </p>
+                    </div>
 
-                            <input
-                                type="hidden"
-                                name="include_in_totals"
-                                value="1"
-                            />
-
-                            <Button disabled={processing}>
-                                Create account
-                            </Button>
-                        </>
-                    )}
-                </Form>
+                    <Button disabled={processing}>
+                        Create account
+                    </Button>
+                </form>
             </div>
         </AppLayout>
     );

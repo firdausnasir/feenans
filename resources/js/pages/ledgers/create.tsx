@@ -1,5 +1,5 @@
-import { Form, Head } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { CurrencySelect } from '@/components/currency-select';
@@ -28,7 +28,18 @@ export default function CreateLedger({
 }: {
     defaults: { currency_code: string; uses_seeded_categories: boolean };
 }) {
-    const [currencyCode, setCurrencyCode] = useState(defaults.currency_code);
+    const { data, setData, post, processing, errors, clearErrors } = useForm({
+        name: 'My Finances',
+        currency_code: defaults.currency_code,
+        uses_seeded_categories: defaults.uses_seeded_categories ? '1' : '0',
+    });
+
+    function submit(e: FormEvent) {
+        e.preventDefault();
+        post(LedgerController.store.url(), {
+            onSuccess: () => toast.success('Workspace created'),
+        });
+    }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -40,52 +51,41 @@ export default function CreateLedger({
                     description="Set up a new financial space with custom accounts and categories."
                 />
 
-                <Form
-                    {...LedgerController.store.form()}
+                <form
+                    onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Workspace created')}
                 >
-                    {({ errors, processing }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Workspace name</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    defaultValue="My Finances"
-                                    required
-                                />
-                                <InputError message={errors.name} />
-                            </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="name">Workspace name</Label>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={data.name}
+                            onChange={(e) => {
+                                setData('name', e.target.value);
+                                clearErrors('name');
+                            }}
+                            required
+                        />
+                        <InputError message={errors.name} />
+                    </div>
 
-                            <div className="grid gap-2">
-                                <Label>Currency code</Label>
-                                <CurrencySelect
-                                    value={currencyCode}
-                                    onValueChange={setCurrencyCode}
-                                />
-                                <input
-                                    type="hidden"
-                                    name="currency_code"
-                                    value={currencyCode}
-                                />
-                                <InputError message={errors.currency_code} />
-                            </div>
+                    <div className="grid gap-2">
+                        <Label>Currency code</Label>
+                        <CurrencySelect
+                            value={data.currency_code}
+                            onValueChange={(value) => {
+                                setData('currency_code', value);
+                                clearErrors('currency_code');
+                            }}
+                        />
+                        <InputError message={errors.currency_code} />
+                    </div>
 
-                            <input
-                                type="hidden"
-                                name="uses_seeded_categories"
-                                value={
-                                    defaults.uses_seeded_categories ? '1' : '0'
-                                }
-                            />
-
-                            <Button disabled={processing}>
-                                Create workspace
-                            </Button>
-                        </>
-                    )}
-                </Form>
+                    <Button disabled={processing}>
+                        Create workspace
+                    </Button>
+                </form>
             </div>
         </AppLayout>
     );
