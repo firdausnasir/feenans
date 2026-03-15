@@ -1,6 +1,6 @@
 import { Head, router } from '@inertiajs/react';
-import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { TagPill } from '@/components/tag-pill';

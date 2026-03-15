@@ -1,0 +1,51 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      SSL_MODE: "off"
+    volumes:
+      - app-storage:/var/www/html/storage
+      - db-data:/var/www/html/database
+    depends_on:
+      - redis
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["php", "/var/www/html/artisan", "schedule:work", "--no-interaction"]
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/html/storage
+      - db-data:/var/www/html/database
+    depends_on:
+      - app
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["php", "/var/www/html/artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--no-interaction"]
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/html/storage
+      - db-data:/var/www/html/database
+    depends_on:
+      - app
+
+  redis:
+    image: redis:latest
+    volumes:
+      - redis-data:/data
+
+volumes:
+  app-storage:
+  db-data:
+  redis-data:

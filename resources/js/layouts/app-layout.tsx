@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CommandPalette } from '@/components/command-palette';
 import { KeyboardShortcutsHelp } from '@/components/keyboard-shortcuts-help';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';

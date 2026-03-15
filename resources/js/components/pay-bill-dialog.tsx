@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
 import { router } from '@inertiajs/react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -10,7 +11,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -40,15 +40,15 @@ export function PayBillDialog({
     const [accountId, setAccountId] = useState('');
     const [paymentDate, setPaymentDate] = useState('');
     const [processing, setProcessing] = useState(false);
+    const [prevBill, setPrevBill] = useState(bill);
 
-    useEffect(() => {
-        if (bill) {
-            setAmount(String(bill.amount));
-            setAccountId(String(bill.account_id));
-            setPaymentDate(new Date().toISOString().slice(0, 10));
-            setProcessing(false);
-        }
-    }, [bill]);
+    if (bill && bill !== prevBill) {
+        setPrevBill(bill);
+        setAmount(String(bill.amount));
+        setAccountId(String(bill.account_id));
+        setPaymentDate(new Date().toISOString().slice(0, 10));
+        setProcessing(false);
+    }
 
     function handleOpenChange(open: boolean) {
         if (!open) {
@@ -97,10 +97,6 @@ export function PayBillDialog({
         });
     }
 
-    const selectedAccount = accounts.find(
-        (account) => String(account.id) === accountId,
-    );
-
     return (
         <Dialog open={bill !== null} onOpenChange={handleOpenChange}>
             <DialogContent>
@@ -118,7 +114,8 @@ export function PayBillDialog({
                         <Label htmlFor="pay-amount">Amount</Label>
                         <Input
                             id="pay-amount"
-                            type="number" inputMode="decimal"
+                            type="number"
+                            inputMode="decimal"
                             step="0.01"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}

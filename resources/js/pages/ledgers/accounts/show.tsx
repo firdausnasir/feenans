@@ -1,6 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import {
     Area,
     AreaChart,
@@ -10,6 +9,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {

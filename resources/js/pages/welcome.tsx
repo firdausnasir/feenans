@@ -1,6 +1,3 @@
-import AppLogoIcon from '@/components/app-logo-icon';
-import { Button } from '@/components/ui/button';
-import { dashboard, login, register } from '@/routes';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowRight,
@@ -26,6 +23,9 @@ import {
     UserX,
 } from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
+import AppLogoIcon from '@/components/app-logo-icon';
+import { Button } from '@/components/ui/button';
+import { dashboard, login, register } from '@/routes';
 
 type Feature = {
     readonly icon: ComponentType<SVGAttributes<SVGElement>>;

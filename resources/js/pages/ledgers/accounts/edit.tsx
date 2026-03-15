@@ -1,4 +1,5 @@
-import { Form, Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
@@ -47,13 +48,15 @@ export default function EditAccount({
     const selectedType = accountTypes.find(
         (t) => t.id === account.account_type_id,
     );
-    const [accountTypeId, setAccountTypeId] = useState(
-        String(account.account_type_id),
-    );
     const [isCredit, setIsCredit] = useState(selectedType?.is_credit ?? false);
-    const [includeInTotals, setIncludeInTotals] = useState(
-        account.include_in_totals,
-    );
+
+    const { data, setData, put, processing, errors, clearErrors } = useForm({
+        account_type_id: String(account.account_type_id),
+        name: account.name,
+        initial_balance: account.initial_balance,
+        statement_day: account.statement_day != null ? String(account.statement_day) : '',
+        include_in_totals: account.include_in_totals,
+    });
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -78,10 +81,24 @@ export default function EditAccount({
     }
 
     function handleAccountTypeChange(value: string) {
-        setAccountTypeId(value);
+        setData('account_type_id', value);
+        clearErrors('account_type_id');
         const typeId = parseInt(value, 10);
         const type = accountTypes.find((t) => t.id === typeId);
         setIsCredit(type?.is_credit ?? false);
+    }
+
+    function submit(e: FormEvent) {
+        e.preventDefault();
+        put(
+            AccountController.update.url({
+                ledger: ledger.id,
+                account: account.id,
+            }),
+            {
+                onSuccess: () => toast.success('Account updated'),
+            },
+        );
     }
 
     return (
@@ -130,141 +147,136 @@ export default function EditAccount({
                     </Dialog>
                 </div>
 
-                <Form
-                    {...AccountController.update.form({
-                        ledger: ledger.id,
-                        account: account.id,
-                    })}
+                <form
+                    onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Account updated')}
                 >
-                    {({ errors, processing }) => (
-                        <>
-                            {/* Account type */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="account_type_id">
-                                    Account type
-                                </Label>
-                                <input
-                                    type="hidden"
-                                    name="account_type_id"
-                                    value={accountTypeId}
-                                />
-                                <Select
-                                    value={accountTypeId}
-                                    onValueChange={handleAccountTypeChange}
-                                >
-                                    <SelectTrigger
-                                        id="account_type_id"
-                                        className="w-full"
+                    {/* Account type */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="account_type_id">
+                            Account type
+                        </Label>
+                        <Select
+                            value={data.account_type_id}
+                            onValueChange={handleAccountTypeChange}
+                        >
+                            <SelectTrigger
+                                id="account_type_id"
+                                className="w-full"
+                            >
+                                <SelectValue placeholder="Select a type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {accountTypes.map((type) => (
+                                    <SelectItem
+                                        key={type.id}
+                                        value={String(type.id)}
                                     >
-                                        <SelectValue placeholder="Select a type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {accountTypes.map((type) => (
-                                            <SelectItem
-                                                key={type.id}
-                                                value={String(type.id)}
-                                            >
-                                                {type.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.account_type_id} />
-                            </div>
+                                        {type.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.account_type_id} />
+                    </div>
 
-                            {/* Name */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Account name</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    defaultValue={account.name}
-                                    required
-                                    autoFocus
-                                />
-                                <InputError message={errors.name} />
-                            </div>
+                    {/* Name */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="name">Account name</Label>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={data.name}
+                            onChange={(e) => {
+                                setData('name', e.target.value);
+                                clearErrors('name');
+                            }}
+                            required
+                            autoFocus
+                        />
+                        <InputError message={errors.name} />
+                    </div>
 
-                            {/* Initial balance */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="initial_balance">
-                                    Initial balance
-                                </Label>
-                                <Input
-                                    id="initial_balance"
-                                    name="initial_balance"
-                                    type="number" inputMode="decimal"
-                                    step="0.01"
-                                    defaultValue={account.initial_balance}
-                                    required
-                                />
-                                <InputError message={errors.initial_balance} />
-                            </div>
+                    {/* Initial balance */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="initial_balance">
+                            Initial balance
+                        </Label>
+                        <Input
+                            id="initial_balance"
+                            name="initial_balance"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            value={data.initial_balance}
+                            onChange={(e) => {
+                                setData('initial_balance', e.target.value);
+                                clearErrors('initial_balance');
+                            }}
+                            required
+                        />
+                        <InputError message={errors.initial_balance} />
+                    </div>
 
-                            {/* Statement day (credit accounts only) */}
-                            {isCredit && (
-                                <div className="grid gap-2">
-                                    <Label htmlFor="statement_day">
-                                        Statement day{' '}
-                                        <span className="text-muted-foreground">
-                                            (1–31)
-                                        </span>
-                                    </Label>
-                                    <Input
-                                        id="statement_day"
-                                        name="statement_day"
-                                        type="number" inputMode="decimal"
-                                        min="1"
-                                        max="31"
-                                        defaultValue={
-                                            account.statement_day ?? undefined
-                                        }
-                                        placeholder="e.g. 15"
-                                    />
-                                    <InputError
-                                        message={errors.statement_day}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Include in totals */}
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="hidden"
-                                    name="include_in_totals"
-                                    value={includeInTotals ? '1' : '0'}
-                                />
-                                <Checkbox
-                                    id="include_in_totals"
-                                    checked={includeInTotals}
-                                    onCheckedChange={(checked) =>
-                                        setIncludeInTotals(checked === true)
-                                    }
-                                />
-                                <Label htmlFor="include_in_totals">
-                                    Include in totals
-                                </Label>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <Button disabled={processing}>
-                                    Save changes
-                                </Button>
-                                <Link
-                                    href={accountShow.url({
-                                        ledger: ledger.id,
-                                        account: account.id,
-                                    })}
-                                    className="text-sm text-muted-foreground hover:underline"
-                                >
-                                    Cancel
-                                </Link>
-                            </div>
-                        </>
+                    {/* Statement day (credit accounts only) */}
+                    {isCredit && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="statement_day">
+                                Statement day{' '}
+                                <span className="text-muted-foreground">
+                                    (1-31)
+                                </span>
+                            </Label>
+                            <Input
+                                id="statement_day"
+                                name="statement_day"
+                                type="number"
+                                inputMode="decimal"
+                                min="1"
+                                max="31"
+                                value={data.statement_day}
+                                onChange={(e) => {
+                                    setData('statement_day', e.target.value);
+                                    clearErrors('statement_day');
+                                }}
+                                placeholder="e.g. 15"
+                            />
+                            <InputError
+                                message={errors.statement_day}
+                            />
+                        </div>
                     )}
-                </Form>
+
+                    {/* Include in totals */}
+                    <div className="flex items-center gap-3">
+                        <Checkbox
+                            id="include_in_totals"
+                            checked={data.include_in_totals}
+                            onCheckedChange={(checked) => {
+                                setData('include_in_totals', checked === true);
+                                clearErrors('include_in_totals');
+                            }}
+                        />
+                        <Label htmlFor="include_in_totals">
+                            Include in totals
+                        </Label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <Button disabled={processing}>
+                            Save changes
+                        </Button>
+                        <Link
+                            href={accountShow.url({
+                                ledger: ledger.id,
+                                account: account.id,
+                            })}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            Cancel
+                        </Link>
+                    </div>
+                </form>
             </div>
         </AppLayout>
     );

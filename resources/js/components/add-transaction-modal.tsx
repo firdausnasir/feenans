@@ -1,14 +1,15 @@
-import { Form, Link, router } from '@inertiajs/react';
 import type { Page } from '@inertiajs/core';
+import { Form, Link, router } from '@inertiajs/react';
 import confetti from 'canvas-confetti';
 import { Check, ChevronsUpDown, CreditCard, PlusCircle } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import PayeeController from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
-import { create as accountsCreate } from '@/routes/ledgers/accounts';
 import InputError from '@/components/input-error';
+import { TagPill } from '@/components/tag-pill';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Command,
     CommandEmpty,
@@ -18,6 +19,7 @@ import {
     CommandList,
     CommandSeparator,
 } from '@/components/ui/command';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -26,7 +28,6 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,10 +44,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { TagPill } from '@/components/tag-pill';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
+import { create as accountsCreate } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
 
 type TransactionMode = 'expense' | 'income' | 'transfer';
@@ -129,6 +129,7 @@ export function AddTransactionModal({
         if (typeof window !== 'undefined') {
             return localStorage.getItem('rapid-entry') === 'true';
         }
+
         return false;
     });
 
@@ -138,31 +139,30 @@ export function AddTransactionModal({
         new Date().toISOString().slice(0, 10),
     );
 
-    useEffect(() => {
-        if (initialData && open) {
-            setMode(initialData.transaction_type);
-            setAccountId(String(initialData.account_id));
-            setToAccountId(
-                initialData.to_account_id
-                    ? String(initialData.to_account_id)
-                    : accounts.length > 1
-                      ? String(accounts[1].id)
-                      : '',
-            );
-            setCategoryId(
-                initialData.category_id
-                    ? String(initialData.category_id)
-                    : 'none',
-            );
-            setSelectedPayeeId(
-                initialData.payee_id ? String(initialData.payee_id) : '',
-            );
-            setAmount(String(Math.abs(parseFloat(initialData.amount || '0'))));
-            setSelectedTagIds(initialData.tag_ids ?? []);
-            setDuplicateDate(new Date().toISOString().slice(0, 10));
-            setTransactionDate(new Date().toISOString().slice(0, 10));
-        }
-    }, [initialData, open, accounts]);
+    const [prevInitialData, setPrevInitialData] = useState(initialData);
+
+    if (initialData && open && initialData !== prevInitialData) {
+        setPrevInitialData(initialData);
+        setMode(initialData.transaction_type);
+        setAccountId(String(initialData.account_id));
+        setToAccountId(
+            initialData.to_account_id
+                ? String(initialData.to_account_id)
+                : accounts.length > 1
+                  ? String(accounts[1].id)
+                  : '',
+        );
+        setCategoryId(
+            initialData.category_id ? String(initialData.category_id) : 'none',
+        );
+        setSelectedPayeeId(
+            initialData.payee_id ? String(initialData.payee_id) : '',
+        );
+        setAmount(String(Math.abs(parseFloat(initialData.amount || '0'))));
+        setSelectedTagIds(initialData.tag_ids ?? []);
+        setDuplicateDate(new Date().toISOString().slice(0, 10));
+        setTransactionDate(new Date().toISOString().slice(0, 10));
+    }
 
     function handleSourceAccountChange(newAccountId: string) {
         setAccountId(newAccountId);
@@ -472,12 +472,14 @@ export function AddTransactionModal({
                                         value={amount}
                                         onChange={(event) => {
                                             const value = event.target.value;
+
                                             if (
                                                 value !== '' &&
                                                 Number(value) < 0
                                             ) {
                                                 return;
                                             }
+
                                             setAmount(value);
                                         }}
                                     />
@@ -949,6 +951,7 @@ export function AddTransactionModal({
                                                                             e
                                                                                 .target
                                                                                 .value;
+
                                                                         if (
                                                                             value !==
                                                                                 '' &&
@@ -959,6 +962,7 @@ export function AddTransactionModal({
                                                                         ) {
                                                                             return;
                                                                         }
+
                                                                         updateSplitRow(
                                                                             split.id,
                                                                             'amount',

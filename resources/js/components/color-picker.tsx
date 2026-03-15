@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,14 +8,28 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
 
 const PRESET_COLORS = [
-    '#ef4444', '#f97316', '#f59e0b', '#eab308',
-    '#84cc16', '#22c55e', '#14b8a6', '#06b6d4',
-    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
-    '#d946ef', '#ec4899', '#f43f5e', '#6b7280',
-    '#78716c', '#64748b', '#0ea5e9', '#10b981',
+    '#ef4444',
+    '#f97316',
+    '#f59e0b',
+    '#eab308',
+    '#84cc16',
+    '#22c55e',
+    '#14b8a6',
+    '#06b6d4',
+    '#3b82f6',
+    '#6366f1',
+    '#8b5cf6',
+    '#a855f7',
+    '#d946ef',
+    '#ec4899',
+    '#f43f5e',
+    '#6b7280',
+    '#78716c',
+    '#64748b',
+    '#0ea5e9',
+    '#10b981',
 ] as const;
 
 type ColorPickerProps = {
@@ -24,7 +39,12 @@ type ColorPickerProps = {
     readonly className?: string;
 };
 
-export function ColorPicker({ value, onChange, id, className }: ColorPickerProps) {
+export function ColorPicker({
+    value,
+    onChange,
+    id,
+    className,
+}: ColorPickerProps) {
     const [open, setOpen] = useState(false);
 
     return (
@@ -80,6 +100,7 @@ export function ColorPicker({ value, onChange, id, className }: ColorPickerProps
                             value={value}
                             onChange={(e) => {
                                 const hex = e.target.value;
+
                                 if (/^#[0-9a-fA-F]{0,6}$/.test(hex)) {
                                     onChange(hex);
                                 }

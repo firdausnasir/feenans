@@ -1,4 +1,5 @@
-import { Form, Head } from '@inertiajs/react';
+import { Head, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import Heading from '@/components/heading';
@@ -29,6 +30,19 @@ export default function EditLedger({ ledger }: { ledger: Ledger }) {
         },
     ];
 
+    const { data, setData, put, processing, errors, clearErrors } = useForm({
+        name: ledger.name,
+        currency_code: ledger.currency_code,
+        uses_seeded_categories: ledger.uses_seeded_categories ? '1' : '0',
+    });
+
+    function submit(e: FormEvent) {
+        e.preventDefault();
+        put(LedgerController.update.url(ledger.id), {
+            onSuccess: () => toast.success('Workspace updated'),
+        });
+    }
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Edit workspace" />
@@ -39,50 +53,45 @@ export default function EditLedger({ ledger }: { ledger: Ledger }) {
                     description="Update your workspace basics."
                 />
 
-                <Form
-                    {...LedgerController.update.form(ledger.id)}
+                <form
+                    onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    onSuccess={() => toast.success('Workspace updated')}
                 >
-                    {({ errors, processing }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Workspace name</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    defaultValue={ledger.name}
-                                    required
-                                />
-                                <InputError message={errors.name} />
-                            </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="name">Workspace name</Label>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={data.name}
+                            onChange={(e) => {
+                                setData('name', e.target.value);
+                                clearErrors('name');
+                            }}
+                            required
+                        />
+                        <InputError message={errors.name} />
+                    </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="currency_code">
-                                    Currency code
-                                </Label>
-                                <Input
-                                    id="currency_code"
-                                    name="currency_code"
-                                    defaultValue={ledger.currency_code}
-                                    maxLength={3}
-                                    required
-                                />
-                                <InputError message={errors.currency_code} />
-                            </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="currency_code">
+                            Currency code
+                        </Label>
+                        <Input
+                            id="currency_code"
+                            name="currency_code"
+                            value={data.currency_code}
+                            onChange={(e) => {
+                                setData('currency_code', e.target.value);
+                                clearErrors('currency_code');
+                            }}
+                            maxLength={3}
+                            required
+                        />
+                        <InputError message={errors.currency_code} />
+                    </div>
 
-                            <input
-                                type="hidden"
-                                name="uses_seeded_categories"
-                                value={
-                                    ledger.uses_seeded_categories ? '1' : '0'
-                                }
-                            />
-
-                            <Button disabled={processing}>Save changes</Button>
-                        </>
-                    )}
-                </Form>
+                    <Button disabled={processing}>Save changes</Button>
+                </form>
             </div>
         </AppLayout>
     );

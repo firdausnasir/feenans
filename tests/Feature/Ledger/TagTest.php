@@ -64,7 +64,7 @@ test('transaction with tags syncs tags correctly on store', function () {
         ->post(route('ledgers.transactions.store', $ledger), [
             'account_id' => $account->id,
             'transaction_type' => 'expense',
-            'amount' => -10.00,
+            'amount' => 10.00,
             'description' => 'Test',
             'transaction_date' => '2026-03-13',
             'tag_ids' => [$tag1->id, $tag2->id],
@@ -129,7 +129,7 @@ test('transaction tags are synced on update', function () {
             'account_id' => $account->id,
             'category_id' => $category->id,
             'transaction_type' => 'expense',
-            'amount' => -5.00,
+            'amount' => 5.00,
             'description' => 'Updated',
             'transaction_date' => '2026-03-13',
             'tag_ids' => [$tag2->id],

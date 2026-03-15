@@ -1,13 +1,17 @@
 import { Head, Link, router } from '@inertiajs/react';
+import {
+    ChevronDown,
+    ChevronRight,
+    MoreHorizontal,
+    Receipt,
+} from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import Heading from '@/components/heading';
 import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -16,6 +20,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
     Table,
     TableBody,
@@ -181,39 +192,40 @@ function BillRow({
                                     'Record Payment'}
                             </Button>
                         )}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto px-2 py-0.5 text-xs"
-                            asChild
-                        >
-                            <Link
-                                href={editRoute.url({
-                                    ledger: ledgerId,
-                                    bill: bill.id,
-                                })}
-                            >
-                                Edit
-                            </Link>
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto px-2 py-0.5 text-xs"
-                            onClick={() => onToggle(bill)}
-                        >
-                            {bill.is_active ? 'Deactivate' : 'Activate'}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
-                            onClick={() => onDelete(bill)}
-                        >
-                            Delete
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto px-1.5 py-0.5"
+                                >
+                                    <MoreHorizontal className="size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                    <Link
+                                        href={editRoute.url({
+                                            ledger: ledgerId,
+                                            bill: bill.id,
+                                        })}
+                                    >
+                                        Edit
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() => onToggle(bill)}
+                                >
+                                    {bill.is_active ? 'Deactivate' : 'Activate'}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => onDelete(bill)}
+                                >
+                                    Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </TableCell>
             </TableRow>
@@ -315,7 +327,9 @@ export default function BillsIndex({
                 preserveScroll: true,
                 onSuccess: () => {
                     toast.success(
-                        bill.is_active ? 'Bill deactivated' : 'Bill activated',
+                        bill.is_active
+                            ? 'Recurring transaction deactivated'
+                            : 'Recurring transaction activated',
                     );
                 },
             },
@@ -332,7 +346,7 @@ export default function BillsIndex({
             {
                 preserveScroll: true,
                 onSuccess: () => {
-                    toast.success('Bill deleted');
+                    toast.success('Recurring transaction deleted');
                 },
             },
         );

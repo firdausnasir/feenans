@@ -1,10 +1,9 @@
 import { Head, router } from '@inertiajs/react';
+import { Tag, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Tag, Plus } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
 import {
     Dialog,
     DialogContent,
@@ -13,6 +12,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -590,20 +590,31 @@ function CategoryList({
     const dragOverIdRef = useRef<number | null>(null);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
     const addFormRef = useRef<HTMLDivElement>(null);
+    const [prevTrigger, setPrevTrigger] = useState(openAddFormTrigger);
 
     // Open add form when parent triggers it
+    if (
+        openAddFormTrigger &&
+        openAddFormTrigger > 0 &&
+        openAddFormTrigger !== prevTrigger
+    ) {
+        setPrevTrigger(openAddFormTrigger);
+        setShowAddForm(true);
+    }
+
+    // Scroll to add form after it becomes visible
     useEffect(() => {
-        if (openAddFormTrigger && openAddFormTrigger > 0) {
-            setShowAddForm(true);
-            // Scroll to form after it renders
-            setTimeout(() => {
+        if (showAddForm) {
+            const timer = setTimeout(() => {
                 addFormRef.current?.scrollIntoView({
                     behavior: 'smooth',
                     block: 'nearest',
                 });
             }, 100);
+
+            return () => clearTimeout(timer);
         }
-    }, [openAddFormTrigger]);
+    }, [showAddForm]);
 
     // Only top-level categories for this tab
     const tabCats = categories.filter(

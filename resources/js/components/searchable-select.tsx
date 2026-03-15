@@ -54,8 +54,13 @@ export function SearchableSelect({
     const grouped = hasGroups
         ? options.reduce<Record<string, Option[]>>((acc, opt) => {
               const group = opt.group ?? '';
-              if (!acc[group]) acc[group] = [];
+
+              if (!acc[group]) {
+                  acc[group] = [];
+              }
+
               acc[group].push(opt);
+
               return acc;
           }, {})
         : null;

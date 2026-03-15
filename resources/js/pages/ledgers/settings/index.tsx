@@ -31,11 +31,11 @@ import {
     store as accountTypeStore,
     update as accountTypeUpdate,
 } from '@/routes/ledgers/account-types';
+import { destroy as destroySampleData } from '@/routes/ledgers/sample-data';
 import {
     index as settingsIndex,
     update as settingsUpdate,
 } from '@/routes/ledgers/settings';
-import { destroy as destroySampleData } from '@/routes/ledgers/sample-data';
 import type { AccountType, BreadcrumbItem, Ledger } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -505,7 +505,8 @@ export default function SettingsIndex({
                             </Label>
                             <Input
                                 id="cycle-start-day"
-                                type="number" inputMode="decimal"
+                                type="number"
+                                inputMode="decimal"
                                 min={1}
                                 max={31}
                                 value={cycleStartDay}
@@ -688,7 +689,7 @@ export default function SettingsIndex({
                                                     : 'Debit'}
                                             </Badge>
 
-                                            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
+                                            <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -846,6 +847,8 @@ export default function SettingsIndex({
                                 </Button>
                             </a>
                         </div>
+                    </div>
+                </section>
 
                 {/* ── API Tokens ──────────────────────────────────────────── */}
                 <section className="space-y-4">
