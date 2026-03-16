@@ -56,6 +56,7 @@ function formatMonthLabel(month: string): string {
     const [year, m] = month.split('-');
     const date = new Date(Number(year), Number(m) - 1, 1);
     const shortMonth = date.toLocaleDateString('en-MY', { month: 'short' });
+
     return `${shortMonth} ${String(year).slice(2)}`;
 }
 
@@ -263,6 +264,7 @@ function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
                                 'Savings rate',
                             ];
                         }
+
                         return [
                             formatAbsAmount(Number(value)),
                             name.charAt(0).toUpperCase() + name.slice(1),

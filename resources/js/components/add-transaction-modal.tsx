@@ -1,3 +1,9 @@
+import type { Page } from '@inertiajs/core';
+import { Form, Link } from '@inertiajs/react';
+import confetti from 'canvas-confetti';
+import { CreditCard, Paperclip, PlusCircle, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -19,12 +25,6 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { create as accountsCreate } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
-import type { Page } from '@inertiajs/core';
-import { Form, Link } from '@inertiajs/react';
-import confetti from 'canvas-confetti';
-import { CreditCard, Paperclip, PlusCircle, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
 
 type TransactionMode = 'expense' | 'income' | 'transfer';
 type SplitDraft = {
@@ -86,7 +86,7 @@ export function AddTransactionModal({
         accounts.length > 1 ? String(accounts[1].id) : '',
     );
     const [categoryId, setCategoryId] = useState<string>('');
-    const [payees, setPayees] = useState<Payee[]>(initialPayees);
+    const [payees] = useState<Payee[]>(initialPayees);
     const [selectedPayeeId, setSelectedPayeeId] = useState<string>('');
     const [newPayeeNameForSubmit, setNewPayeeNameForSubmit] = useState('');
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
@@ -270,9 +270,11 @@ export function AddTransactionModal({
         ]);
         splitRowId.current = 3;
         setPendingFiles([]);
+
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
+
         setDuplicateDate(null);
         setTransactionDate(new Date().toISOString().slice(0, 10));
     }
@@ -357,6 +359,7 @@ export function AddTransactionModal({
                         onSuccess={handleSuccess}
                         onError={(errors) => {
                             const firstError = Object.values(errors)[0];
+
                             if (firstError) {
                                 toast.error(String(firstError));
                             }
@@ -729,6 +732,7 @@ export function AddTransactionModal({
                                                                                     e
                                                                                         .target
                                                                                         .value;
+
                                                                                 if (
                                                                                     value !==
                                                                                         '' &&
@@ -739,6 +743,7 @@ export function AddTransactionModal({
                                                                                 ) {
                                                                                     return;
                                                                                 }
+
                                                                                 updateSplitRow(
                                                                                     split.id,
                                                                                     'amount',
@@ -922,6 +927,7 @@ export function AddTransactionModal({
                                             if (fileInputRef.current) {
                                                 fileInputRef.current.value = '';
                                             }
+
                                             fileInputRef.current?.click();
                                         }}
                                     >

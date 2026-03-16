@@ -1,3 +1,4 @@
+import { router } from '@inertiajs/react';
 import {
     Select,
     SelectContent,
@@ -10,7 +11,6 @@ import {
     financialHealth as financialHealthRoute,
     index as reportsIndex,
 } from '@/routes/ledgers/reports';
-import { router } from '@inertiajs/react';
 
 type ReportViewSelectProps = {
     ledgerId: number;

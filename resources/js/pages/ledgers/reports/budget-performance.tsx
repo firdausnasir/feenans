@@ -3,7 +3,7 @@ import { AlertTriangle, BarChart3, CheckCircle, XCircle } from 'lucide-react';
 import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import AppLayout from '@/layouts/app-layout';

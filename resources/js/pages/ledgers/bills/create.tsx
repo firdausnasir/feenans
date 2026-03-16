@@ -14,9 +14,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     Select,
     SelectContent,
-    SelectGroup,
     SelectItem,
-    SelectLabel,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
@@ -93,17 +91,13 @@ export default function CreateBill({
         { title: 'New', href: createRoute.url(ledger.id) },
     ];
 
-    // Local UI state for select components that use __none__ sentinel
-    const categorySelectValue =
-        data.category_id === '' ? '__none__' : data.category_id;
-    const payeeSelectValue = data.payee_id === '' ? '__none__' : data.payee_id;
-
     function submit(e: FormEvent) {
         e.preventDefault();
         post(BillController.store.url(ledger.id), {
             onSuccess: () => toast.success('Recurring transaction created'),
             onError: (errors) => {
                 const firstError = Object.values(errors)[0];
+
                 if (firstError) {
                     toast.error(String(firstError));
                 }
@@ -187,19 +181,19 @@ export default function CreateBill({
                     <div className="grid gap-2">
                         <Label>Account</Label>
                         <SearchableSelect
-                                            options={accounts.map((account) => ({
-                                                value: String(account.id),
-                                                label: account.name,
-                                                color: account.color,
-                                            }))}
-                                            value={data.account_id || null}
-                                            onValueChange={(value) => {
-                                                setData('account_id', value ?? '');
-                                                clearErrors('account_id');
-                                            }}
-                                            placeholder="Select account"
-                                            searchPlaceholder="Search accounts..."
-                                        />
+                            options={accounts.map((account) => ({
+                                value: String(account.id),
+                                label: account.name,
+                                color: account.color,
+                            }))}
+                            value={data.account_id || null}
+                            onValueChange={(value) => {
+                                setData('account_id', value ?? '');
+                                clearErrors('account_id');
+                            }}
+                            placeholder="Select account"
+                            searchPlaceholder="Search accounts..."
+                        />
                         <InputError message={errors.account_id} />
                     </div>
 
@@ -212,34 +206,46 @@ export default function CreateBill({
                             </span>
                         </Label>
                         <SearchableSelect
-                                            options={categories.flatMap((parent) => {
-                                                const items = [{
-                                                    value: String(parent.id),
-                                                    label: parent.children && parent.children.length > 0 ? `${parent.name} (general)` : parent.name,
-                                                    group: parent.children && parent.children.length > 0 ? parent.name : undefined,
-                                                    color: parent.color,
-                                                }];
-                                                if (parent.children) {
-                                                    parent.children.forEach((child) => {
-                                                        items.push({
-                                                            value: String(child.id),
-                                                            label: child.name,
-                                                            group: parent.name,
-                                                            color: child.color,
-                                                        });
-                                                    });
-                                                }
-                                                return items;
-                                            })}
-                                            value={data.category_id || null}
-                                            onValueChange={(value) => {
-                                                setData('category_id', value ?? '');
-                                                clearErrors('category_id');
-                                            }}
-                                            placeholder="No category"
-                                            searchPlaceholder="Search categories..."
-                                            allOption="No category"
-                                        />
+                            options={categories.flatMap((parent) => {
+                                const items = [
+                                    {
+                                        value: String(parent.id),
+                                        label:
+                                            parent.children &&
+                                            parent.children.length > 0
+                                                ? `${parent.name} (general)`
+                                                : parent.name,
+                                        group:
+                                            parent.children &&
+                                            parent.children.length > 0
+                                                ? parent.name
+                                                : undefined,
+                                        color: parent.color,
+                                    },
+                                ];
+
+                                if (parent.children) {
+                                    parent.children.forEach((child) => {
+                                        items.push({
+                                            value: String(child.id),
+                                            label: child.name,
+                                            group: parent.name,
+                                            color: child.color,
+                                        });
+                                    });
+                                }
+
+                                return items;
+                            })}
+                            value={data.category_id || null}
+                            onValueChange={(value) => {
+                                setData('category_id', value ?? '');
+                                clearErrors('category_id');
+                            }}
+                            placeholder="No category"
+                            searchPlaceholder="Search categories..."
+                            allOption="No category"
+                        />
                         <InputError message={errors.category_id} />
                     </div>
 
@@ -252,19 +258,19 @@ export default function CreateBill({
                             </span>
                         </Label>
                         <SearchableSelect
-                                            options={payees.map((payee) => ({
-                                                value: String(payee.id),
-                                                label: payee.name,
-                                            }))}
-                                            value={data.payee_id || null}
-                                            onValueChange={(value) => {
-                                                setData('payee_id', value ?? '');
-                                                clearErrors('payee_id');
-                                            }}
-                                            placeholder="No payee"
-                                            searchPlaceholder="Search payees..."
-                                            allOption="No payee"
-                                        />
+                            options={payees.map((payee) => ({
+                                value: String(payee.id),
+                                label: payee.name,
+                            }))}
+                            value={data.payee_id || null}
+                            onValueChange={(value) => {
+                                setData('payee_id', value ?? '');
+                                clearErrors('payee_id');
+                            }}
+                            placeholder="No payee"
+                            searchPlaceholder="Search payees..."
+                            allOption="No payee"
+                        />
                         <InputError message={errors.payee_id} />
                     </div>
 

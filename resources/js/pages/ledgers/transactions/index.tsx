@@ -1,3 +1,13 @@
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ChevronDown,
+    MoreHorizontal,
+    Paperclip,
+    Receipt,
+    SlidersHorizontal,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
@@ -59,16 +69,6 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
-import {
-    ChevronDown,
-    MoreHorizontal,
-    Paperclip,
-    Receipt,
-    SlidersHorizontal,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 
 type Filters = {
     search: string | null;
@@ -100,15 +100,6 @@ function amountPrefix(transaction: Transaction): string {
 
     return parseFloat(transaction.amount) >= 0 ? '+' : '-';
 }
-
-const TYPE_BADGE_VARIANT: Record<
-    string,
-    'default' | 'secondary' | 'outline' | 'destructive'
-> = {
-    expense: 'destructive',
-    income: 'default',
-    transfer: 'outline',
-};
 
 type EditFormData = {
     transaction_type: 'expense' | 'income' | 'transfer';
@@ -385,6 +376,7 @@ function EditTransactionModal({
                 onError: (errors) => {
                     setProcessing(false);
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }
@@ -406,6 +398,7 @@ function EditTransactionModal({
                 onError: (errors) => {
                     setDeleting(false);
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }
@@ -1252,14 +1245,17 @@ export default function TransactionsIndex({
 
         for (const id of localFilters.account_ids) {
             const account = accounts.find((a) => String(a.id) === id);
+
             if (account) {
                 labels.push(account.name);
             }
         }
 
         const allCats = categories.flatMap((p) => [p, ...(p.children ?? [])]);
+
         for (const id of localFilters.category_ids) {
             const cat = allCats.find((c) => String(c.id) === id);
+
             if (cat) {
                 labels.push(cat.name);
             }
@@ -1271,6 +1267,7 @@ export default function TransactionsIndex({
 
         for (const id of localFilters.payee_ids) {
             const payee = payees.find((p) => String(p.id) === id);
+
             if (payee) {
                 labels.push(payee.name);
             }
@@ -1278,6 +1275,7 @@ export default function TransactionsIndex({
 
         for (const id of localFilters.tag_ids) {
             const tag = tags.find((t) => String(t.id) === id);
+
             if (tag) {
                 labels.push(tag.name);
             }

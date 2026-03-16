@@ -2,6 +2,7 @@ import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,7 +17,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { SearchableSelect } from '@/components/searchable-select';
 import {
     Select,
     SelectContent,
@@ -208,6 +208,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                     },
                     onError: (errors) => {
                         const firstError = Object.values(errors)[0];
+
                         if (firstError) {
                             toast.error(String(firstError));
                         }
@@ -222,6 +223,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                 },
                 onError: (errors) => {
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }
@@ -243,6 +245,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                 },
                 onError: (errors) => {
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }

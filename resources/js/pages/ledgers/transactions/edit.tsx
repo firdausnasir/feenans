@@ -310,6 +310,7 @@ export default function TransactionEdit({
                 },
                 onError: (errors) => {
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }
@@ -330,6 +331,7 @@ export default function TransactionEdit({
                 },
                 onError: (errors) => {
                     const firstError = Object.values(errors)[0];
+
                     if (firstError) {
                         toast.error(String(firstError));
                     }

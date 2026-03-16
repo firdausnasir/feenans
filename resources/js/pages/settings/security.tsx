@@ -59,6 +59,7 @@ export default function Security({
     const handleForgotPassword = async () => {
         setIsSendingReset(true);
         setResetSent(false);
+
         try {
             const response = await fetch('/forgot-password', {
                 method: 'POST',
@@ -72,6 +73,7 @@ export default function Security({
                 },
                 body: JSON.stringify({ email: auth.user!.email }),
             });
+
             if (response.ok) {
                 setResetSent(true);
             }

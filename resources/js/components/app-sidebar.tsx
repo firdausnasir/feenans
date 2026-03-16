@@ -48,7 +48,7 @@ export function AppSidebar() {
         } | null;
     };
 
-    const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
+    const { isCurrentOrParentUrl } = useCurrentUrl();
 
     const ledgerId = currentLedger?.id;
 

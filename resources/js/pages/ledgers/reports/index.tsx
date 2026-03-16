@@ -48,7 +48,7 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
-import type { Account, BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem, Ledger } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
