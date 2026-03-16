@@ -88,7 +88,7 @@ test('transaction index filters by account', function () {
         ->actingAs($user)
         ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
-            'account_id' => $accountA->id,
+            'account_ids' => [$accountA->id],
         ]));
 
     $response->assertSuccessful();
@@ -148,7 +148,7 @@ test('transaction index filters by transaction type', function () {
         ->actingAs($user)
         ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
-            'transaction_type' => 'income',
+            'transaction_types' => ['income'],
         ]));
 
     $response->assertSuccessful();
@@ -176,7 +176,7 @@ test('transaction index filters by category', function () {
         ->actingAs($user)
         ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
-            'category_id' => $catA->id,
+            'category_ids' => [$catA->id],
         ]));
 
     $response->assertSuccessful();
@@ -204,7 +204,7 @@ test('transaction index filters by payee', function () {
         ->actingAs($user)
         ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
-            'payee_id' => $payeeA->id,
+            'payee_ids' => [$payeeA->id],
         ]));
 
     $response->assertSuccessful();

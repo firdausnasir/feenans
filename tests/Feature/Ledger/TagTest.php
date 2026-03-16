@@ -97,7 +97,7 @@ test('transaction index can be filtered by tag', function () {
         ->actingAs($user)
         ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
-            'tag_id' => $tag->id,
+            'tag_ids' => [$tag->id],
         ]));
 
     $response->assertSuccessful();
