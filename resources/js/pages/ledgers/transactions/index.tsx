@@ -53,6 +53,7 @@ import {
     destroy,
     exportMethod as exportTransactions,
     index as transactionsIndex,
+    selectAll as selectAllRoute,
     update,
 } from '@/routes/ledgers/transactions';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
@@ -188,9 +189,7 @@ function EditTransactionModal({
             ? String(transaction.category_id)
             : '',
         payee_id: transaction.payee_id ? String(transaction.payee_id) : '',
-        amount: isTransfer
-            ? String(Math.abs(parseFloat(transaction.amount || '0')))
-            : transaction.amount,
+        amount: String(Math.abs(parseFloat(transaction.amount || '0'))),
         description: transaction.description ?? '',
         notes: transaction.notes ?? '',
         tag_ids: (transaction.tags ?? []).map((t) => t.id),
@@ -912,6 +911,8 @@ export default function TransactionsIndex({
     filters: Filters;
 }) {
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [allAcrossPages, setAllAcrossPages] = useState(false);
+    const [loadingSelectAll, setLoadingSelectAll] = useState(false);
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(
         null,
     );
@@ -1004,7 +1005,73 @@ export default function TransactionsIndex({
             setSelectedIds((prev) => [...prev, id]);
         } else {
             setSelectedIds((prev) => prev.filter((i) => i !== id));
+            setAllAcrossPages(false);
         }
+    }
+
+    async function handleSelectAllAcrossPages() {
+        setLoadingSelectAll(true);
+
+        const params = new URLSearchParams();
+
+        if (filters.date_from) {
+            params.set('date_from', filters.date_from);
+        }
+
+        if (filters.date_to) {
+            params.set('date_to', filters.date_to);
+        }
+
+        for (const id of filters.account_ids) {
+            params.append('account_ids[]', id);
+        }
+
+        for (const id of filters.category_ids) {
+            params.append('category_ids[]', id);
+        }
+
+        for (const t of filters.transaction_types) {
+            params.append('transaction_types[]', t);
+        }
+
+        for (const id of filters.payee_ids) {
+            params.append('payee_ids[]', id);
+        }
+
+        for (const id of filters.tag_ids) {
+            params.append('tag_ids[]', id);
+        }
+
+        if (filters.search) {
+            params.set('search', filters.search);
+        }
+
+        if (filters.bill_id) {
+            params.set('bill_id', filters.bill_id);
+        }
+
+        if (filters.uncategorized) {
+            params.set('uncategorized', filters.uncategorized);
+        }
+
+        const url = `${selectAllRoute.url(ledger.id)}?${params.toString()}`;
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'application/json' },
+            });
+            const data = await response.json();
+
+            setSelectedIds(data.ids);
+            setAllAcrossPages(true);
+        } finally {
+            setLoadingSelectAll(false);
+        }
+    }
+
+    function clearSelection() {
+        setSelectedIds([]);
+        setAllAcrossPages(false);
     }
 
     function handleApplyFilters() {
@@ -1040,7 +1107,7 @@ export default function TransactionsIndex({
             {
                 preserveScroll: true,
                 onSuccess: () => {
-                    setSelectedIds([]);
+                    clearSelection();
                     setShowBulkDeleteConfirm(false);
                     toast.success('Transactions deleted');
                 },
@@ -1069,7 +1136,7 @@ export default function TransactionsIndex({
                         change_payee: 'Payee',
                     }[bulkAction];
 
-                    setSelectedIds([]);
+                    clearSelection();
                     setBulkAction(null);
                     setBulkActionValue(null);
                     toast.success(
@@ -1592,7 +1659,22 @@ export default function TransactionsIndex({
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                         <span className="text-sm font-medium text-muted-foreground">
                             {selectedIds.length} selected
+                            {allAcrossPages && ' (all pages)'}
                         </span>
+                        {!allAcrossPages &&
+                            transactions.total > transactions.data.length && (
+                                <Button
+                                    size="sm"
+                                    variant="link"
+                                    className="h-auto p-0 text-xs"
+                                    disabled={loadingSelectAll}
+                                    onClick={handleSelectAllAcrossPages}
+                                >
+                                    {loadingSelectAll
+                                        ? 'Loading...'
+                                        : `Select all ${transactions.total} transactions`}
+                                </Button>
+                            )}
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
                                 size="sm"
@@ -1632,7 +1714,7 @@ export default function TransactionsIndex({
                         <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setSelectedIds([])}
+                            onClick={clearSelection}
                         >
                             Clear selection
                         </Button>
@@ -1725,6 +1807,10 @@ export default function TransactionsIndex({
                                                                 .category?.name
                                                                 ? ` · ${transaction.category.name}`
                                                                 : ''}
+                                                            {transaction.payee
+                                                                ?.name
+                                                                ? ` · ${transaction.payee.name}`
+                                                                : ''}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1796,20 +1882,6 @@ export default function TransactionsIndex({
                                                     </DropdownMenu>
                                                 </div>
                                             </div>
-                                            {/* Tags */}
-                                            {(transaction.tags ?? []).length >
-                                                0 && (
-                                                <div className="flex flex-wrap gap-1 pl-8">
-                                                    {(
-                                                        transaction.tags ?? []
-                                                    ).map((tag) => (
-                                                        <TagPill
-                                                            key={tag.id}
-                                                            tag={tag}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            )}
                                             {/* Badges row */}
                                             {((transaction.splits ?? [])
                                                 .length > 0 ||
@@ -1898,7 +1970,6 @@ export default function TransactionsIndex({
                                         />
                                     </TableHead>
                                     <TableHead>Date</TableHead>
-                                    <TableHead>Description</TableHead>
                                     <TableHead className="hidden md:table-cell">
                                         Account
                                     </TableHead>
@@ -1908,9 +1979,7 @@ export default function TransactionsIndex({
                                     <TableHead className="hidden lg:table-cell">
                                         Payee
                                     </TableHead>
-                                    <TableHead className="hidden xl:table-cell">
-                                        Tags
-                                    </TableHead>
+                                    <TableHead>Description</TableHead>
                                     <TableHead className="text-right">
                                         Amount
                                     </TableHead>
@@ -1926,7 +1995,7 @@ export default function TransactionsIndex({
                                 {transactions.data.length === 0 ? (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={runningBalances ? 11 : 10}
+                                            colSpan={runningBalances ? 10 : 9}
                                         >
                                             <EmptyState
                                                 icon={
@@ -1971,6 +2040,17 @@ export default function TransactionsIndex({
                                                 {formatDate(
                                                     transaction.transaction_date,
                                                 )}
+                                            </TableCell>
+                                            <TableCell className="hidden text-muted-foreground md:table-cell">
+                                                {transaction.account?.name ??
+                                                    '—'}
+                                            </TableCell>
+                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
+                                                {transaction.category?.name ??
+                                                    '—'}
+                                            </TableCell>
+                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
+                                                {transaction.payee?.name ?? '—'}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="font-medium">
@@ -2044,33 +2124,6 @@ export default function TransactionsIndex({
                                                                     )}
                                                                 </span>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="hidden text-muted-foreground md:table-cell">
-                                                {transaction.account?.name ??
-                                                    '—'}
-                                            </TableCell>
-                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
-                                                {transaction.category?.name ??
-                                                    '—'}
-                                            </TableCell>
-                                            <TableCell className="hidden text-muted-foreground lg:table-cell">
-                                                {transaction.payee?.name ?? '—'}
-                                            </TableCell>
-                                            <TableCell className="hidden xl:table-cell">
-                                                {(transaction.tags ?? [])
-                                                    .length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {(
-                                                            transaction.tags ??
-                                                            []
-                                                        ).map((tag) => (
-                                                            <TagPill
-                                                                key={tag.id}
-                                                                tag={tag}
-                                                            />
                                                         ))}
                                                     </div>
                                                 )}

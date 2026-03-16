@@ -1,10 +1,9 @@
 "use client"
 
-import * as React from "react"
 import { format, parse } from "date-fns"
 import { CalendarIcon } from "lucide-react"
+import * as React from "react"
 
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import {
@@ -12,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 interface DatePickerProps {
   value?: string
@@ -81,6 +81,9 @@ function DatePicker({
             selected={selectedDate}
             onSelect={handleSelect}
             defaultMonth={selectedDate}
+            captionLayout="dropdown"
+            startMonth={new Date(new Date().getFullYear() - 10, 0)}
+            endMonth={new Date(new Date().getFullYear() + 10, 0)}
           />
         </PopoverContent>
       </Popover>
@@ -90,3 +93,4 @@ function DatePicker({
 
 export { DatePicker }
 export type { DatePickerProps }
+

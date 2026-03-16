@@ -105,17 +105,37 @@ class AccountController extends Controller
         $statementInfo = null;
 
         if ($account->statement_day !== null) {
-            [$stmtStart, $stmtEnd] = app(TransactionService::class)
-                ->statementCycleBounds($account, CarbonImmutable::today());
+            $txService = app(TransactionService::class);
+            $today = CarbonImmutable::today();
+
+            // Current billing cycle (not yet closed)
+            [$currentStart, $currentEnd] = $txService->statementCycleBounds($account, $today);
+
+            // Previous billing cycle (closed — this is the "statement balance" you must pay)
+            $previousEnd = $currentStart->subDay();
+            [$previousStart, $calculatedPreviousEnd] = $txService->statementCycleBounds($account, $previousEnd);
 
             $statementBalance = (float) $account->transactions()
-                ->whereBetween('transaction_date', [$stmtStart->toDateString(), $stmtEnd->toDateString()])
+                ->whereBetween('transaction_date', [$previousStart->toDateString(), $calculatedPreviousEnd->toDateString()])
                 ->sum('amount');
 
+            // Current cycle spending (since last statement date)
+            $currentSpending = (float) $account->transactions()
+                ->whereBetween('transaction_date', [$currentStart->toDateString(), $today->toDateString()])
+                ->sum('amount');
+
+            // Payment due date: ~20 days after statement date
+            $paymentDueDate = $currentStart->subDay()->addDays(20);
+
             $statementInfo = [
-                'start' => $stmtStart->toDateString(),
-                'end' => $stmtEnd->toDateString(),
-                'outstanding' => round(abs($statementBalance), 2),
+                'statement_start' => $previousStart->toDateString(),
+                'statement_end' => $calculatedPreviousEnd->toDateString(),
+                'statement_balance' => round(abs($statementBalance), 2),
+                'current_start' => $currentStart->toDateString(),
+                'current_end' => $currentEnd->toDateString(),
+                'current_spending' => round(abs($currentSpending), 2),
+                'outstanding' => round(abs($statementBalance) + abs($currentSpending), 2),
+                'payment_due_date' => $paymentDueDate->toDateString(),
             ];
         }
 
@@ -238,10 +258,13 @@ class AccountController extends Controller
     {
         $this->authorize('view', $ledger);
 
+        $currentBalance = (float) $account->initial_balance + (float) $account->transactions()->sum('amount');
+
         return Inertia::render('ledgers/accounts/edit', [
             'ledger' => $ledger,
             'account' => $account->load('accountType'),
             'accountTypes' => $ledger->accountTypes()->orderBy('position')->get(),
+            'currentBalance' => round($currentBalance, 2),
         ]);
     }
 
@@ -268,6 +291,35 @@ class AccountController extends Controller
         $this->authorize('update', $ledger);
 
         $account->update(['is_hidden' => ! $account->is_hidden]);
+
+        return back();
+    }
+
+    public function adjustBalance(Request $request, Ledger $ledger, Account $account): RedirectResponse
+    {
+        $this->authorize('update', $ledger);
+
+        $validated = $request->validate([
+            'new_balance' => ['required', 'numeric'],
+        ]);
+
+        $currentBalance = (float) $account->initial_balance + (float) $account->transactions()->sum('amount');
+        $newBalance = (float) $validated['new_balance'];
+        $difference = round($newBalance - $currentBalance, 2);
+
+        if ($difference == 0) {
+            return back();
+        }
+
+        $transactionType = $difference > 0 ? TransactionType::Income : TransactionType::Expense;
+
+        $ledger->transactions()->create([
+            'account_id' => $account->id,
+            'transaction_type' => $transactionType,
+            'amount' => $difference,
+            'description' => 'Balance adjustment',
+            'transaction_date' => CarbonImmutable::today()->toDateString(),
+        ]);
 
         return back();
     }

@@ -446,4 +446,65 @@ class TransactionController extends Controller
 
         return back();
     }
+
+    public function selectAll(Request $request, Ledger $ledger): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        $query = $ledger->transactions();
+
+        if ($request->filled('bill_id')) {
+            $query->where('bill_id', $request->get('bill_id'));
+        }
+
+        $dateFrom = $request->get('date_from');
+        $dateTo = $request->get('date_to');
+
+        if ($dateFrom && $dateTo) {
+            $query->whereBetween('transaction_date', [$dateFrom, $dateTo]);
+        } elseif ($dateFrom) {
+            $query->where('transaction_date', '>=', $dateFrom);
+        } elseif ($dateTo) {
+            $query->where('transaction_date', '<=', $dateTo);
+        }
+
+        $accountIds = $this->resolveArrayFilter($request, 'account_ids');
+        if ($accountIds !== null) {
+            $query->whereIn('account_id', $accountIds);
+        }
+
+        $categoryIds = $this->resolveArrayFilter($request, 'category_ids');
+        if ($categoryIds !== null) {
+            $query->whereIn('category_id', $categoryIds);
+        }
+
+        if ($request->boolean('uncategorized')) {
+            $query->whereNull('category_id')->where('transaction_type', '!=', 'transfer');
+        }
+
+        $transactionTypes = $this->resolveArrayFilter($request, 'transaction_types');
+        if ($transactionTypes !== null) {
+            $query->whereIn('transaction_type', $transactionTypes);
+        }
+
+        $payeeIds = $this->resolveArrayFilter($request, 'payee_ids');
+        if ($payeeIds !== null) {
+            $query->whereIn('payee_id', $payeeIds);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('description', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%");
+            });
+        }
+
+        $tagIds = $this->resolveArrayFilter($request, 'tag_ids');
+        if ($tagIds !== null) {
+            $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tagIds));
+        }
+
+        return response()->json(['ids' => $query->pluck('id')]);
+    }
 }

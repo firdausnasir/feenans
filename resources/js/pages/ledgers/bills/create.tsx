@@ -76,6 +76,7 @@ export default function CreateBill({
         recurrence_type: 'monthly' as RecurrenceType,
         recurrence_interval: '1',
         recurrence_day: '',
+        next_due_date: '',
         auto_create: false,
         end_type: 'never' as EndType,
         end_date: '',
@@ -382,6 +383,21 @@ export default function CreateBill({
                             data.recurrence_day,
                         )}
                     </p>
+
+                    {/* Next due date */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="next_due_date">Next due date</Label>
+                        <DatePicker
+                            id="next_due_date"
+                            name="next_due_date"
+                            value={data.next_due_date}
+                            onChange={(date) => {
+                                setData('next_due_date', date);
+                                clearErrors('next_due_date');
+                            }}
+                        />
+                        <InputError message={errors.next_due_date} />
+                    </div>
 
                     {/* Auto-create */}
                     <div className="flex items-center gap-3">

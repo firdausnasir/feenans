@@ -83,6 +83,7 @@ export default function EditBill({
         recurrence_interval: String(bill.recurrence_interval),
         recurrence_day:
             bill.recurrence_day != null ? String(bill.recurrence_day) : '',
+        next_due_date: bill.next_due_date ?? '',
         auto_create: bill.auto_create,
         end_type: (bill.end_type ?? 'never') as EndType,
         end_date: bill.end_date ?? '',
@@ -397,6 +398,21 @@ export default function EditBill({
                             data.recurrence_day,
                         )}
                     </p>
+
+                    {/* Next due date */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="next_due_date">Next due date</Label>
+                        <DatePicker
+                            id="next_due_date"
+                            name="next_due_date"
+                            value={data.next_due_date}
+                            onChange={(date) => {
+                                setData('next_due_date', date);
+                                clearErrors('next_due_date');
+                            }}
+                        />
+                        <InputError message={errors.next_due_date} />
+                    </div>
 
                     {/* Auto-create */}
                     <div className="flex items-center gap-3">

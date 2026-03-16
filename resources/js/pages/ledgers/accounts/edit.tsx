@@ -27,8 +27,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
+import { formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
+    adjustBalance,
     destroy,
     edit as editRoute,
     index as accountsIndex,
@@ -40,12 +42,17 @@ export default function EditAccount({
     ledger,
     account,
     accountTypes,
+    currentBalance,
 }: {
     ledger: Ledger;
     account: Account;
     accountTypes: AccountType[];
+    currentBalance: number;
 }) {
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [newBalance, setNewBalance] = useState(String(currentBalance));
+    const [adjusting, setAdjusting] = useState(false);
+
     const selectedType = accountTypes.find(
         (t) => t.id === account.account_type_id,
     );
@@ -288,6 +295,88 @@ export default function EditAccount({
                         </Link>
                     </div>
                 </form>
+
+                <div className="space-y-4 rounded-xl border border-sidebar-border/70 p-6">
+                    <div>
+                        <h3 className="text-sm font-medium">Adjust balance</h3>
+                        <p className="text-xs text-muted-foreground">
+                            Set the current balance. An adjustment transaction
+                            will be created for the difference.
+                        </p>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="new_balance">
+                            Current balance:{' '}
+                            <span className="font-mono">
+                                {formatAmount(currentBalance)}
+                            </span>
+                        </Label>
+                        <Input
+                            id="new_balance"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            value={newBalance}
+                            onChange={(e) => setNewBalance(e.target.value)}
+                        />
+                    </div>
+
+                    {(() => {
+                        const diff = parseFloat(newBalance) - currentBalance;
+                        const hasDiff = !isNaN(diff) && Math.abs(diff) >= 0.01;
+
+                        return hasDiff ? (
+                            <p className="text-xs text-muted-foreground">
+                                This will create a{' '}
+                                <span
+                                    className={
+                                        diff > 0
+                                            ? 'font-medium text-green-600'
+                                            : 'font-medium text-red-600'
+                                    }
+                                >
+                                    {diff > 0 ? '+' : ''}
+                                    {formatAmount(diff)}
+                                </span>{' '}
+                                {diff > 0 ? 'income' : 'expense'} adjustment
+                                transaction.
+                            </p>
+                        ) : null;
+                    })()}
+
+                    <Button
+                        disabled={
+                            adjusting ||
+                            isNaN(parseFloat(newBalance)) ||
+                            Math.abs(parseFloat(newBalance) - currentBalance) <
+                                0.01
+                        }
+                        onClick={() => {
+                            setAdjusting(true);
+                            router.post(
+                                adjustBalance.url({
+                                    ledger: ledger.id,
+                                    account: account.id,
+                                }),
+                                { new_balance: newBalance },
+                                {
+                                    preserveScroll: true,
+                                    onSuccess: () => {
+                                        setAdjusting(false);
+                                        toast.success('Balance adjusted');
+                                    },
+                                    onError: () => {
+                                        setAdjusting(false);
+                                        toast.error('Failed to adjust balance');
+                                    },
+                                },
+                            );
+                        }}
+                    >
+                        {adjusting ? 'Adjusting...' : 'Adjust balance'}
+                    </Button>
+                </div>
             </div>
         </AppLayout>
     );

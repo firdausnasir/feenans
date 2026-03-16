@@ -354,7 +354,8 @@ export function AddTransactionModal({
                     </div>
                 ) : (
                     <Form
-                        {...TransactionController.store.form(ledger.id)}
+                        action={TransactionController.store.url(ledger.id)}
+                        method="post"
                         className="space-y-6"
                         onSuccess={handleSuccess}
                         onError={(errors) => {

@@ -52,6 +52,8 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.transactions.bulk-destroy');
     Route::get('ledgers/{ledger}/transactions/export', [TransactionController::class, 'export'])
         ->name('ledgers.transactions.export');
+    Route::get('ledgers/{ledger}/transactions/select-all', [TransactionController::class, 'selectAll'])
+        ->name('ledgers.transactions.select-all');
     Route::get('ledgers/{ledger}/transactions', [TransactionController::class, 'index'])
         ->name('ledgers.transactions.index');
     Route::post('ledgers/{ledger}/transactions', [TransactionController::class, 'store'])
@@ -90,6 +92,8 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.accounts.destroy');
     Route::patch('ledgers/{ledger}/accounts/{account}/toggle-visibility', [AccountController::class, 'toggleVisibility'])
         ->name('ledgers.accounts.toggle-visibility');
+    Route::post('ledgers/{ledger}/accounts/{account}/adjust-balance', [AccountController::class, 'adjustBalance'])
+        ->name('ledgers.accounts.adjust-balance');
 
     // Categories — reorder must come before {category} wildcard routes
     Route::post('ledgers/{ledger}/categories/reorder', [CategoryController::class, 'reorder'])

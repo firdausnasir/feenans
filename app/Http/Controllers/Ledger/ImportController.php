@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ParseImportRequest;
 use App\Http\Requests\StoreImportRequest;
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\ImportMapping;
 use App\Models\Ledger;
 use App\Services\TransactionService;
@@ -151,8 +152,14 @@ class ImportController extends Controller
             return back()->withErrors(['file_path' => 'Import file not found. Please re-upload.']);
         }
 
-        $handle = fopen(Storage::disk($this->ledgerDisk())->path($filePath), 'r');
-        $headers = fgetcsv($handle) ?: [];
+        $disk = Storage::disk($this->ledgerDisk());
+        $stream = $disk->readStream($filePath);
+
+        if ($stream === null) {
+            return back()->withErrors(['file_path' => 'Import file could not be read. Please re-upload.']);
+        }
+
+        $headers = fgetcsv($stream) ?: [];
 
         $mapping = $validated['mapping'];
         $account = Account::query()->findOrFail($validated['account_id']);
@@ -161,7 +168,7 @@ class ImportController extends Controller
         $skipped = 0;
         $totalRows = 0;
 
-        while (($row = fgetcsv($handle)) !== false) {
+        while (($row = fgetcsv($stream)) !== false) {
             $totalRows++;
             $rowAssoc = array_combine($headers, $row);
 
@@ -177,8 +184,12 @@ class ImportController extends Controller
             }
 
             try {
-                $date = CarbonImmutable::parse($dateStr)->toDateString();
+                $date = $this->parseDate($dateStr);
             } catch (\Exception) {
+                continue;
+            }
+
+            if ($date === null) {
                 continue;
             }
 
@@ -227,6 +238,15 @@ class ImportController extends Controller
                 }
             }
 
+            // Find category by name from CSV
+            $category = null;
+            if (isset($mapping['category']) && $mapping['category'] && isset($rowAssoc[$mapping['category']]) && trim($rowAssoc[$mapping['category']])) {
+                $categoryName = trim($rowAssoc[$mapping['category']]);
+                $category = $ledger->categories()
+                    ->where('name', $categoryName)
+                    ->first();
+            }
+
             // Find or create payee
             $payee = null;
             if (isset($mapping['payee']) && $mapping['payee'] && isset($rowAssoc[$mapping['payee']]) && trim($rowAssoc[$mapping['payee']])) {
@@ -237,7 +257,7 @@ class ImportController extends Controller
             $this->transactionService->store([
                 'ledger' => $ledger,
                 'account' => $account,
-                'category' => null,
+                'category' => $category,
                 'payee' => $payee,
                 'transaction_type' => $type,
                 'amount' => $amount,
@@ -249,7 +269,7 @@ class ImportController extends Controller
             $imported++;
         }
 
-        fclose($handle);
+        fclose($stream);
 
         // Record import history
         $ledger->importRecords()->create([
@@ -345,5 +365,49 @@ class ImportController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Try multiple date formats, returning Y-m-d string or null.
+     */
+    private function parseDate(string $value): ?string
+    {
+        $value = trim($value);
+
+        $formats = [
+            'm-d-y',   // 10-31-25
+            'm/d/y',   // 10/31/25
+            'm-d-Y',   // 10-31-2025
+            'm/d/Y',   // 10/31/2025
+            'd-m-Y',   // 31-10-2025
+            'd/m/Y',   // 31/10/2025
+            'd-m-y',   // 31-10-25
+            'd/m/y',   // 31/10/25
+            'Y-m-d',   // 2025-10-31
+            'Y/m/d',   // 2025/10/31
+        ];
+
+        foreach ($formats as $format) {
+            try {
+                $parsed = CarbonImmutable::createFromFormat("!{$format}", $value);
+
+                if ($parsed !== false) {
+                    $warnings = CarbonImmutable::getLastErrors();
+
+                    if (($warnings['warning_count'] ?? 0) === 0 && ($warnings['error_count'] ?? 0) === 0) {
+                        return $parsed->toDateString();
+                    }
+                }
+            } catch (\Exception) {
+                // Try next format
+            }
+        }
+
+        // Fallback to Carbon's generic parser
+        try {
+            return CarbonImmutable::parse($value)->toDateString();
+        } catch (\Exception) {
+            return null;
+        }
     }
 }

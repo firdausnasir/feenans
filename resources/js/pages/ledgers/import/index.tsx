@@ -52,6 +52,7 @@ type Mapping = {
     date: string;
     amount: string;
     description: string;
+    category: string;
     payee: string;
     type: string;
 };
@@ -82,6 +83,7 @@ const TARGET_FIELDS: {
     { key: 'date', label: 'Date', required: true },
     { key: 'amount', label: 'Amount', required: true },
     { key: 'description', label: 'Description', required: false },
+    { key: 'category', label: 'Category', required: false },
     { key: 'payee', label: 'Payee', required: false },
     { key: 'type', label: 'Transaction Type', required: false },
 ];
@@ -110,6 +112,7 @@ export default function ImportIndex({
         date: NOT_MAPPED,
         amount: NOT_MAPPED,
         description: NOT_MAPPED,
+        category: NOT_MAPPED,
         payee: NOT_MAPPED,
         type: NOT_MAPPED,
     });
@@ -399,7 +402,25 @@ export default function ImportIndex({
 
         const idx = parseResult.headers.indexOf(col);
 
-        return idx >= 0 ? (row[idx] ?? '\u2014') : '\u2014';
+        const raw = idx >= 0 ? (row[idx] ?? '') : '';
+
+        if (!raw) {
+            return '\u2014';
+        }
+
+        if (field === 'date') {
+            const parsed = new Date(raw);
+
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                });
+            }
+        }
+
+        return raw;
     };
 
     const handleConfirmImport = () => {
@@ -417,7 +438,8 @@ export default function ImportIndex({
                     mapping.description !== NOT_MAPPED
                         ? mapping.description
                         : null,
-                category: null,
+                category:
+                    mapping.category !== NOT_MAPPED ? mapping.category : null,
                 payee: mapping.payee !== NOT_MAPPED ? mapping.payee : null,
                 type: mapping.type !== NOT_MAPPED ? mapping.type : null,
             },
@@ -830,6 +852,7 @@ export default function ImportIndex({
                                             <TableHead>Date</TableHead>
                                             <TableHead>Amount</TableHead>
                                             <TableHead>Description</TableHead>
+                                            <TableHead>Category</TableHead>
                                             <TableHead>Payee</TableHead>
                                             <TableHead>Type</TableHead>
                                         </TableRow>
@@ -854,6 +877,12 @@ export default function ImportIndex({
                                                         {getPreviewValue(
                                                             row,
                                                             'description',
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getPreviewValue(
+                                                            row,
+                                                            'category',
                                                         )}
                                                     </TableCell>
                                                     <TableCell>

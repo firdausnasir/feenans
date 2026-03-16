@@ -1,3 +1,7 @@
+import { Head, Link, router } from '@inertiajs/react';
+import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { toggleVisibility } from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
@@ -21,10 +25,6 @@ import {
     reorder as reorderRoute,
 } from '@/routes/ledgers/accounts';
 import type { Account, AccountType, BreadcrumbItem, Ledger } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
-import { useRef, useState } from 'react';
-import { toast } from 'sonner';
 
 export default function AccountsIndex({
     ledger,

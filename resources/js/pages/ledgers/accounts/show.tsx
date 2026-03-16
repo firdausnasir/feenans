@@ -118,9 +118,14 @@ function BalanceTrendChart({
 }
 
 type StatementInfo = {
-    start: string;
-    end: string;
+    statement_start: string;
+    statement_end: string;
+    statement_balance: number;
+    current_start: string;
+    current_end: string;
+    current_spending: number;
     outstanding: number;
+    payment_due_date: string;
 };
 
 export default function AccountShow({
@@ -293,30 +298,74 @@ export default function AccountShow({
                     )}
                 </div>
 
-                {/* Statement period info for credit accounts */}
+                {/* Statement info for credit accounts */}
                 {statementInfo && (
                     <Card className="py-4">
-                        <CardContent>
+                        <CardContent className="space-y-4">
+                            {/* Statement balance (previous closed cycle) */}
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-xs tracking-wide text-muted-foreground uppercase">
-                                        Current statement period
+                                        Statement balance
                                     </p>
-                                    <p className="mt-1 text-sm">
-                                        {formatDate(statementInfo.start)}{' '}
-                                        &ndash; {formatDate(statementInfo.end)}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-xs tracking-wide text-muted-foreground uppercase">
-                                        Outstanding
-                                    </p>
-                                    <p className="mt-1 text-xl font-semibold text-red-500 tabular-nums">
-                                        {formatAmount(
-                                            statementInfo.outstanding,
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {formatDate(
+                                            statementInfo.statement_start,
+                                        )}{' '}
+                                        &ndash;{' '}
+                                        {formatDate(
+                                            statementInfo.statement_end,
                                         )}
                                     </p>
                                 </div>
+                                <div className="text-right">
+                                    <p className="text-xl font-semibold text-red-500 tabular-nums">
+                                        {formatAmount(
+                                            statementInfo.statement_balance,
+                                        )}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Due{' '}
+                                        {formatDate(
+                                            statementInfo.payment_due_date,
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="border-t" />
+
+                            {/* Current cycle spending */}
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs tracking-wide text-muted-foreground uppercase">
+                                        Current spending
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {formatDate(
+                                            statementInfo.current_start,
+                                        )}{' '}
+                                        &ndash;{' '}
+                                        {formatDate(statementInfo.current_end)}
+                                    </p>
+                                </div>
+                                <p className="text-lg font-semibold tabular-nums">
+                                    {formatAmount(
+                                        statementInfo.current_spending,
+                                    )}
+                                </p>
+                            </div>
+
+                            <div className="border-t" />
+
+                            {/* Total outstanding */}
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs tracking-wide text-muted-foreground uppercase">
+                                    Total outstanding
+                                </p>
+                                <p className="text-lg font-bold text-red-500 tabular-nums">
+                                    {formatAmount(statementInfo.outstanding)}
+                                </p>
                             </div>
                         </CardContent>
                     </Card>

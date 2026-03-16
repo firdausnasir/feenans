@@ -36,12 +36,12 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import type { ChartConfig } from '@/components/ui/chart';
 import {
     ChartContainer,
     ChartTooltip,
     ChartTooltipContent,
 } from '@/components/ui/chart';
-import type { ChartConfig } from '@/components/ui/chart';
 import { Progress } from '@/components/ui/progress';
 import {
     Table,
@@ -60,9 +60,9 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
 import {
-    create as createAccount,
-    index as accountsIndex,
     show as accountShow,
+    index as accountsIndex,
+    create as createAccount,
 } from '@/routes/ledgers/accounts';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
@@ -444,10 +444,10 @@ export default function LedgerDashboard({
                     </div>
                 </div>
 
-                {/* Bills + Expense Trend */}
+                {/* Upcoming Recurring + Accounts */}
                 <div className="grid gap-6 lg:grid-cols-2">
                     {/* Upcoming Bills */}
-                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
+                    <Card className="max-h-[28rem] min-w-0 overflow-hidden">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <Bell className="size-4 text-muted-foreground" />
@@ -468,8 +468,8 @@ export default function LedgerDashboard({
                                 </div>
                             )}
                         </CardHeader>
-                        <CardContent className="flex-1 lg:min-h-0">
-                            <div className="space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1">
+                        <CardContent className="overflow-y-auto">
+                            <div className="space-y-4">
                                 {!hasAnyBills && (
                                     <p className="text-sm text-muted-foreground">
                                         No upcoming recurring transactions.
@@ -506,178 +506,16 @@ export default function LedgerDashboard({
                         </CardContent>
                     </Card>
 
-                    {/* Expense & Income Trend */}
-                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
-                        <CardHeader>
-                            <CardTitle>Expense & Income Trend</CardTitle>
-                            <CardDescription>
-                                Daily expenses and income this cycle
-                            </CardDescription>
-                            {dailyExpenseTrend.length > 0 && (
-                                <div className="flex items-center gap-2 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setShowExpense((v) => !v)
-                                        }
-                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                                            showExpense
-                                                ? 'border-transparent bg-muted text-foreground'
-                                                : 'border-border text-muted-foreground opacity-60'
-                                        }`}
-                                    >
-                                        <span
-                                            className="inline-block size-2 rounded-full"
-                                            style={{
-                                                backgroundColor:
-                                                    'var(--color-chart-1)',
-                                            }}
-                                        />
-                                        Expense
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowIncome((v) => !v)}
-                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                                            showIncome
-                                                ? 'border-transparent bg-muted text-foreground'
-                                                : 'border-border text-muted-foreground opacity-60'
-                                        }`}
-                                    >
-                                        <span
-                                            className="inline-block size-2 rounded-full"
-                                            style={{
-                                                backgroundColor:
-                                                    'var(--color-chart-3)',
-                                            }}
-                                        />
-                                        Income
-                                    </button>
-                                </div>
-                            )}
-                        </CardHeader>
-                        <CardContent className="min-w-0 flex-1 overflow-hidden lg:min-h-0">
-                            {dailyExpenseTrend.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    No expense data this cycle.
-                                </p>
-                            ) : (
-                                <div className="lg:h-full lg:overflow-y-auto lg:pr-1">
-                                    <ChartContainer
-                                        config={expenseChartConfig}
-                                        className="h-[220px] w-full lg:h-full lg:min-h-[18rem]"
-                                    >
-                                        <AreaChart
-                                            data={dailyExpenseTrend}
-                                            accessibilityLayer
-                                        >
-                                            <CartesianGrid
-                                                strokeDasharray="3 3"
-                                                vertical={false}
-                                            />
-                                            <XAxis
-                                                dataKey="date"
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                                tickFormatter={formatChartDate}
-                                            />
-                                            <YAxis
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                                width={60}
-                                            />
-                                            <ChartTooltip
-                                                content={
-                                                    <ChartTooltipContent
-                                                        labelFormatter={(
-                                                            value,
-                                                        ) =>
-                                                            formatChartDate(
-                                                                String(value),
-                                                            )
-                                                        }
-                                                    />
-                                                }
-                                            />
-                                            <defs>
-                                                <linearGradient
-                                                    id="expenseGradient"
-                                                    x1="0"
-                                                    y1="0"
-                                                    x2="0"
-                                                    y2="1"
-                                                >
-                                                    <stop
-                                                        offset="5%"
-                                                        stopColor="var(--color-chart-1)"
-                                                        stopOpacity={0.3}
-                                                    />
-                                                    <stop
-                                                        offset="95%"
-                                                        stopColor="var(--color-chart-1)"
-                                                        stopOpacity={0}
-                                                    />
-                                                </linearGradient>
-                                                <linearGradient
-                                                    id="incomeGradient"
-                                                    x1="0"
-                                                    y1="0"
-                                                    x2="0"
-                                                    y2="1"
-                                                >
-                                                    <stop
-                                                        offset="5%"
-                                                        stopColor="var(--color-chart-3)"
-                                                        stopOpacity={0.3}
-                                                    />
-                                                    <stop
-                                                        offset="95%"
-                                                        stopColor="var(--color-chart-3)"
-                                                        stopOpacity={0}
-                                                    />
-                                                </linearGradient>
-                                            </defs>
-                                            {showIncome && (
-                                                <Area
-                                                    dataKey="income"
-                                                    type="monotone"
-                                                    stroke="var(--color-chart-3)"
-                                                    fill="url(#incomeGradient)"
-                                                    strokeWidth={2}
-                                                    strokeDasharray="5 3"
-                                                />
-                                            )}
-                                            {showExpense && (
-                                                <Area
-                                                    dataKey="expense"
-                                                    type="monotone"
-                                                    stroke="var(--color-chart-1)"
-                                                    fill="url(#expenseGradient)"
-                                                    strokeWidth={2.5}
-                                                />
-                                            )}
-                                        </AreaChart>
-                                    </ChartContainer>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Accounts + Top Categories */}
-                <div className="grid gap-6 lg:grid-cols-2">
                     {/* Accounts */}
-                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
+                    <Card className="max-h-[28rem] min-w-0 overflow-hidden">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <CreditCard className="size-4 text-muted-foreground" />
                                 <CardTitle>Accounts</CardTitle>
                             </div>
                         </CardHeader>
-                        <CardContent className="flex-1 lg:min-h-0">
-                            <div className="space-y-5 lg:h-full lg:overflow-y-auto lg:pr-1">
+                        <CardContent className="overflow-y-auto">
+                            <div className="space-y-5">
                                 {accounts.map((group) => (
                                     <div key={group.type.id}>
                                         <div className="mb-2 flex items-center gap-2">
@@ -766,88 +604,242 @@ export default function LedgerDashboard({
                             </div>
                         </CardContent>
                     </Card>
+                </div>
+
+                {/* Charts: Expense Trend + Top Categories */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Expense & Income Trend */}
+                    <Card className="min-w-0 overflow-hidden">
+                        <CardHeader>
+                            <CardTitle>Expense & Income Trend</CardTitle>
+                            <CardDescription>
+                                Daily expenses and income this cycle
+                            </CardDescription>
+                            {dailyExpenseTrend.length > 0 && (
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setShowExpense((v) => !v)
+                                        }
+                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                            showExpense
+                                                ? 'border-transparent bg-muted text-foreground'
+                                                : 'border-border text-muted-foreground opacity-60'
+                                        }`}
+                                    >
+                                        <span
+                                            className="inline-block size-2 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    'var(--color-chart-1)',
+                                            }}
+                                        />
+                                        Expense
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowIncome((v) => !v)}
+                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                            showIncome
+                                                ? 'border-transparent bg-muted text-foreground'
+                                                : 'border-border text-muted-foreground opacity-60'
+                                        }`}
+                                    >
+                                        <span
+                                            className="inline-block size-2 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    'var(--color-chart-3)',
+                                            }}
+                                        />
+                                        Income
+                                    </button>
+                                </div>
+                            )}
+                        </CardHeader>
+                        <CardContent>
+                            {dailyExpenseTrend.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No expense data this cycle.
+                                </p>
+                            ) : (
+                                <ChartContainer
+                                    config={expenseChartConfig}
+                                    className="h-[280px] w-full"
+                                >
+                                    <AreaChart
+                                        data={dailyExpenseTrend}
+                                        accessibilityLayer
+                                    >
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            vertical={false}
+                                        />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            tickFormatter={formatChartDate}
+                                        />
+                                        <YAxis
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            width={60}
+                                        />
+                                        <ChartTooltip
+                                            content={
+                                                <ChartTooltipContent
+                                                    labelFormatter={(value) =>
+                                                        formatChartDate(
+                                                            String(value),
+                                                        )
+                                                    }
+                                                />
+                                            }
+                                        />
+                                        <defs>
+                                            <linearGradient
+                                                id="expenseGradient"
+                                                x1="0"
+                                                y1="0"
+                                                x2="0"
+                                                y2="1"
+                                            >
+                                                <stop
+                                                    offset="5%"
+                                                    stopColor="var(--color-chart-1)"
+                                                    stopOpacity={0.3}
+                                                />
+                                                <stop
+                                                    offset="95%"
+                                                    stopColor="var(--color-chart-1)"
+                                                    stopOpacity={0}
+                                                />
+                                            </linearGradient>
+                                            <linearGradient
+                                                id="incomeGradient"
+                                                x1="0"
+                                                y1="0"
+                                                x2="0"
+                                                y2="1"
+                                            >
+                                                <stop
+                                                    offset="5%"
+                                                    stopColor="var(--color-chart-3)"
+                                                    stopOpacity={0.3}
+                                                />
+                                                <stop
+                                                    offset="95%"
+                                                    stopColor="var(--color-chart-3)"
+                                                    stopOpacity={0}
+                                                />
+                                            </linearGradient>
+                                        </defs>
+                                        {showIncome && (
+                                            <Area
+                                                dataKey="income"
+                                                type="monotone"
+                                                stroke="var(--color-chart-3)"
+                                                fill="url(#incomeGradient)"
+                                                strokeWidth={2}
+                                                strokeDasharray="5 3"
+                                            />
+                                        )}
+                                        {showExpense && (
+                                            <Area
+                                                dataKey="expense"
+                                                type="monotone"
+                                                stroke="var(--color-chart-1)"
+                                                fill="url(#expenseGradient)"
+                                                strokeWidth={2.5}
+                                            />
+                                        )}
+                                    </AreaChart>
+                                </ChartContainer>
+                            )}
+                        </CardContent>
+                    </Card>
 
                     {/* Top Expense Categories */}
-                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden">
                         <CardHeader>
                             <CardTitle>Top Expense Categories</CardTitle>
                             <CardDescription>
                                 Highest spending this cycle
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="flex-1 lg:min-h-0">
+                        <CardContent>
                             {topCategories.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
                                     No expenses this cycle.
                                 </p>
                             ) : (
-                                <div className="lg:h-full lg:overflow-y-auto lg:pr-1">
-                                    <ChartContainer
-                                        config={categoryChartConfig}
-                                        className="h-[220px] w-full lg:h-full lg:min-h-[18rem]"
+                                <ChartContainer
+                                    config={categoryChartConfig}
+                                    className="h-[280px] w-full"
+                                >
+                                    <BarChart
+                                        data={categoryChartData}
+                                        layout="vertical"
+                                        accessibilityLayer
                                     >
-                                        <BarChart
-                                            data={categoryChartData}
-                                            layout="vertical"
-                                            accessibilityLayer
-                                        >
-                                            <CartesianGrid
-                                                strokeDasharray="3 3"
-                                                horizontal={false}
-                                            />
-                                            <YAxis
-                                                dataKey="name"
-                                                type="category"
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                                width={100}
-                                            />
-                                            <XAxis
-                                                type="number"
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                            />
-                                            <ChartTooltip
-                                                content={
-                                                    <ChartTooltipContent />
-                                                }
-                                            />
-                                            <Bar
-                                                dataKey="total"
-                                                radius={[0, 4, 4, 0]}
-                                                className="cursor-pointer"
-                                                onClick={(data) => {
-                                                    const category =
-                                                        categories.find(
-                                                            (c) =>
-                                                                c.name ===
-                                                                data.name,
-                                                        );
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            horizontal={false}
+                                        />
+                                        <YAxis
+                                            dataKey="name"
+                                            type="category"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            width={100}
+                                        />
+                                        <XAxis
+                                            type="number"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                        />
+                                        <ChartTooltip
+                                            content={<ChartTooltipContent />}
+                                        />
+                                        <Bar
+                                            dataKey="total"
+                                            radius={[0, 4, 4, 0]}
+                                            className="cursor-pointer"
+                                            onClick={(data) => {
+                                                const category =
+                                                    categories.find(
+                                                        (c) =>
+                                                            c.name ===
+                                                            data.name,
+                                                    );
 
-                                                    if (category) {
-                                                        router.visit(
-                                                            transactionsIndex.url(
-                                                                ledger.id,
-                                                                {
-                                                                    query: {
-                                                                        'category_ids[]':
-                                                                            category.id,
-                                                                        date_from:
-                                                                            cycleDates.start,
-                                                                        date_to:
-                                                                            cycleDates.end,
-                                                                    },
+                                                if (category) {
+                                                    router.visit(
+                                                        transactionsIndex.url(
+                                                            ledger.id,
+                                                            {
+                                                                query: {
+                                                                    'category_ids[]':
+                                                                        category.id,
+                                                                    date_from:
+                                                                        cycleDates.start,
+                                                                    date_to:
+                                                                        cycleDates.end,
                                                                 },
-                                                            ),
-                                                        );
-                                                    }
-                                                }}
-                                            />
-                                        </BarChart>
-                                    </ChartContainer>
-                                </div>
+                                                            },
+                                                        ),
+                                                    );
+                                                }
+                                            }}
+                                        />
+                                    </BarChart>
+                                </ChartContainer>
                             )}
                         </CardContent>
                     </Card>
@@ -1037,14 +1029,6 @@ export default function LedgerDashboard({
                                                                     {transaction.description ??
                                                                         'Transaction'}
                                                                 </span>
-                                                                <Badge
-                                                                    variant="outline"
-                                                                    className="hidden text-[10px] lg:inline-flex"
-                                                                >
-                                                                    {
-                                                                        transaction.transaction_type
-                                                                    }
-                                                                </Badge>
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="hidden pr-4 sm:table-cell">

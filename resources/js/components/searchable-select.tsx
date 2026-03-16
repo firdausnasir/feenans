@@ -122,9 +122,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
             // Keep popover open for multi-select
         } else {
             const singleProps = props as SingleProps;
-            singleProps.onValueChange(
-                val === singleProps.value ? null : val,
-            );
+            singleProps.onValueChange(val === singleProps.value ? null : val);
             setSearch('');
             setOpen(false);
         }
@@ -261,7 +259,6 @@ export function SearchableSelect(props: SearchableSelectProps) {
                 className="w-[--radix-popover-trigger-width] p-0"
                 align="start"
                 sideOffset={4}
-                onOpenAutoFocus={(e) => e.preventDefault()}
                 onWheel={(e) => e.stopPropagation()}
             >
                 <Command>
@@ -299,34 +296,33 @@ export function SearchableSelect(props: SearchableSelectProps) {
                                 </CommandItem>
                             </CommandGroup>
                         )}
-                        {isMulti &&
-                            (props as MultiProps).value.length > 0 && (
-                                <CommandGroup>
-                                    <CommandItem
-                                        value="__clear_all__"
-                                        onSelect={handleClearAll}
+                        {isMulti && (props as MultiProps).value.length > 0 && (
+                            <CommandGroup>
+                                <CommandItem
+                                    value="__clear_all__"
+                                    onSelect={handleClearAll}
+                                >
+                                    <X className="mr-2 size-4" />
+                                    Clear all
+                                </CommandItem>
+                            </CommandGroup>
+                        )}
+                        {grouped ? (
+                            Object.entries(grouped).map(
+                                ([group, groupOptions]) => (
+                                    <CommandGroup
+                                        key={group}
+                                        heading={group || undefined}
                                     >
-                                        <X className="mr-2 size-4" />
-                                        Clear all
-                                    </CommandItem>
-                                </CommandGroup>
-                            )}
-                        {grouped
-                            ? Object.entries(grouped).map(
-                                  ([group, groupOptions]) => (
-                                      <CommandGroup
-                                          key={group}
-                                          heading={group || undefined}
-                                      >
-                                          {groupOptions.map(renderOptionItem)}
-                                      </CommandGroup>
-                                  ),
-                              )
-                            : (
-                                  <CommandGroup>
-                                      {options.map(renderOptionItem)}
-                                  </CommandGroup>
-                              )}
+                                        {groupOptions.map(renderOptionItem)}
+                                    </CommandGroup>
+                                ),
+                            )
+                        ) : (
+                            <CommandGroup>
+                                {options.map(renderOptionItem)}
+                            </CommandGroup>
+                        )}
                         {showCreateOption && (
                             <>
                                 <CommandSeparator />
