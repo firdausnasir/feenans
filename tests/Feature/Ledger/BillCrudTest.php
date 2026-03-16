@@ -61,63 +61,7 @@ test('bill destroy deletes bill via HTTP', function () {
 
     $response->assertRedirect(route('ledgers.bills.index', $ledger));
 
-    expect(Bill::find($bill->id))->toBeNull()
-        ->and(Bill::withTrashed()->find($bill->id)?->trashed())->toBeTrue();
-});
-
-test('bill trash page shows deleted bills', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-
-    $bill = Bill::factory()->for($ledger)->for($account)->trashed()->create([
-        'name' => 'Deleted Bill',
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.bills.trash', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->component('ledgers/bills/trash/index')
-        ->has('bills', 1)
-    );
-});
-
-test('bill restore restores a soft deleted bill', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-
-    $bill = Bill::factory()->for($ledger)->for($account)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->patch(route('ledgers.bills.restore', [$ledger, $bill]));
-
-    $response->assertRedirect(route('ledgers.bills.trash', $ledger));
-
-    $this->assertNotSoftDeleted('bills', ['id' => $bill->id]);
-});
-
-test('bill force destroy permanently deletes a bill', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-
-    $bill = Bill::factory()->for($ledger)->for($account)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->delete(route('ledgers.bills.force-destroy', [$ledger, $bill]));
-
-    $response->assertRedirect(route('ledgers.bills.trash', $ledger));
-
-    expect(Bill::withTrashed()->find($bill->id))->toBeNull();
+    expect(Bill::find($bill->id))->toBeNull();
 });
 
 test('bill create page renders with necessary data', function () {

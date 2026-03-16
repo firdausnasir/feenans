@@ -62,14 +62,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.transactions.update');
     Route::delete('ledgers/{ledger}/transactions/{transaction}', [TransactionController::class, 'destroy'])
         ->name('ledgers.transactions.destroy');
-    Route::get('ledgers/{ledger}/transactions/trash', [TransactionController::class, 'trash'])
-        ->name('ledgers.transactions.trash');
-    Route::patch('ledgers/{ledger}/transactions/trash/{transaction}/restore', [TransactionController::class, 'restore'])
-        ->withTrashed()
-        ->name('ledgers.transactions.restore');
-    Route::delete('ledgers/{ledger}/transactions/trash/{transaction}', [TransactionController::class, 'forceDestroy'])
-        ->withTrashed()
-        ->name('ledgers.transactions.force-destroy');
     Route::post('ledgers/{ledger}/transactions/{transaction}/attachments', [AttachmentController::class, 'store'])
         ->name('ledgers.transactions.attachments.store');
     Route::get('ledgers/{ledger}/transactions/{transaction}/attachments/{attachment}', [AttachmentController::class, 'show'])
@@ -82,8 +74,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.accounts.reorder');
     Route::get('ledgers/{ledger}/accounts', [AccountController::class, 'index'])
         ->name('ledgers.accounts.index');
-    Route::get('ledgers/{ledger}/accounts/trash', [AccountController::class, 'trash'])
-        ->name('ledgers.accounts.trash');
     Route::get('ledgers/{ledger}/accounts/create', [AccountController::class, 'create'])
         ->name('ledgers.accounts.create');
     Route::post('ledgers/{ledger}/accounts', [AccountController::class, 'store'])
@@ -100,12 +90,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.accounts.destroy');
     Route::patch('ledgers/{ledger}/accounts/{account}/toggle-visibility', [AccountController::class, 'toggleVisibility'])
         ->name('ledgers.accounts.toggle-visibility');
-    Route::patch('ledgers/{ledger}/accounts/trash/{account}/restore', [AccountController::class, 'restore'])
-        ->withTrashed()
-        ->name('ledgers.accounts.restore');
-    Route::delete('ledgers/{ledger}/accounts/trash/{account}', [AccountController::class, 'forceDestroy'])
-        ->withTrashed()
-        ->name('ledgers.accounts.force-destroy');
 
     // Categories — reorder must come before {category} wildcard routes
     Route::post('ledgers/{ledger}/categories/reorder', [CategoryController::class, 'reorder'])
@@ -120,14 +104,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.categories.update');
     Route::delete('ledgers/{ledger}/categories/{category}', [CategoryController::class, 'destroy'])
         ->name('ledgers.categories.destroy');
-    Route::get('ledgers/{ledger}/categories/trash', [CategoryController::class, 'trash'])
-        ->name('ledgers.categories.trash');
-    Route::patch('ledgers/{ledger}/categories/trash/{category}/restore', [CategoryController::class, 'restore'])
-        ->withTrashed()
-        ->name('ledgers.categories.restore');
-    Route::delete('ledgers/{ledger}/categories/trash/{category}', [CategoryController::class, 'forceDestroy'])
-        ->withTrashed()
-        ->name('ledgers.categories.force-destroy');
 
     // Bills
     Route::get('ledgers/{ledger}/bills', [BillController::class, 'index'])
@@ -142,14 +118,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.bills.update');
     Route::delete('ledgers/{ledger}/bills/{bill}', [BillController::class, 'destroy'])
         ->name('ledgers.bills.destroy');
-    Route::get('ledgers/{ledger}/bills/trash', [BillController::class, 'trash'])
-        ->name('ledgers.bills.trash');
-    Route::patch('ledgers/{ledger}/bills/trash/{bill}/restore', [BillController::class, 'restore'])
-        ->withTrashed()
-        ->name('ledgers.bills.restore');
-    Route::delete('ledgers/{ledger}/bills/trash/{bill}', [BillController::class, 'forceDestroy'])
-        ->withTrashed()
-        ->name('ledgers.bills.force-destroy');
     Route::post('ledgers/{ledger}/bills/{bill}/pay', [BillController::class, 'pay'])
         ->name('ledgers.bills.pay');
     Route::patch('ledgers/{ledger}/bills/{bill}/toggle', [BillController::class, 'toggle'])

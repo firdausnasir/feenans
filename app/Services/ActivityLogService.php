@@ -19,7 +19,6 @@ class ActivityLogService
         'two_factor_recovery_codes',
         'updated_at',
         'created_at',
-        'deleted_at',
     ];
 
     public function log(string $action, Model $subject, array $oldValues = [], array $newValues = []): void

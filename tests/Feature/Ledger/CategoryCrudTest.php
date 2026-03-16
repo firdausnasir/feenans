@@ -46,50 +46,6 @@ test('category destroy rejects deletion when category has children', function ()
     expect(Category::find($parent->id))->not->toBeNull();
 });
 
-test('category trash page shows deleted categories', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->trashed()->create(['name' => 'Deleted Category']);
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.categories.trash', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->component('ledgers/categories/trash/index')
-        ->has('categories', 1)
-    );
-});
-
-test('category restore restores a soft deleted category', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->patch(route('ledgers.categories.restore', [$ledger, $category]));
-
-    $response->assertRedirect(route('ledgers.categories.trash', $ledger));
-
-    $this->assertNotSoftDeleted('categories', ['id' => $category->id]);
-});
-
-test('category force destroy permanently deletes a category', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->delete(route('ledgers.categories.force-destroy', [$ledger, $category]));
-
-    $response->assertRedirect(route('ledgers.categories.trash', $ledger));
-
-    expect(Category::withTrashed()->find($category->id))->toBeNull();
-});
-
 test('category store is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();

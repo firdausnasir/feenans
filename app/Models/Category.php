@@ -8,12 +8,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Category extends Model
 {
     /** @use HasFactory<CategoryFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     /**
      * The attributes that are mass assignable.
@@ -53,12 +52,5 @@ class Category extends Model
     public function scopeParents(Builder $query): Builder
     {
         return $query->whereNull('parent_id');
-    }
-
-    protected static function booted(): void
-    {
-        static::deleting(function (Category $category) {
-            $category->children()->each(fn (Category $child) => $child->delete());
-        });
     }
 }

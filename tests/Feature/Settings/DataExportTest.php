@@ -92,7 +92,7 @@ test('data export contains expected data', function () {
     expect($content['bills'][0]['name'])->toBe('Rent');
 });
 
-test('data export includes soft-deleted records', function () {
+test('data export excludes hard-deleted records', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -105,9 +105,7 @@ test('data export includes soft-deleted records', function () {
 
     $content = json_decode($response->streamedContent(), true);
 
-    expect($content['accounts'])->toHaveCount(1);
-    expect($content['accounts'][0]['name'])->toBe('Deleted Account');
-    expect($content['accounts'][0]['deleted_at'])->not->toBeNull();
+    expect($content['accounts'])->toHaveCount(0);
 });
 
 test('unauthorized users cannot export another user data', function () {

@@ -282,36 +282,4 @@ class AccountController extends Controller
 
         return back();
     }
-
-    public function trash(Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/accounts/trash/index', [
-            'ledger' => $ledger,
-            'accounts' => $ledger->accounts()
-                ->onlyTrashed()
-                ->with('accountType')
-                ->orderByDesc('deleted_at')
-                ->get(),
-        ]);
-    }
-
-    public function restore(Request $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $account->restore();
-
-        return to_route('ledgers.accounts.trash', $ledger);
-    }
-
-    public function forceDestroy(Request $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('delete', $ledger);
-
-        $account->forceDelete();
-
-        return to_route('ledgers.accounts.trash', $ledger);
-    }
 }

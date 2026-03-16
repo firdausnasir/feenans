@@ -212,7 +212,7 @@ test('transaction with splits shows splits in index response', function () {
     );
 });
 
-test('soft deleting transaction preserves its splits for restore', function () {
+test('deleting transaction also removes its splits', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -245,6 +245,5 @@ test('soft deleting transaction preserves its splits for restore', function () {
         ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
         ->assertRedirect(route('ledgers.transactions.index', $ledger));
 
-    expect(Transaction::withTrashed()->find($transaction->id))->not->toBeNull()
-        ->and($transaction->fresh()->splits()->count())->toBe(2);
+    expect(Transaction::find($transaction->id))->toBeNull();
 });

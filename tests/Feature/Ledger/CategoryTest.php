@@ -94,8 +94,7 @@ test('category destroy deletes category without transactions', function () {
 
     $response->assertRedirect();
 
-    expect(Category::find($category->id))->toBeNull()
-        ->and(Category::withTrashed()->find($category->id)?->trashed())->toBeTrue();
+    expect(Category::find($category->id))->toBeNull();
 });
 
 test('category reorder updates positions', function () {

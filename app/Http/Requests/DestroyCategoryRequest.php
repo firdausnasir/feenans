@@ -35,7 +35,6 @@ class DestroyCategoryRequest extends FormRequest
             ? Rule::exists('categories', 'id')
                 ->where('ledger_id', $ledger->id)
                 ->whereNot('id', $category->id)
-                ->whereNull('deleted_at')
             : 'exists:categories,id';
 
         return [

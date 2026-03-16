@@ -94,7 +94,7 @@ test('account update modifies an existing account', function () {
         ->assertJsonPath('data.name', 'New Name');
 });
 
-test('account destroy soft deletes an account', function () {
+test('account destroy deletes an account', function () {
     $account = Account::factory()->for($this->ledger)->for($this->accountType)->create();
 
     $response = $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
@@ -102,5 +102,5 @@ test('account destroy soft deletes an account', function () {
 
     $response->assertNoContent();
 
-    $this->assertSoftDeleted('accounts', ['id' => $account->id]);
+    expect(Account::find($account->id))->toBeNull();
 });

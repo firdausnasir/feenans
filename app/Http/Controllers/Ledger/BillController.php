@@ -96,38 +96,6 @@ class BillController extends Controller
         return to_route('ledgers.bills.index', $ledger);
     }
 
-    public function trash(Request $request, Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/bills/trash/index', [
-            'ledger' => $ledger,
-            'bills' => $ledger->bills()
-                ->onlyTrashed()
-                ->with(['account', 'category', 'payee'])
-                ->orderByDesc('deleted_at')
-                ->get(),
-        ]);
-    }
-
-    public function restore(Request $request, Ledger $ledger, Bill $bill): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $bill->restore();
-
-        return to_route('ledgers.bills.trash', $ledger);
-    }
-
-    public function forceDestroy(Request $request, Ledger $ledger, Bill $bill): RedirectResponse
-    {
-        $this->authorize('delete', $ledger);
-
-        $bill->forceDelete();
-
-        return to_route('ledgers.bills.trash', $ledger);
-    }
-
     public function pay(PayBillRequest $request, Ledger $ledger, Bill $bill): RedirectResponse
     {
         $this->authorize('update', $ledger);

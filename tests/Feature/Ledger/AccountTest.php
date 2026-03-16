@@ -103,8 +103,7 @@ test('account destroy deletes account and redirects to index', function () {
 
     $response->assertRedirect(route('ledgers.accounts.index', $ledger));
 
-    expect(Account::find($account->id))->toBeNull()
-        ->and(Account::withTrashed()->find($account->id)?->trashed())->toBeTrue();
+    expect(Account::find($account->id))->toBeNull();
 });
 
 test('account show is forbidden for another user', function () {

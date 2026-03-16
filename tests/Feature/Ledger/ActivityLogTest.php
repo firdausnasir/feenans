@@ -253,29 +253,6 @@ test('updating a budget logs activity with old and new values', function () {
         ->and($log->new_values)->toHaveKey('amount');
 });
 
-test('restoring a transaction logs activity', function () {
-    $this->actingAs($this->user);
-
-    $transaction = Transaction::factory()
-        ->for($this->ledger)
-        ->for($this->account)
-        ->for($this->category)
-        ->create(['description' => 'Restored item']);
-
-    $transaction->delete();
-    $transaction->restore();
-
-    $log = ActivityLog::query()
-        ->where('ledger_id', $this->ledger->id)
-        ->where('action', 'restored')
-        ->where('subject_type', Transaction::class)
-        ->first();
-
-    expect($log)->not->toBeNull()
-        ->and($log->new_values)->toBeArray()
-        ->and($log->old_values)->toBeEmpty();
-});
-
 test('activity page renders with old and new values', function () {
     $this->withoutVite();
     $this->actingAs($this->user);

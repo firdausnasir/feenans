@@ -162,7 +162,7 @@ test('transaction service can delete a regular transaction', function () {
     app(TransactionService::class)->delete($transaction);
 
     expect($ledger->transactions()->count())->toBe(0)
-        ->and(Transaction::withTrashed()->find($transaction->id)?->trashed())->toBeTrue();
+        ->and(Transaction::find($transaction->id))->toBeNull();
 });
 
 test('transaction service deleting a transfer deletes both paired transactions', function () {
@@ -192,7 +192,7 @@ test('transaction service deleting a transfer deletes both paired transactions',
     app(TransactionService::class)->delete($source);
 
     expect($ledger->transactions()->count())->toBe(0)
-        ->and(Transaction::withTrashed()->where('transfer_pair_id', $pairId)->count())->toBe(2);
+        ->and(Transaction::where('transfer_pair_id', $pairId)->count())->toBe(0);
 });
 
 test('transaction update via HTTP updates the transaction', function () {
@@ -248,8 +248,7 @@ test('transaction destroy deletes transaction via HTTP', function () {
 
     $response->assertRedirect(route('ledgers.transactions.index', $ledger));
 
-    expect(Transaction::find($transaction->id))->toBeNull()
-        ->and(Transaction::withTrashed()->find($transaction->id)?->trashed())->toBeTrue();
+    expect(Transaction::find($transaction->id))->toBeNull();
 });
 
 test('bulk destroy deletes multiple transactions', function () {

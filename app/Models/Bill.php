@@ -11,12 +11,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Bill extends Model
 {
     /** @use HasFactory<BillFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     const END_TYPE_ON_DATE = 'on_date';
 

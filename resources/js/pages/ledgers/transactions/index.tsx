@@ -52,7 +52,6 @@ import {
     bulkUpdate,
     destroy,
     exportMethod as exportTransactions,
-    restore,
     index as transactionsIndex,
     update,
 } from '@/routes/ledgers/transactions';
@@ -1103,28 +1102,7 @@ export default function TransactionsIndex({
             {
                 preserveScroll: true,
                 onSuccess: () => {
-                    toast.success('Transaction deleted', {
-                        action: {
-                            label: 'Undo',
-                            onClick: () => {
-                                router.patch(
-                                    restore.url({
-                                        ledger: ledger.id,
-                                        transaction: transactionId,
-                                    }),
-                                    {},
-                                    {
-                                        preserveScroll: true,
-                                        onSuccess: () =>
-                                            toast.success(
-                                                'Transaction restored',
-                                            ),
-                                    },
-                                );
-                            },
-                        },
-                        duration: 5000,
-                    });
+                    toast.success('Transaction deleted');
                 },
             },
         );
@@ -2251,8 +2229,8 @@ export default function TransactionsIndex({
                     <DialogHeader>
                         <DialogTitle>Delete this transaction?</DialogTitle>
                         <DialogDescription>
-                            This transaction will be moved to trash. You can
-                            undo this action for a short time after deletion.
+                            This transaction will be permanently deleted. This
+                            action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

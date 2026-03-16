@@ -180,14 +180,14 @@ test('service forceDelete permanently removes a regular transaction', function (
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
 
-    $transaction = Transaction::factory()->for($ledger)->for($account)->trashed()->create([
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create([
         'transaction_type' => TransactionType::Expense,
         'transfer_pair_id' => null,
     ]);
 
     app(TransactionService::class)->forceDelete($transaction);
 
-    expect(Transaction::withTrashed()->find($transaction->id))->toBeNull();
+    expect(Transaction::find($transaction->id))->toBeNull();
 });
 
 test('service forceDelete permanently removes both paired transfer transactions', function () {
@@ -197,14 +197,14 @@ test('service forceDelete permanently removes both paired transfer transactions'
     $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
     $pairId = (string) Str::uuid();
 
-    $source = Transaction::factory()->for($ledger)->for($fromAccount)->trashed()->create([
+    $source = Transaction::factory()->for($ledger)->for($fromAccount)->create([
         'transaction_type' => TransactionType::Transfer,
         'amount' => '-50.00',
         'transfer_pair_id' => $pairId,
         'category_id' => null,
     ]);
 
-    Transaction::factory()->for($ledger)->for($toAccount)->trashed()->create([
+    Transaction::factory()->for($ledger)->for($toAccount)->create([
         'transaction_type' => TransactionType::Transfer,
         'amount' => '50.00',
         'transfer_pair_id' => $pairId,
@@ -213,5 +213,5 @@ test('service forceDelete permanently removes both paired transfer transactions'
 
     app(TransactionService::class)->forceDelete($source);
 
-    expect(Transaction::withTrashed()->where('transfer_pair_id', $pairId)->count())->toBe(0);
+    expect(Transaction::where('transfer_pair_id', $pairId)->count())->toBe(0);
 });

@@ -28,6 +28,7 @@ class StoreCategoryRequest extends FormRequest
             'transaction_type' => ['required', 'string', Rule::in(['expense', 'income'])],
             'color' => ['nullable', 'string', 'max:20'],
             'icon' => ['nullable', 'string', 'max:50'],
+            'parent_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('ledger_id', $this->route('ledger')->id)],
         ];
     }
 

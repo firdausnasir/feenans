@@ -46,10 +46,28 @@ class CategoryController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        $ledger->categories()->create([
-            ...$request->validated(),
-            'position' => $ledger->categories()->count() + 1,
-        ]);
+        $validated = $request->validated();
+        $parentId = $validated['parent_id'] ?? null;
+
+        $positionQuery = $parentId
+            ? $ledger->categories()->where('parent_id', $parentId)
+            : $ledger->categories()->whereNull('parent_id');
+
+        $ledger->categories()->upsert(
+            [
+                [
+                    'ledger_id' => $ledger->id,
+                    'name' => $validated['name'],
+                    'transaction_type' => $validated['transaction_type'],
+                    'parent_id' => $parentId,
+                    'color' => $validated['color'] ?? null,
+                    'icon' => $validated['icon'] ?? null,
+                    'position' => $positionQuery->count() + 1,
+                ],
+            ],
+            ['ledger_id', 'transaction_type', 'name'],
+            ['parent_id', 'color', 'icon', 'position'],
+        );
 
         return back();
     }
@@ -81,47 +99,16 @@ class CategoryController extends Controller
         }
 
         DB::transaction(function () use ($category, $reassignCategoryId) {
-            // Reassign transactions from this category (and its children) to the target or null
             $categoryIds = $category->children()->pluck('id')->push($category->id);
 
             Transaction::whereIn('category_id', $categoryIds)
                 ->update(['category_id' => $reassignCategoryId]);
 
+            // Hard delete — children cascade via DB foreign key
             $category->delete();
         });
 
         return back();
-    }
-
-    public function trash(Request $request, Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/categories/trash/index', [
-            'ledger' => $ledger,
-            'categories' => $ledger->categories()
-                ->onlyTrashed()
-                ->orderByDesc('deleted_at')
-                ->get(),
-        ]);
-    }
-
-    public function restore(Request $request, Ledger $ledger, Category $category): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $category->restore();
-
-        return to_route('ledgers.categories.trash', $ledger);
-    }
-
-    public function forceDestroy(Request $request, Ledger $ledger, Category $category): RedirectResponse
-    {
-        $this->authorize('delete', $ledger);
-
-        $category->forceDelete();
-
-        return to_route('ledgers.categories.trash', $ledger);
     }
 
     public function reorder(ReorderRequest $request, Ledger $ledger): RedirectResponse

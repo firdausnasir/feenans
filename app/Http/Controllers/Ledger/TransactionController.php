@@ -330,39 +330,6 @@ class TransactionController extends Controller
         return to_route('ledgers.transactions.index', $ledger);
     }
 
-    public function trash(Request $request, Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/transactions/trash/index', [
-            'ledger' => $ledger,
-            'transactions' => $ledger->transactions()
-                ->onlyTrashed()
-                ->with(['account', 'category', 'payee'])
-                ->orderByDesc('deleted_at')
-                ->paginate(25)
-                ->withQueryString(),
-        ]);
-    }
-
-    public function restore(Request $request, Ledger $ledger, Transaction $transaction): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $transaction->restore();
-
-        return to_route('ledgers.transactions.trash', $ledger);
-    }
-
-    public function forceDestroy(Request $request, Ledger $ledger, Transaction $transaction): RedirectResponse
-    {
-        $this->authorize('delete', $ledger);
-
-        $this->transactionService->forceDelete($transaction);
-
-        return to_route('ledgers.transactions.trash', $ledger);
-    }
-
     public function export(Request $request, Ledger $ledger): StreamedResponse
     {
         $this->authorize('view', $ledger);

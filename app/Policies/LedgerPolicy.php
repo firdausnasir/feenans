@@ -46,20 +46,4 @@ class LedgerPolicy
     {
         return $ledger->user->is($user);
     }
-
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, Ledger $ledger): bool
-    {
-        return $ledger->user->is($user);
-    }
-
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, Ledger $ledger): bool
-    {
-        return $ledger->user->is($user);
-    }
 }

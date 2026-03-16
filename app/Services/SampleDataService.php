@@ -225,22 +225,22 @@ class SampleDataService
             Transaction::query()
                 ->where('ledger_id', $ledger->id)
                 ->where('is_sample', true)
-                ->forceDelete();
+                ->delete();
 
             Bill::query()
                 ->where('ledger_id', $ledger->id)
                 ->where('is_sample', true)
-                ->forceDelete();
+                ->delete();
 
             Account::query()
                 ->where('ledger_id', $ledger->id)
                 ->where('is_sample', true)
-                ->forceDelete();
+                ->delete();
 
             Payee::query()
                 ->where('ledger_id', $ledger->id)
                 ->where('is_sample', true)
-                ->forceDelete();
+                ->delete();
         });
     }
 

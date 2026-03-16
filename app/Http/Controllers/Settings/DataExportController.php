@@ -20,12 +20,12 @@ class DataExportController extends Controller
             'exported_at' => now()->toIso8601String(),
             'ledger_name' => $ledger->name,
             'currency_code' => $ledger->currency_code,
-            'accounts' => $ledger->accounts()->withTrashed()->get(),
-            'categories' => $ledger->categories()->withTrashed()->get(),
-            'payees' => $ledger->payees()->withTrashed()->get(),
+            'accounts' => $ledger->accounts()->get(),
+            'categories' => $ledger->categories()->get(),
+            'payees' => $ledger->payees()->get(),
             'tags' => $ledger->tags()->get(),
-            'transactions' => $ledger->transactions()->withTrashed()->with(['tags', 'splits'])->get(),
-            'bills' => $ledger->bills()->withTrashed()->get(),
+            'transactions' => $ledger->transactions()->with(['tags', 'splits'])->get(),
+            'bills' => $ledger->bills()->get(),
             'budgets' => $ledger->budgets()->get(),
         ];
 

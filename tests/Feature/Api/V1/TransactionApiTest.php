@@ -124,7 +124,7 @@ test('transaction update modifies an existing transaction', function () {
         ->assertJsonPath('data.description', 'Updated');
 });
 
-test('transaction destroy soft deletes a transaction', function () {
+test('transaction destroy deletes a transaction', function () {
     $transaction = Transaction::factory()
         ->for($this->ledger)
         ->for($this->account)
@@ -136,7 +136,7 @@ test('transaction destroy soft deletes a transaction', function () {
 
     $response->assertNoContent();
 
-    $this->assertSoftDeleted('transactions', ['id' => $transaction->id]);
+    expect(Transaction::find($transaction->id))->toBeNull();
 });
 
 test('transaction index supports filtering by account', function () {

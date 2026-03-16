@@ -33,7 +33,13 @@ export default function CreateAccount({
         color: '#6B7280',
         initial_balance: '0',
         include_in_totals: '1',
+        statement_day: '',
     });
+
+    const selectedAccountType = accountTypes.find(
+        (t) => String(t.id) === data.account_type_id,
+    );
+    const isCreditCard = selectedAccountType?.is_credit ?? false;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -67,7 +73,16 @@ export default function CreateAccount({
                         <Select
                             value={data.account_type_id}
                             onValueChange={(value) => {
-                                setData('account_type_id', value);
+                                const newType = accountTypes.find(
+                                    (t) => String(t.id) === value,
+                                );
+                                setData((prev) => ({
+                                    ...prev,
+                                    account_type_id: value,
+                                    statement_day: newType?.is_credit
+                                        ? prev.statement_day
+                                        : '',
+                                }));
                                 clearErrors('account_type_id');
                             }}
                         >
@@ -121,6 +136,46 @@ export default function CreateAccount({
                             Choose a color to identify this account.
                         </p>
                     </div>
+
+                    {isCreditCard && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="statement_day">
+                                Statement date
+                            </Label>
+                            <Select
+                                value={data.statement_day}
+                                onValueChange={(value) => {
+                                    setData('statement_day', value);
+                                    clearErrors('statement_day');
+                                }}
+                            >
+                                <SelectTrigger
+                                    id="statement_day"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select statement date" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Array.from(
+                                        { length: 31 },
+                                        (_, i) => i + 1,
+                                    ).map((day) => (
+                                        <SelectItem
+                                            key={day}
+                                            value={String(day)}
+                                        >
+                                            {day}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <InputError message={errors.statement_day} />
+                            <p className="text-xs text-muted-foreground">
+                                The day of the month your credit card statement
+                                is generated.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="grid gap-2">
                         <Label htmlFor="initial_balance">Initial balance</Label>

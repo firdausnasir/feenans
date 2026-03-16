@@ -1,7 +1,3 @@
-import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
-import { useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { toggleVisibility } from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
@@ -19,12 +15,16 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
-    create,
-    index as accountsIndex,
-    reorder as reorderRoute,
     show as accountShow,
+    index as accountsIndex,
+    create,
+    reorder as reorderRoute,
 } from '@/routes/ledgers/accounts';
 import type { Account, AccountType, BreadcrumbItem, Ledger } from '@/types';
+import { Head, Link, router } from '@inertiajs/react';
+import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 export default function AccountsIndex({
     ledger,
@@ -356,7 +356,7 @@ export default function AccountsIndex({
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 lg:grid-cols-3">
                     <Card className="py-4">
                         <CardContent>
                             <p className="text-sm text-muted-foreground">
@@ -436,7 +436,7 @@ export default function AccountsIndex({
                                 </h2>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                                 {typeAccounts.map((account) =>
                                     renderAccountCard(
                                         account,
@@ -456,7 +456,7 @@ export default function AccountsIndex({
                         <h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                             Other
                         </h2>
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                             {ungrouped.map((account) =>
                                 renderAccountCard(
                                     account,

@@ -210,6 +210,6 @@ test('bulk delete with confirmation deletes all selected transactions', function
     $response->assertRedirect();
 
     foreach ($transactions as $transaction) {
-        expect($transaction->fresh()?->trashed())->toBeTrue();
+        expect(Transaction::find($transaction->id))->toBeNull();
     }
 });

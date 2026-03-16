@@ -287,20 +287,22 @@ class TransactionService
     {
         if ($transaction->transfer_pair_id !== null) {
             DB::transaction(function () use ($transaction): void {
-                Transaction::withTrashed()
+                Transaction::query()
                     ->where('transfer_pair_id', $transaction->transfer_pair_id)
                     ->get()
                     ->each(function (Transaction $pairedTransaction): void {
+                        $pairedTransaction->splits()->delete();
                         $this->deleteAttachments($pairedTransaction);
-                        $pairedTransaction->forceDelete();
+                        $pairedTransaction->delete();
                     });
             });
 
             return;
         }
 
+        $transaction->splits()->delete();
         $this->deleteAttachments($transaction);
-        $transaction->forceDelete();
+        $transaction->delete();
     }
 
     /**
@@ -319,7 +321,7 @@ class TransactionService
      */
     protected function syncSplits(Transaction $transaction, ?array $splits): void
     {
-        $transaction->splits()->forceDelete();
+        $transaction->splits()->delete();
 
         if (! is_array($splits) || $splits === []) {
             return;

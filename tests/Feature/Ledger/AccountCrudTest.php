@@ -42,55 +42,6 @@ test('account index shows net worth summary', function () {
     );
 });
 
-test('account trash page shows deleted accounts', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    Account::factory()->for($ledger)->for($accountType)->trashed()->create([
-        'name' => 'Deleted Account',
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.accounts.trash', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/accounts/trash/index')
-        ->has('accounts', 1)
-    );
-});
-
-test('account restore restores a soft deleted account', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->patch(route('ledgers.accounts.restore', [$ledger, $account]));
-
-    $response->assertRedirect(route('ledgers.accounts.trash', $ledger));
-
-    $this->assertNotSoftDeleted('accounts', ['id' => $account->id]);
-});
-
-test('account force destroy permanently deletes an account', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->trashed()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->delete(route('ledgers.accounts.force-destroy', [$ledger, $account]));
-
-    $response->assertRedirect(route('ledgers.accounts.trash', $ledger));
-
-    expect(Account::withTrashed()->find($account->id))->toBeNull();
-});
-
 test('account index shows all accounts with correct balance', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
