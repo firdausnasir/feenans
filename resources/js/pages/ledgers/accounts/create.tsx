@@ -34,6 +34,7 @@ export default function CreateAccount({
         initial_balance: '0',
         include_in_totals: '1',
         statement_day: '',
+        payment_due_day: '',
     });
 
     const selectedAccountType = accountTypes.find(
@@ -81,6 +82,9 @@ export default function CreateAccount({
                                     account_type_id: value,
                                     statement_day: newType?.is_credit
                                         ? prev.statement_day
+                                        : '',
+                                    payment_due_day: newType?.is_credit
+                                        ? prev.payment_due_day
                                         : '',
                                 }));
                                 clearErrors('account_type_id');
@@ -138,43 +142,82 @@ export default function CreateAccount({
                     </div>
 
                     {isCreditCard && (
-                        <div className="grid gap-2">
-                            <Label htmlFor="statement_day">
-                                Statement date
-                            </Label>
-                            <Select
-                                value={data.statement_day}
-                                onValueChange={(value) => {
-                                    setData('statement_day', value);
-                                    clearErrors('statement_day');
-                                }}
-                            >
-                                <SelectTrigger
-                                    id="statement_day"
-                                    className="w-full"
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="statement_day">
+                                    Statement date
+                                </Label>
+                                <Select
+                                    value={data.statement_day}
+                                    onValueChange={(value) => {
+                                        setData('statement_day', value);
+                                        clearErrors('statement_day');
+                                    }}
                                 >
-                                    <SelectValue placeholder="Select statement date" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Array.from(
-                                        { length: 31 },
-                                        (_, i) => i + 1,
-                                    ).map((day) => (
-                                        <SelectItem
-                                            key={day}
-                                            value={String(day)}
-                                        >
-                                            {day}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <InputError message={errors.statement_day} />
-                            <p className="text-xs text-muted-foreground">
-                                The day of the month your credit card statement
-                                is generated.
-                            </p>
-                        </div>
+                                    <SelectTrigger
+                                        id="statement_day"
+                                        className="w-full"
+                                    >
+                                        <SelectValue placeholder="Select statement date" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from(
+                                            { length: 31 },
+                                            (_, i) => i + 1,
+                                        ).map((day) => (
+                                            <SelectItem
+                                                key={day}
+                                                value={String(day)}
+                                            >
+                                                {day}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.statement_day} />
+                                <p className="text-xs text-muted-foreground">
+                                    The day of the month your credit card
+                                    statement is generated.
+                                </p>
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="payment_due_day">
+                                    Payment due date
+                                </Label>
+                                <Select
+                                    value={data.payment_due_day}
+                                    onValueChange={(value) => {
+                                        setData('payment_due_day', value);
+                                        clearErrors('payment_due_day');
+                                    }}
+                                >
+                                    <SelectTrigger
+                                        id="payment_due_day"
+                                        className="w-full"
+                                    >
+                                        <SelectValue placeholder="Select payment due date" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from(
+                                            { length: 31 },
+                                            (_, i) => i + 1,
+                                        ).map((day) => (
+                                            <SelectItem
+                                                key={day}
+                                                value={String(day)}
+                                            >
+                                                {day}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.payment_due_day} />
+                                <p className="text-xs text-muted-foreground">
+                                    The day of the month your payment is due.
+                                </p>
+                            </div>
+                        </>
                     )}
 
                     <div className="grid gap-2">

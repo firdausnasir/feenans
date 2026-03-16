@@ -65,6 +65,10 @@ export default function EditAccount({
         initial_balance: account.initial_balance,
         statement_day:
             account.statement_day != null ? String(account.statement_day) : '',
+        payment_due_day:
+            account.payment_due_day != null
+                ? String(account.payment_due_day)
+                : '',
         include_in_totals: account.include_in_totals,
     });
 
@@ -242,29 +246,61 @@ export default function EditAccount({
 
                     {/* Statement day (credit accounts only) */}
                     {isCredit && (
-                        <div className="grid gap-2">
-                            <Label htmlFor="statement_day">
-                                Statement day{' '}
-                                <span className="text-muted-foreground">
-                                    (1-31)
-                                </span>
-                            </Label>
-                            <Input
-                                id="statement_day"
-                                name="statement_day"
-                                type="number"
-                                inputMode="decimal"
-                                min="1"
-                                max="31"
-                                value={data.statement_day}
-                                onChange={(e) => {
-                                    setData('statement_day', e.target.value);
-                                    clearErrors('statement_day');
-                                }}
-                                placeholder="e.g. 15"
-                            />
-                            <InputError message={errors.statement_day} />
-                        </div>
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="statement_day">
+                                    Statement day{' '}
+                                    <span className="text-muted-foreground">
+                                        (1-31)
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="statement_day"
+                                    name="statement_day"
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="1"
+                                    max="31"
+                                    value={data.statement_day}
+                                    onChange={(e) => {
+                                        setData(
+                                            'statement_day',
+                                            e.target.value,
+                                        );
+                                        clearErrors('statement_day');
+                                    }}
+                                    placeholder="e.g. 15"
+                                />
+                                <InputError message={errors.statement_day} />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="payment_due_day">
+                                    Payment due day{' '}
+                                    <span className="text-muted-foreground">
+                                        (1-31)
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="payment_due_day"
+                                    name="payment_due_day"
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="1"
+                                    max="31"
+                                    value={data.payment_due_day}
+                                    onChange={(e) => {
+                                        setData(
+                                            'payment_due_day',
+                                            e.target.value,
+                                        );
+                                        clearErrors('payment_due_day');
+                                    }}
+                                    placeholder="e.g. 25"
+                                />
+                                <InputError message={errors.payment_due_day} />
+                            </div>
+                        </>
                     )}
 
                     {/* Include in totals */}

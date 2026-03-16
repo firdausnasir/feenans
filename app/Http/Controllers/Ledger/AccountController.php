@@ -124,8 +124,16 @@ class AccountController extends Controller
                 ->whereBetween('transaction_date', [$currentStart->toDateString(), $today->toDateString()])
                 ->sum('amount');
 
-            // Payment due date: ~20 days after statement date
-            $paymentDueDate = $currentStart->subDay()->addDays(20);
+            // Payment due date: use account's payment_due_day if set, otherwise ~20 days after statement date
+            if ($account->payment_due_day !== null) {
+                $stmtDate = $currentStart->subDay(); // the statement date itself
+                $dueMonth = $account->payment_due_day >= $account->statement_day
+                    ? $stmtDate
+                    : $stmtDate->addMonthNoOverflow();
+                $paymentDueDate = $dueMonth->setDay(min($account->payment_due_day, $dueMonth->daysInMonth));
+            } else {
+                $paymentDueDate = $currentStart->subDay()->addDays(20);
+            }
 
             $statementInfo = [
                 'statement_start' => $previousStart->toDateString(),

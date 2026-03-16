@@ -37,6 +37,7 @@ class UpdateAccountRequest extends FormRequest
             'account_type_id' => ['required', 'integer', $accountTypeRule],
             'initial_balance' => ['required', 'numeric'],
             'statement_day' => ['nullable', 'integer', 'between:1,31'],
+            'payment_due_day' => ['nullable', 'integer', 'between:1,31'],
             'include_in_totals' => ['required', 'boolean'],
         ];
     }

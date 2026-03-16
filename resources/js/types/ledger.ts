@@ -23,6 +23,7 @@ export type Account = {
     color: string | null;
     initial_balance: string;
     statement_day: number | null;
+    payment_due_day: number | null;
     include_in_totals: boolean;
     is_hidden: boolean;
     position: number;

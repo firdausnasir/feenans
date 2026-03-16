@@ -26,6 +26,7 @@ class Account extends Model
         'color',
         'initial_balance',
         'statement_day',
+        'payment_due_day',
         'include_in_totals',
         'is_hidden',
         'position',

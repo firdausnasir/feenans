@@ -37,6 +37,7 @@ class StoreAccountRequest extends FormRequest
             'color' => ['nullable', 'string', 'max:7'],
             'initial_balance' => ['required', 'numeric'],
             'statement_day' => ['nullable', 'integer', 'between:1,31'],
+            'payment_due_day' => ['nullable', 'integer', 'between:1,31'],
             'include_in_totals' => ['required', 'boolean'],
         ];
     }
