@@ -43,7 +43,13 @@ type MonthPoint = {
     balance: number;
 };
 
-function BalanceTrendChart({ data }: { data: MonthPoint[] }) {
+function BalanceTrendChart({
+    data,
+    color,
+}: {
+    data: MonthPoint[];
+    color: string;
+}) {
     if (data.length < 2) {
         return null;
     }
@@ -62,16 +68,8 @@ function BalanceTrendChart({ data }: { data: MonthPoint[] }) {
                         x2="0"
                         y2="1"
                     >
-                        <stop
-                            offset="5%"
-                            stopColor="var(--color-chart-1)"
-                            stopOpacity={0.3}
-                        />
-                        <stop
-                            offset="95%"
-                            stopColor="var(--color-chart-1)"
-                            stopOpacity={0}
-                        />
+                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={color} stopOpacity={0} />
                     </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -110,7 +108,7 @@ function BalanceTrendChart({ data }: { data: MonthPoint[] }) {
                 <Area
                     type="monotone"
                     dataKey="balance"
-                    stroke="var(--color-chart-1)"
+                    stroke={color}
                     strokeWidth={2}
                     fill="url(#balanceGradient)"
                 />
@@ -332,8 +330,11 @@ export default function AccountShow({
                                 Balance trend (last 6 months)
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <BalanceTrendChart data={monthlyBalances} />
+                        <CardContent className="min-w-0 overflow-hidden">
+                            <BalanceTrendChart
+                                data={monthlyBalances}
+                                color={account.color ?? '#6B7280'}
+                            />
                         </CardContent>
                     </Card>
                 )}

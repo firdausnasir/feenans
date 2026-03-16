@@ -15,6 +15,7 @@ class TransactionSplit extends Model
     protected $fillable = [
         'transaction_id',
         'category_id',
+        'payee_id',
         'amount',
         'description',
     ];
@@ -39,5 +40,10 @@ class TransactionSplit extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function payee(): BelongsTo
+    {
+        return $this->belongsTo(Payee::class);
     }
 }

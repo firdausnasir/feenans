@@ -1,8 +1,9 @@
-import { Head, router } from '@inertiajs/react';
-import { Search, Users } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import { Loader2, Pencil, Search, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,14 +18,14 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import AppLayout from '@/layouts/app-layout';
+import { formatAmount } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     destroy,
@@ -34,7 +35,7 @@ import {
     update,
 } from '@/routes/ledgers/payees';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { BreadcrumbItem, Ledger, Payee } from '@/types';
+import type { BreadcrumbItem, Ledger, Payee, Transaction } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 
@@ -64,6 +65,16 @@ export default function PayeesIndex({
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [mergeState, setMergeState] = useState<MergeState | null>(null);
     const [isMerging, setIsMerging] = useState(false);
+    const [selectionMode, setSelectionMode] = useState(false);
+
+    // Transaction drill-down state
+    const [selectedPayee, setSelectedPayee] = useState<PayeeWithCount | null>(
+        null,
+    );
+    const [payeeTransactions, setPayeeTransactions] = useState<Transaction[]>(
+        [],
+    );
+    const [loadingTransactions, setLoadingTransactions] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -106,6 +117,7 @@ export default function PayeesIndex({
 
     function clearSelection() {
         setSelectedIds(new Set());
+        setSelectionMode(false);
     }
 
     function startMerge() {
@@ -163,7 +175,8 @@ export default function PayeesIndex({
         );
     }
 
-    function startEditing(payee: PayeeWithCount) {
+    function startEditing(payee: PayeeWithCount, event: React.MouseEvent) {
+        event.stopPropagation();
         setEditingId(payee.id);
         setEditingName(payee.name);
     }
@@ -200,12 +213,41 @@ export default function PayeesIndex({
         );
     }
 
-    function navigateToTransactions(payee: PayeeWithCount) {
-        router.get(
-            transactionsIndex.url(ledger.id, {
+    async function handlePayeeClick(payee: PayeeWithCount) {
+        if (selectionMode) {
+            toggleSelection(payee.id);
+
+            return;
+        }
+
+        if (editingId === payee.id) {
+            return;
+        }
+
+        setSelectedPayee(payee);
+        setLoadingTransactions(true);
+        setPayeeTransactions([]);
+
+        try {
+            const url = transactionsIndex.url(ledger.id, {
                 query: { payee_id: String(payee.id) },
-            }),
-        );
+            });
+            const response = await fetch(url, {
+                headers: { Accept: 'application/json' },
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch transactions');
+            }
+
+            const data = await response.json();
+            setPayeeTransactions(data.transactions?.data ?? []);
+        } catch {
+            setPayeeTransactions([]);
+            toast.error('Failed to load transactions.');
+        } finally {
+            setLoadingTransactions(false);
+        }
     }
 
     function handleDelete() {
@@ -222,6 +264,12 @@ export default function PayeesIndex({
                 onSuccess: () => {
                     setPayeeToDelete(null);
                     setIsDeleting(false);
+
+                    if (selectedPayee?.id === payeeToDelete.id) {
+                        setSelectedPayee(null);
+                        setPayeeTransactions([]);
+                    }
+
                     toast.success('Payee deleted');
                 },
                 onError: () => {
@@ -273,20 +321,42 @@ export default function PayeesIndex({
                     />
 
                     <div className="flex w-full items-center gap-2 sm:w-auto">
-                        {canMerge && (
+                        {selectionMode && (
+                            <>
+                                {canMerge && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={startMerge}
+                                    >
+                                        Merge Selected
+                                    </Button>
+                                )}
+                                {selectedIds.size > 0 && !canMerge && (
+                                    <span className="text-sm text-muted-foreground">
+                                        Select exactly 2 to merge
+                                    </span>
+                                )}
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={clearSelection}
+                                >
+                                    Cancel
+                                </Button>
+                            </>
+                        )}
+                        {!selectionMode && (
                             <Button
                                 type="button"
                                 variant="outline"
-                                className="flex-1 sm:flex-initial"
-                                onClick={startMerge}
+                                size="sm"
+                                onClick={() => setSelectionMode(true)}
                             >
-                                Merge Selected
+                                Select to Merge
                             </Button>
-                        )}
-                        {selectedIds.size > 0 && !canMerge && (
-                            <span className="text-sm text-muted-foreground">
-                                Select exactly 2 payees to merge
-                            </span>
                         )}
                         <Button
                             type="button"
@@ -374,32 +444,49 @@ export default function PayeesIndex({
                         }
                     />
                 ) : (
-                    <Card>
-                        <CardContent className="p-0">
-                            {/* Mobile card list */}
-                            <div className="divide-y sm:hidden">
-                                {payees.map((payee) => (
-                                    <div
-                                        key={payee.id}
-                                        className="flex items-center gap-3 px-4 py-3"
-                                    >
-                                        <div
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <Checkbox
-                                                checked={selectedIds.has(
-                                                    payee.id,
-                                                )}
-                                                onCheckedChange={() =>
-                                                    toggleSelection(payee.id)
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {payees.map((payee) => (
+                            <Card
+                                key={payee.id}
+                                className={cn(
+                                    'cursor-pointer transition-shadow hover:shadow-md',
+                                    selectionMode &&
+                                        selectedIds.has(payee.id) &&
+                                        'bg-accent/50 ring-2 ring-primary',
+                                )}
+                                onClick={() => handlePayeeClick(payee)}
+                            >
+                                <CardContent className="flex items-center justify-between p-4">
+                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                        {selectionMode && (
+                                            <div
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
                                                 }
-                                                aria-label={`Select ${payee.name}`}
-                                            />
-                                        </div>
+                                            >
+                                                <Checkbox
+                                                    checked={selectedIds.has(
+                                                        payee.id,
+                                                    )}
+                                                    onCheckedChange={() =>
+                                                        toggleSelection(
+                                                            payee.id,
+                                                        )
+                                                    }
+                                                    aria-label={`Select ${payee.name}`}
+                                                />
+                                            </div>
+                                        )}
                                         <div className="min-w-0 flex-1">
                                             {editingId === payee.id ? (
-                                                <div className="flex items-center gap-2">
+                                                <div
+                                                    className="flex items-center gap-2"
+                                                    onClick={(e) =>
+                                                        e.stopPropagation()
+                                                    }
+                                                >
                                                     <Input
+                                                        autoFocus
                                                         value={editingName}
                                                         onChange={(e) =>
                                                             setEditingName(
@@ -421,195 +508,205 @@ export default function PayeesIndex({
                                                                 cancelEditing();
                                                             }
                                                         }}
-                                                        className="h-8 text-sm"
-                                                        autoFocus
+                                                        className="h-7 text-sm"
                                                     />
                                                     <Button
-                                                        variant="ghost"
+                                                        type="button"
                                                         size="sm"
-                                                        className="h-8"
-                                                        onClick={() =>
-                                                            submitEdit(payee)
-                                                        }
+                                                        className="h-7 px-2 text-xs"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            submitEdit(payee);
+                                                        }}
                                                     >
                                                         Save
                                                     </Button>
                                                     <Button
-                                                        variant="ghost"
+                                                        type="button"
+                                                        variant="outline"
                                                         size="sm"
-                                                        className="h-8"
-                                                        onClick={cancelEditing}
+                                                        className="h-7 px-2 text-xs"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            cancelEditing();
+                                                        }}
                                                     >
                                                         Cancel
                                                     </Button>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    className="text-left text-sm font-medium"
-                                                    onClick={() =>
-                                                        startEditing(payee)
-                                                    }
-                                                >
-                                                    {payee.name}
-                                                </button>
-                                            )}
-                                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {payee.transactions_count}{' '}
-                                                transaction
-                                                {payee.transactions_count !== 1
-                                                    ? 's'
-                                                    : ''}
-                                            </p>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 shrink-0 text-xs text-destructive"
-                                            onClick={() =>
-                                                setPayeeToDelete(payee)
-                                            }
-                                        >
-                                            Delete
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Desktop table */}
-                            <Table className="hidden sm:table">
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-10">
-                                            <span className="sr-only">
-                                                Select
-                                            </span>
-                                        </TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Transactions</TableHead>
-                                        <TableHead className="sr-only">
-                                            Actions
-                                        </TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {payees.map((payee) => (
-                                        <TableRow key={payee.id}>
-                                            <TableCell>
-                                                <Checkbox
-                                                    checked={selectedIds.has(
-                                                        payee.id,
-                                                    )}
-                                                    onCheckedChange={() =>
-                                                        toggleSelection(
-                                                            payee.id,
-                                                        )
-                                                    }
-                                                    aria-label={`Select ${payee.name}`}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="font-medium">
-                                                {editingId === payee.id ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            autoFocus
-                                                            value={editingName}
-                                                            onChange={(e) =>
-                                                                setEditingName(
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            onKeyDown={(e) => {
-                                                                if (
-                                                                    e.key ===
-                                                                    'Enter'
-                                                                ) {
-                                                                    submitEdit(
-                                                                        payee,
-                                                                    );
-                                                                } else if (
-                                                                    e.key ===
-                                                                    'Escape'
-                                                                ) {
-                                                                    cancelEditing();
-                                                                }
-                                                            }}
-                                                            className="h-7 max-w-xs"
-                                                        />
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            className="h-auto px-2 py-0.5 text-xs"
-                                                            onClick={() =>
-                                                                submitEdit(
-                                                                    payee,
-                                                                )
-                                                            }
-                                                        >
-                                                            Save
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="h-auto px-2 py-0.5 text-xs"
-                                                            onClick={
-                                                                cancelEditing
-                                                            }
-                                                        >
-                                                            Cancel
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        className="h-auto cursor-text rounded px-1 py-0 font-medium hover:bg-muted"
-                                                        onClick={() =>
-                                                            startEditing(payee)
-                                                        }
-                                                        title="Click to rename"
-                                                    >
+                                                <>
+                                                    <p className="truncate font-medium">
                                                         {payee.name}
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    className="h-auto p-0 text-muted-foreground hover:bg-transparent hover:text-foreground hover:underline"
-                                                    onClick={() =>
-                                                        navigateToTransactions(
-                                                            payee,
-                                                        )
-                                                    }
-                                                    title="View transactions for this payee"
-                                                >
-                                                    {payee.transactions_count}
-                                                </Button>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
-                                                    onClick={() =>
-                                                        setPayeeToDelete(payee)
-                                                    }
-                                                >
-                                                    Delete
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {
+                                                            payee.transactions_count
+                                                        }{' '}
+                                                        transaction
+                                                        {payee.transactions_count !==
+                                                        1
+                                                            ? 's'
+                                                            : ''}
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {editingId !== payee.id && (
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="size-7"
+                                                onClick={(e) =>
+                                                    startEditing(payee, e)
+                                                }
+                                                title="Rename"
+                                            >
+                                                <Pencil className="size-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="size-7 text-destructive hover:text-destructive"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPayeeToDelete(payee);
+                                                }}
+                                                title="Delete"
+                                            >
+                                                <Trash2 className="size-3.5" />
+                                            </Button>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
                 )}
             </div>
+
+            {/* Transaction drill-down sheet */}
+            <Sheet
+                open={selectedPayee !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSelectedPayee(null);
+                        setPayeeTransactions([]);
+                    }
+                }}
+            >
+                <SheetContent
+                    side="right"
+                    className="overflow-y-auto sm:max-w-md"
+                >
+                    <SheetHeader>
+                        <SheetTitle>{selectedPayee?.name}</SheetTitle>
+                    </SheetHeader>
+
+                    <div className="px-4 pb-6">
+                        {loadingTransactions ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : payeeTransactions.length === 0 ? (
+                            <p className="py-6 text-center text-sm text-muted-foreground">
+                                No transactions found for this payee in the
+                                current period.
+                            </p>
+                        ) : (
+                            <div className="space-y-2">
+                                {payeeTransactions.map((txn) => (
+                                    <div
+                                        key={txn.id}
+                                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate font-medium">
+                                                    {txn.description ||
+                                                        'No description'}
+                                                </span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className="shrink-0 text-xs"
+                                                >
+                                                    {txn.transaction_type}
+                                                </Badge>
+                                            </div>
+                                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                                <span>
+                                                    {txn.transaction_date?.slice(
+                                                        0,
+                                                        10,
+                                                    )}
+                                                </span>
+                                                {txn.account && (
+                                                    <>
+                                                        <span>-</span>
+                                                        <span>
+                                                            {txn.account.name}
+                                                        </span>
+                                                    </>
+                                                )}
+                                                {txn.category && (
+                                                    <>
+                                                        <span>-</span>
+                                                        <span>
+                                                            {txn.category.name}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span
+                                            className={cn(
+                                                'ml-3 shrink-0 font-mono text-sm font-medium',
+                                                txn.transaction_type ===
+                                                    'income'
+                                                    ? 'text-green-600 dark:text-green-400'
+                                                    : txn.transaction_type ===
+                                                        'expense'
+                                                      ? 'text-red-600 dark:text-red-400'
+                                                      : '',
+                                            )}
+                                        >
+                                            {formatAmount(txn.amount)}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="pt-2 text-center">
+                                    <Button
+                                        type="button"
+                                        variant="link"
+                                        size="sm"
+                                        asChild
+                                    >
+                                        <Link
+                                            href={transactionsIndex.url(
+                                                ledger.id,
+                                                {
+                                                    query: {
+                                                        payee_id: String(
+                                                            selectedPayee?.id ??
+                                                                '',
+                                                        ),
+                                                    },
+                                                },
+                                            )}
+                                        >
+                                            View all transactions
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </SheetContent>
+            </Sheet>
 
             {/* Delete confirmation dialog */}
             <Dialog

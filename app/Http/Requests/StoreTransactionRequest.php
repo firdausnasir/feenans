@@ -52,6 +52,7 @@ class StoreTransactionRequest extends FormRequest
             ],
             'category_id' => ['nullable', 'integer', $categoryRule],
             'payee_id' => ['nullable', 'integer', $payeeRule],
+            'new_payee_name' => ['nullable', 'string', 'max:255'],
             'transaction_type' => ['required', 'string', Rule::in(['expense', 'income', 'transfer'])],
             'amount' => ['required', 'numeric', 'gt:0'],
             'description' => ['nullable', 'string', 'max:255'],
@@ -61,8 +62,11 @@ class StoreTransactionRequest extends FormRequest
             'splits.*.amount' => ['required', 'numeric', 'gt:0'],
             'splits.*.category_id' => ['nullable', 'integer', $categoryRule],
             'splits.*.description' => ['nullable', 'string', 'max:255'],
+            'splits.*.payee_id' => ['nullable', 'integer', $payeeRule],
             'tag_ids' => ['nullable', 'array'],
             'tag_ids.*' => ['integer', $tagRule],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,gif,webp'],
         ];
     }
 

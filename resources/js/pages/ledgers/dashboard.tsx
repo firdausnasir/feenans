@@ -311,7 +311,7 @@ export default function LedgerDashboard({
                 {/* Net Worth Card */}
                 <Link href={accountsIndex.url(ledger.id)} className="block">
                     <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-primary/5">
-                        <CardContent className="p-4 sm:p-6">
+                        <CardContent className="px-4 py-3">
                             <div className="flex items-center gap-2">
                                 <Landmark className="size-5 text-primary" />
                                 <span className="text-sm font-medium text-muted-foreground">
@@ -319,7 +319,7 @@ export default function LedgerDashboard({
                                 </span>
                             </div>
                             <p
-                                className={`mt-2 text-3xl font-bold sm:text-4xl ${
+                                className={`mt-2 text-2xl font-bold sm:text-3xl ${
                                     netWorth.net >= 0
                                         ? 'text-green-600 dark:text-green-400'
                                         : 'text-red-600 dark:text-red-400'
@@ -445,9 +445,9 @@ export default function LedgerDashboard({
                 </div>
 
                 {/* Bills + Expense Trend */}
-                <div className="grid gap-6 lg:auto-rows-fr lg:grid-cols-2">
+                <div className="grid gap-6 lg:grid-cols-2">
                     {/* Upcoming Bills */}
-                    <Card className="min-w-0 overflow-hidden lg:h-[32rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <Bell className="size-4 text-muted-foreground" />
@@ -507,7 +507,7 @@ export default function LedgerDashboard({
                     </Card>
 
                     {/* Expense & Income Trend */}
-                    <Card className="min-w-0 overflow-hidden lg:h-[32rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
                         <CardHeader>
                             <CardTitle>Expense & Income Trend</CardTitle>
                             <CardDescription>
@@ -556,7 +556,7 @@ export default function LedgerDashboard({
                                 </div>
                             )}
                         </CardHeader>
-                        <CardContent className="flex-1 lg:min-h-0">
+                        <CardContent className="min-w-0 flex-1 overflow-hidden lg:min-h-0">
                             {dailyExpenseTrend.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
                                     No expense data this cycle.
@@ -667,9 +667,9 @@ export default function LedgerDashboard({
                 </div>
 
                 {/* Accounts + Top Categories */}
-                <div className="grid gap-6 lg:auto-rows-fr lg:grid-cols-2">
+                <div className="grid gap-6 lg:grid-cols-2">
                     {/* Accounts */}
-                    <Card className="min-w-0 overflow-hidden lg:h-[28rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <CreditCard className="size-4 text-muted-foreground" />
@@ -704,7 +704,16 @@ export default function LedgerDashboard({
                                                     })}
                                                     className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
                                                 >
-                                                    <span className="text-sm">
+                                                    <span className="inline-flex items-center gap-1.5 text-sm">
+                                                        {account.color && (
+                                                            <span
+                                                                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                                                style={{
+                                                                    backgroundColor:
+                                                                        account.color,
+                                                                }}
+                                                            />
+                                                        )}
                                                         {account.name}
                                                     </span>
                                                     {account.balance < 0 ? (
@@ -759,7 +768,7 @@ export default function LedgerDashboard({
                     </Card>
 
                     {/* Top Expense Categories */}
-                    <Card className="min-w-0 overflow-hidden lg:h-[28rem] lg:min-h-0">
+                    <Card className="min-w-0 overflow-hidden lg:min-h-0">
                         <CardHeader>
                             <CardTitle>Top Expense Categories</CardTitle>
                             <CardDescription>
@@ -1089,7 +1098,7 @@ function SummaryCard({
 }) {
     return (
         <Card className="cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:bg-muted/30">
-            <CardContent className="p-4">
+            <CardContent className="px-4 py-2.5">
                 <div className="flex items-center gap-2">
                     {icon}
                     <span className="text-xs font-medium text-muted-foreground">
@@ -1097,7 +1106,7 @@ function SummaryCard({
                     </span>
                 </div>
                 <p
-                    className={`mt-2 text-2xl font-bold sm:text-3xl lg:text-4xl ${colorClass}`}
+                    className={`mt-1 text-lg font-bold sm:text-xl ${colorClass}`}
                 >
                     {formatAmount(value)}
                 </p>

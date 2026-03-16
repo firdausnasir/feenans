@@ -444,12 +444,27 @@ export default function ImportIndex({
                 </div>
 
                 {/* Step indicator */}
-                <div className="flex items-center gap-2 sm:gap-4">
+                <div className="flex items-center justify-center gap-2 sm:gap-4">
                     {[
-                        { num: 1, label: 'Upload CSV' },
-                        { num: 2, label: 'Map Columns' },
-                        { num: 3, label: 'Preview & Confirm' },
-                    ].map(({ num, label }, idx) => (
+                        {
+                            num: 1,
+                            label: 'Upload CSV',
+                            description:
+                                'Select or drag your bank statement CSV file',
+                        },
+                        {
+                            num: 2,
+                            label: 'Map Columns',
+                            description:
+                                'Match your CSV columns to transaction fields',
+                        },
+                        {
+                            num: 3,
+                            label: 'Preview & Confirm',
+                            description:
+                                'Review your data and import into your account',
+                        },
+                    ].map(({ num, label, description }, idx) => (
                         <div
                             key={num}
                             className="flex items-center gap-1 sm:gap-2"
@@ -465,11 +480,18 @@ export default function ImportIndex({
                             >
                                 {num}
                             </div>
-                            <span
-                                className={`hidden text-sm sm:inline ${step === num ? 'font-medium' : 'text-muted-foreground'}`}
-                            >
-                                {label}
-                            </span>
+                            <div>
+                                <span
+                                    className={`text-sm ${step === num ? 'font-medium' : 'text-muted-foreground'}`}
+                                >
+                                    {label}
+                                </span>
+                                <p
+                                    className={`text-xs ${step === num ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
+                                >
+                                    {description}
+                                </p>
+                            </div>
                             {idx < 2 && (
                                 <div className="mx-1 h-px w-4 bg-border sm:mx-2 sm:w-8" />
                             )}

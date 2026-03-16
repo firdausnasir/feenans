@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
+import { ColorPicker } from '@/components/color-picker';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -53,8 +54,10 @@ export default function EditAccount({
     const { data, setData, put, processing, errors, clearErrors } = useForm({
         account_type_id: String(account.account_type_id),
         name: account.name,
+        color: account.color ?? '#6B7280',
         initial_balance: account.initial_balance,
-        statement_day: account.statement_day != null ? String(account.statement_day) : '',
+        statement_day:
+            account.statement_day != null ? String(account.statement_day) : '',
         include_in_totals: account.include_in_totals,
     });
 
@@ -153,9 +156,7 @@ export default function EditAccount({
                 >
                     {/* Account type */}
                     <div className="grid gap-2">
-                        <Label htmlFor="account_type_id">
-                            Account type
-                        </Label>
+                        <Label htmlFor="account_type_id">Account type</Label>
                         <Select
                             value={data.account_type_id}
                             onValueChange={handleAccountTypeChange}
@@ -197,11 +198,25 @@ export default function EditAccount({
                         <InputError message={errors.name} />
                     </div>
 
+                    {/* Color */}
+                    <div className="grid gap-2">
+                        <Label>Color</Label>
+                        <ColorPicker
+                            value={data.color}
+                            onChange={(color) => {
+                                setData('color', color);
+                                clearErrors('color');
+                            }}
+                        />
+                        <InputError message={errors.color} />
+                        <p className="text-xs text-muted-foreground">
+                            Choose a color to identify this account.
+                        </p>
+                    </div>
+
                     {/* Initial balance */}
                     <div className="grid gap-2">
-                        <Label htmlFor="initial_balance">
-                            Initial balance
-                        </Label>
+                        <Label htmlFor="initial_balance">Initial balance</Label>
                         <Input
                             id="initial_balance"
                             name="initial_balance"
@@ -241,9 +256,7 @@ export default function EditAccount({
                                 }}
                                 placeholder="e.g. 15"
                             />
-                            <InputError
-                                message={errors.statement_day}
-                            />
+                            <InputError message={errors.statement_day} />
                         </div>
                     )}
 
@@ -263,9 +276,7 @@ export default function EditAccount({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <Button disabled={processing}>
-                            Save changes
-                        </Button>
+                        <Button disabled={processing}>Save changes</Button>
                         <Link
                             href={accountShow.url({
                                 ledger: ledger.id,

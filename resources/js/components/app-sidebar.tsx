@@ -48,7 +48,7 @@ export function AppSidebar() {
         } | null;
     };
 
-    const { isCurrentUrl } = useCurrentUrl();
+    const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
 
     const ledgerId = currentLedger?.id;
 
@@ -127,12 +127,14 @@ export function AppSidebar() {
                             <SidebarMenuItem>
                                 <SidebarMenuButton
                                     asChild
-                                    isActive={isCurrentUrl(settingsHref)}
-                                    tooltip={{ children: 'Settings' }}
+                                    isActive={isCurrentOrParentUrl(
+                                        settingsHref,
+                                    )}
+                                    tooltip={{ children: 'Workspace Settings' }}
                                 >
                                     <Link href={settingsHref} prefetch>
                                         <Settings />
-                                        <span>Settings</span>
+                                        <span>Workspace Settings</span>
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>

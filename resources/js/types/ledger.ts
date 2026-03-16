@@ -20,6 +20,7 @@ export type Account = {
     ledger_id: number;
     account_type_id: number;
     name: string;
+    color: string | null;
     initial_balance: string;
     statement_day: number | null;
     include_in_totals: boolean;
@@ -69,9 +70,11 @@ export type TransactionSplit = {
     id: number;
     transaction_id: number;
     category_id: number | null;
+    payee_id: number | null;
     amount: string;
     description: string | null;
     category?: Category | null;
+    payee?: Payee | null;
 };
 
 export type Transaction = {
@@ -135,6 +138,7 @@ export type BudgetStat = {
     id: number;
     category_id: number | null;
     category_name: string;
+    category_color: string | null;
     amount: number;
     period: 'monthly' | 'weekly' | 'yearly';
     spent: number;
@@ -142,6 +146,9 @@ export type BudgetStat = {
     percentage: number;
     status: 'good' | 'warning' | 'danger' | 'over';
     rollover: boolean;
+    period_start: string;
+    period_end: string;
+    start_date: string | null;
 };
 
 export type Pagination<T> = {

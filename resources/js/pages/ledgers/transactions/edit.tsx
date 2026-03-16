@@ -45,6 +45,7 @@ type EditFormData = {
     to_account_id: string;
     category_id: string;
     payee_id: string;
+    new_payee_name: string;
     amount: string;
     description: string;
     notes: string;
@@ -55,6 +56,7 @@ type EditableSplit = {
     id: string;
     amount: string;
     category_id: string;
+    payee_id: string;
     description: string;
 };
 
@@ -66,6 +68,7 @@ function createEditableSplit(
         id: split ? String(split.id) : `new-${index}`,
         amount: split?.amount ?? '',
         category_id: split?.category_id ? String(split.category_id) : '',
+        payee_id: split?.payee_id ? String(split.payee_id) : '',
         description: split?.description ?? '',
     };
 }
@@ -82,6 +85,7 @@ function transactionCategoryOptions(
             label: category.parent_id
                 ? `${categories.find((item) => item.id === category.parent_id)?.name} > ${category.name}`
                 : category.name,
+            color: category.color,
         }));
 }
 
@@ -129,6 +133,7 @@ export default function TransactionEdit({
             ? String(transaction.category_id)
             : '',
         payee_id: transaction.payee_id ? String(transaction.payee_id) : '',
+        new_payee_name: '',
         amount: isTransfer
             ? String(Math.abs(parseFloat(transaction.amount || '0')))
             : transaction.amount,
@@ -179,42 +184,40 @@ export default function TransactionEdit({
         setAttachmentError(null);
 
         try {
-            for (const file of Array.from(files)) {
-                const formData = new FormData();
-                formData.append('file', file);
+            const formData = new FormData();
+            Array.from(files).forEach((file) => {
+                formData.append('attachments[]', file);
+            });
 
-                const response = await fetch(
-                    attachmentRoutes.store.url({
-                        ledger: ledger.id,
-                        transaction: transaction.id,
-                    }),
-                    {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': csrfToken,
-                            Accept: 'application/json',
-                        },
-                        body: formData,
+            const response = await fetch(
+                attachmentRoutes.store.url({
+                    ledger: ledger.id,
+                    transaction: transaction.id,
+                }),
+                {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        Accept: 'application/json',
                     },
+                    body: formData,
+                },
+            );
+
+            const payload = await response.json().catch(() => null);
+
+            if (!response.ok) {
+                setAttachmentError(
+                    payload?.errors?.['attachments']?.[0] ??
+                        payload?.errors?.['attachments.0']?.[0] ??
+                        payload?.message ??
+                        'Attachment upload failed.',
                 );
-
-                const payload = await response.json().catch(() => null);
-
-                if (!response.ok) {
-                    setAttachmentError(
-                        payload?.errors?.file?.[0] ??
-                            payload?.message ??
-                            'Attachment upload failed.',
-                    );
-                    break;
-                }
-
-                if (payload?.attachment) {
-                    setAttachments((current) => [
-                        ...current,
-                        payload.attachment as Attachment,
-                    ]);
-                }
+            } else if (payload?.attachments) {
+                setAttachments((current) => [
+                    ...current,
+                    ...(payload.attachments as Attachment[]),
+                ]);
             }
         } finally {
             setUploadingAttachments(false);
@@ -286,10 +289,12 @@ export default function TransactionEdit({
                     : {
                           category_id: form.category_id || null,
                           payee_id: form.payee_id || null,
+                          new_payee_name: form.new_payee_name || null,
                           splits: isSplitTransaction
                               ? splits.map((split) => ({
                                     amount: split.amount || null,
                                     category_id: split.category_id || null,
+                                    payee_id: split.payee_id || null,
                                     description: split.description || null,
                                 }))
                               : null,
@@ -302,6 +307,12 @@ export default function TransactionEdit({
             {
                 onSuccess: () => {
                     toast.success('Transaction updated');
+                },
+                onError: (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
                 },
                 onFinish: () => setProcessing(false),
             },
@@ -316,6 +327,12 @@ export default function TransactionEdit({
             {
                 onSuccess: () => {
                     toast.success('Transaction deleted');
+                },
+                onError: (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
                 },
                 onFinish: () => setDeleting(false),
             },
@@ -398,6 +415,10 @@ export default function TransactionEdit({
                                                             type === 'transfer'
                                                                 ? ''
                                                                 : current.payee_id,
+                                                        new_payee_name:
+                                                            type === 'transfer'
+                                                                ? ''
+                                                                : current.new_payee_name,
                                                     }))
                                                 }
                                             >
@@ -455,6 +476,7 @@ export default function TransactionEdit({
                                         options={accounts.map((account) => ({
                                             value: String(account.id),
                                             label: account.name,
+                                            color: account.color ?? '#6B7280',
                                         }))}
                                         value={form.account_id}
                                         onValueChange={(value) =>
@@ -481,6 +503,9 @@ export default function TransactionEdit({
                                                 .map((account) => ({
                                                     value: String(account.id),
                                                     label: account.name,
+                                                    color:
+                                                        account.color ??
+                                                        '#6B7280',
                                                 }))}
                                             value={form.to_account_id || null}
                                             onValueChange={(value) =>
@@ -555,7 +580,9 @@ export default function TransactionEdit({
                                                         )}
                                                         value={
                                                             form.payee_id ||
-                                                            null
+                                                            (form.new_payee_name
+                                                                ? `new:${form.new_payee_name}`
+                                                                : null)
                                                         }
                                                         onValueChange={(
                                                             value,
@@ -566,12 +593,31 @@ export default function TransactionEdit({
                                                                     payee_id:
                                                                         value ??
                                                                         '',
+                                                                    new_payee_name:
+                                                                        '',
                                                                 }),
                                                             )
                                                         }
                                                         placeholder="No payee"
                                                         searchPlaceholder="Search payees..."
                                                         allOption="No payee"
+                                                        creatable
+                                                        onCreate={(name) =>
+                                                            setForm(
+                                                                (current) => ({
+                                                                    ...current,
+                                                                    payee_id:
+                                                                        '',
+                                                                    new_payee_name:
+                                                                        name,
+                                                                }),
+                                                            )
+                                                        }
+                                                        createLabel={
+                                                            form.new_payee_name
+                                                                ? `${form.new_payee_name} (new)`
+                                                                : undefined
+                                                        }
                                                     />
                                                 </div>
                                             </div>
@@ -604,7 +650,7 @@ export default function TransactionEdit({
                                                 {splits.map((split) => (
                                                     <div
                                                         key={split.id}
-                                                        className="grid gap-3 rounded-lg border border-border bg-background p-3 md:grid-cols-[120px_1fr_1fr_auto]"
+                                                        className="grid gap-3 rounded-lg border border-border bg-background p-3 md:grid-cols-[120px_1fr_1fr_1fr_auto]"
                                                     >
                                                         <div className="grid gap-2">
                                                             <Label>
@@ -670,6 +716,39 @@ export default function TransactionEdit({
                                                                 placeholder="No category"
                                                                 searchPlaceholder="Search categories..."
                                                                 allOption="No category"
+                                                            />
+                                                        </div>
+
+                                                        <div className="grid gap-2">
+                                                            <Label>Payee</Label>
+                                                            <SearchableSelect
+                                                                options={payees.map(
+                                                                    (
+                                                                        payee,
+                                                                    ) => ({
+                                                                        value: String(
+                                                                            payee.id,
+                                                                        ),
+                                                                        label: payee.name,
+                                                                    }),
+                                                                )}
+                                                                value={
+                                                                    split.payee_id ||
+                                                                    null
+                                                                }
+                                                                onValueChange={(
+                                                                    value,
+                                                                ) =>
+                                                                    updateSplit(
+                                                                        split.id,
+                                                                        'payee_id',
+                                                                        value ??
+                                                                            '',
+                                                                    )
+                                                                }
+                                                                placeholder="No payee"
+                                                                searchPlaceholder="Search payees..."
+                                                                allOption="No payee"
                                                             />
                                                         </div>
 
@@ -806,11 +885,15 @@ export default function TransactionEdit({
                                 <Input
                                     type="file"
                                     multiple
-                                    accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.csv"
+                                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                                     onChange={(event) =>
                                         uploadFiles(event.target.files)
                                     }
                                 />
+                                <p className="text-xs text-muted-foreground">
+                                    Max 5 MB per file. PDF, JPG, PNG, GIF, WebP
+                                    accepted.
+                                </p>
 
                                 {attachmentError && (
                                     <p className="text-sm text-destructive">
@@ -829,14 +912,23 @@ export default function TransactionEdit({
                                                 key={attachment.id}
                                                 className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
                                             >
-                                                <a
-                                                    href={attachment.url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="truncate text-sm font-medium hover:underline"
-                                                >
-                                                    {attachment.filename}
-                                                </a>
+                                                <div className="min-w-0">
+                                                    <a
+                                                        href={attachment.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="truncate text-sm font-medium hover:underline"
+                                                    >
+                                                        {attachment.filename}
+                                                    </a>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {(
+                                                            attachment.size /
+                                                            1024
+                                                        ).toFixed(0)}{' '}
+                                                        KB
+                                                    </p>
+                                                </div>
                                                 <Button
                                                     type="button"
                                                     size="sm"

@@ -33,6 +33,7 @@ class UpdateAccountRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:7'],
             'account_type_id' => ['required', 'integer', $accountTypeRule],
             'initial_balance' => ['required', 'numeric'],
             'statement_day' => ['nullable', 'integer', 'between:1,31'],

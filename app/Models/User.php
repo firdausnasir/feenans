@@ -27,6 +27,7 @@ class User extends Authenticatable
         'password',
         'onboarding_step',
         'onboarding_data',
+        'timezone',
     ];
 
     /**

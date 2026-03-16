@@ -34,6 +34,7 @@ class StoreAccountRequest extends FormRequest
         return [
             'account_type_id' => ['required', 'integer', $accountTypeRule],
             'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:7'],
             'initial_balance' => ['required', 'numeric'],
             'statement_day' => ['nullable', 'integer', 'between:1,31'],
             'include_in_totals' => ['required', 'boolean'],

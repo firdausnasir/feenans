@@ -134,7 +134,7 @@ export default function SettingsIndex({
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Settings', href: settingsIndex.url(ledger.id) },
+        { title: 'Workspace Settings', href: settingsIndex.url(ledger.id) },
     ];
 
     // ── General settings handlers ─────────────────────────────────────────────
@@ -454,7 +454,7 @@ export default function SettingsIndex({
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`${ledger.name} settings`} />
+            <Head title={`${ledger.name} workspace settings`} />
 
             <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
                 <Heading

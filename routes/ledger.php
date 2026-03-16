@@ -176,6 +176,12 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     // Reports
     Route::get('ledgers/{ledger}/reports', [ReportController::class, 'index'])
         ->name('ledgers.reports.index');
+    Route::get('ledgers/{ledger}/reports/financial-health', [ReportController::class, 'financialHealth'])
+        ->name('ledgers.reports.financial-health');
+    Route::get('ledgers/{ledger}/reports/budget-performance', [ReportController::class, 'budgetPerformance'])
+        ->name('ledgers.reports.budget-performance');
+    Route::get('ledgers/{ledger}/reports/cash-flow', [ReportController::class, 'cashFlow'])
+        ->name('ledgers.reports.cash-flow');
     Route::get('ledgers/{ledger}/reports/export-pdf', [ReportController::class, 'exportPdf'])
         ->name('ledgers.reports.export-pdf');
     Route::get('ledgers/{ledger}/activity', [ActivityLogController::class, 'index'])

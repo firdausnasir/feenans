@@ -7,17 +7,20 @@ A private, self-hosted personal finance tracker. Manage multiple ledgers, track 
 - **Multi-Ledger Support** — Separate financial workspaces (personal, household, projects)
 - **Multi-Account Tracking** — Checking, savings, credit cards, cash accounts with custom types
 - **Smart Transactions** — Income, expenses, transfers with splits, attachments, and bulk operations
-- **Recurring Bills** — Flexible schedules (daily, weekly, monthly, custom) with reminders
-- **Budget Tracking** — Category-based budgets with rollovers and alerts
+- **Recurring Bills** — Flexible schedules (daily, weekly, monthly, custom) with calendar day picker and human-readable frequency preview
+- **Budget Tracking** — Category-based budgets with rollovers, alerts, cycle-aware auto-apply, and period date display
 - **Hierarchical Categories** — Nested categories with drag-and-drop reordering
 - **Tags** — Color-coded tags for cross-cutting organization
-- **Payee Management** — Track and merge payees across transactions
-- **Visual Reports** — Charts and breakdowns with PDF export
+- **Payee Management** — Cards view with transaction drill-down, inline creation from transaction forms, merge support
+- **Multi-View Reports** — Income & Expense (with spending heatmap), Financial Health (net worth, savings rate), Budget Performance, Cash Flow (daily flow + recurring calendar), all with PDF export
 - **Activity Audit Trail** — Full change history with before/after diffs
-- **CSV Import** — Bank statement import with reusable column mappings
+- **CSV Import** — Bank statement import with guided steps, reusable column mappings
 - **Full Data Export** — Export entire ledgers to JSON or transactions to CSV
 - **REST API** — Token-based API with Sanctum for external integrations
 - **Two-Factor Authentication** — TOTP-based 2FA with recovery codes
+- **Password Reset While Logged In** — Send reset link from security settings
+- **Timezone Support** — Configurable per-user timezone with `APP_TIMEZONE` env default
+- **Color-Coded Accounts** — Custom colors for account identification
 - **No Admin Panel** — Zero backdoor access to user financial data
 
 ## Tech Stack
@@ -249,6 +252,7 @@ Key environment variables (see `.env.example` for full list):
 | `QUEUE_CONNECTION`       | database         | Queue backend              |
 | `CACHE_STORE`            | database         | Cache backend              |
 | `MAIL_MAILER`            | log              | Mail driver                |
+| `APP_TIMEZONE`           | UTC              | Default application timezone |
 | `LEDGER_FILESYSTEM_DISK` | local            | Storage for ledger exports |
 
 For production with Redis, update:

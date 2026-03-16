@@ -1,8 +1,9 @@
 import { Transition } from '@headlessui/react';
-import { Form, Head, useForm } from '@inertiajs/react';
+import { Form, Head, useForm, usePage } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useRef, useState } from 'react';
+
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -50,6 +51,36 @@ export default function Security({
         errors: twoFactorErrors,
     } = useTwoFactorAuth();
     const [showSetupModal, setShowSetupModal] = useState<boolean>(false);
+    const [isSendingReset, setIsSendingReset] = useState(false);
+    const [resetSent, setResetSent] = useState(false);
+
+    const { auth } = usePage().props;
+
+    const handleForgotPassword = async () => {
+        setIsSendingReset(true);
+        setResetSent(false);
+        try {
+            const response = await fetch('/forgot-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN':
+                        document.querySelector<HTMLMetaElement>(
+                            'meta[name="csrf-token"]',
+                        )?.content ?? '',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({ email: auth.user!.email }),
+            });
+            if (response.ok) {
+                setResetSent(true);
+            }
+        } catch {
+            // silently handle
+        } finally {
+            setIsSendingReset(false);
+        }
+    };
 
     const passwordForm = useForm({
         current_password: '',
@@ -63,7 +94,11 @@ export default function Security({
         passwordForm.put(SecurityController.update.url(), {
             preserveScroll: true,
             onSuccess: () => {
-                passwordForm.reset('current_password', 'password', 'password_confirmation');
+                passwordForm.reset(
+                    'current_password',
+                    'password',
+                    'password_confirmation',
+                );
             },
             onError: (errors) => {
                 if (errors.password) {
@@ -91,10 +126,7 @@ export default function Security({
                         description="Ensure your account is using a long, random password to stay secure"
                     />
 
-                    <form
-                        onSubmit={submitPassword}
-                        className="space-y-6"
-                    >
+                    <form onSubmit={submitPassword} className="space-y-6">
                         <div className="grid gap-2">
                             <Label htmlFor="current_password">
                                 Current password
@@ -108,8 +140,13 @@ export default function Security({
                                 placeholder="Current password"
                                 value={passwordForm.data.current_password}
                                 onChange={(e) => {
-                                    passwordForm.clearErrors('current_password');
-                                    passwordForm.setData('current_password', e.target.value);
+                                    passwordForm.clearErrors(
+                                        'current_password',
+                                    );
+                                    passwordForm.setData(
+                                        'current_password',
+                                        e.target.value,
+                                    );
                                 }}
                             />
 
@@ -119,9 +156,7 @@ export default function Security({
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password">
-                                New password
-                            </Label>
+                            <Label htmlFor="password">New password</Label>
 
                             <PasswordInput
                                 id="password"
@@ -132,11 +167,16 @@ export default function Security({
                                 value={passwordForm.data.password}
                                 onChange={(e) => {
                                     passwordForm.clearErrors('password');
-                                    passwordForm.setData('password', e.target.value);
+                                    passwordForm.setData(
+                                        'password',
+                                        e.target.value,
+                                    );
                                 }}
                             />
 
-                            <InputError message={passwordForm.errors.password} />
+                            <InputError
+                                message={passwordForm.errors.password}
+                            />
                         </div>
 
                         <div className="grid gap-2">
@@ -151,13 +191,20 @@ export default function Security({
                                 placeholder="Confirm password"
                                 value={passwordForm.data.password_confirmation}
                                 onChange={(e) => {
-                                    passwordForm.clearErrors('password_confirmation');
-                                    passwordForm.setData('password_confirmation', e.target.value);
+                                    passwordForm.clearErrors(
+                                        'password_confirmation',
+                                    );
+                                    passwordForm.setData(
+                                        'password_confirmation',
+                                        e.target.value,
+                                    );
                                 }}
                             />
 
                             <InputError
-                                message={passwordForm.errors.password_confirmation}
+                                message={
+                                    passwordForm.errors.password_confirmation
+                                }
                             />
                         </div>
 
@@ -182,6 +229,27 @@ export default function Security({
                             </Transition>
                         </div>
                     </form>
+
+                    <div className="mt-4 border-t pt-4">
+                        <p className="text-sm text-muted-foreground">
+                            Forgot your current password?{' '}
+                            <button
+                                type="button"
+                                className="text-primary underline hover:text-primary/80"
+                                onClick={handleForgotPassword}
+                                disabled={isSendingReset}
+                            >
+                                {isSendingReset
+                                    ? 'Sending...'
+                                    : 'Send a password reset link'}
+                            </button>
+                        </p>
+                        {resetSent && (
+                            <p className="mt-2 text-sm text-green-600 dark:text-green-400">
+                                Password reset link sent to your email.
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {canManageTwoFactor && (

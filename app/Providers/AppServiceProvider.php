@@ -44,7 +44,7 @@ class AppServiceProvider extends ServiceProvider
         Category::observe(CategoryObserver::class);
         Budget::observe(BudgetObserver::class);
 
-        if ($this->app->request->isSecure()) {
+        if (app()->isProduction()) {
             URL::forceScheme('https');
         }
 

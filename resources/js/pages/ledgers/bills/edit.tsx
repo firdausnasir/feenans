@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import BillController from '@/actions/App/Http/Controllers/Ledger/BillController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -33,6 +34,32 @@ import type {
 
 type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 type EndType = 'never' | 'on_date' | 'after_occurrences';
+
+function describeRecurrence(
+    type: string,
+    interval: string,
+    day: string,
+): string {
+    const n = parseInt(interval, 10) || 1;
+    const dayNum = parseInt(day, 10);
+    const dayStr = dayNum ? ` on day ${dayNum}` : '';
+
+    const labels: Record<string, [string, string]> = {
+        daily: ['day', 'days'],
+        weekly: ['week', 'weeks'],
+        monthly: ['month', 'months'],
+        yearly: ['year', 'years'],
+        custom: ['period', 'periods'],
+    };
+
+    const [singular, plural] = labels[type] ?? ['period', 'periods'];
+
+    if (n === 1) {
+        return `Every ${singular}${dayStr}`;
+    }
+
+    return `Every ${n} ${plural}${dayStr}`;
+}
 
 export default function EditBill({
     ledger,
@@ -175,27 +202,20 @@ export default function EditBill({
                     {/* Account */}
                     <div className="grid gap-2">
                         <Label>Account</Label>
-                        <Select
-                            value={data.account_id}
-                            onValueChange={(value) => {
-                                setData('account_id', value);
-                                clearErrors('account_id');
-                            }}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {accounts.map((account) => (
-                                    <SelectItem
-                                        key={account.id}
-                                        value={String(account.id)}
-                                    >
-                                        {account.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                                            options={accounts.map((account) => ({
+                                                value: String(account.id),
+                                                label: account.name,
+                                                color: account.color,
+                                            }))}
+                                            value={data.account_id || null}
+                                            onValueChange={(value) => {
+                                                setData('account_id', value ?? '');
+                                                clearErrors('account_id');
+                                            }}
+                                            placeholder="Select account"
+                                            searchPlaceholder="Search accounts..."
+                                        />
                         <InputError message={errors.account_id} />
                     </div>
 
@@ -207,55 +227,35 @@ export default function EditBill({
                                 (optional)
                             </span>
                         </Label>
-                        <Select
-                            value={categorySelectValue}
-                            onValueChange={(value) => {
-                                setData(
-                                    'category_id',
-                                    value === '__none__' ? '' : value,
-                                );
-                                clearErrors('category_id');
-                            }}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="No category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__none__">
-                                    No category
-                                </SelectItem>
-                                {categories.map((parent) =>
-                                    parent.children &&
-                                    parent.children.length > 0 ? (
-                                        <SelectGroup key={parent.id}>
-                                            <SelectLabel>
-                                                {parent.name}
-                                            </SelectLabel>
-                                            <SelectItem
-                                                value={String(parent.id)}
-                                            >
-                                                {parent.name} (general)
-                                            </SelectItem>
-                                            {parent.children.map((child) => (
-                                                <SelectItem
-                                                    key={child.id}
-                                                    value={String(child.id)}
-                                                >
-                                                    {child.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectGroup>
-                                    ) : (
-                                        <SelectItem
-                                            key={parent.id}
-                                            value={String(parent.id)}
-                                        >
-                                            {parent.name}
-                                        </SelectItem>
-                                    ),
-                                )}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                                            options={categories.flatMap((parent) => {
+                                                const items = [{
+                                                    value: String(parent.id),
+                                                    label: parent.children && parent.children.length > 0 ? `${parent.name} (general)` : parent.name,
+                                                    group: parent.children && parent.children.length > 0 ? parent.name : undefined,
+                                                    color: parent.color,
+                                                }];
+                                                if (parent.children) {
+                                                    parent.children.forEach((child) => {
+                                                        items.push({
+                                                            value: String(child.id),
+                                                            label: child.name,
+                                                            group: parent.name,
+                                                            color: child.color,
+                                                        });
+                                                    });
+                                                }
+                                                return items;
+                                            })}
+                                            value={data.category_id || null}
+                                            onValueChange={(value) => {
+                                                setData('category_id', value ?? '');
+                                                clearErrors('category_id');
+                                            }}
+                                            placeholder="No category"
+                                            searchPlaceholder="Search categories..."
+                                            allOption="No category"
+                                        />
                         <InputError message={errors.category_id} />
                     </div>
 
@@ -267,33 +267,20 @@ export default function EditBill({
                                 (optional)
                             </span>
                         </Label>
-                        <Select
-                            value={payeeSelectValue}
-                            onValueChange={(value) => {
-                                setData(
-                                    'payee_id',
-                                    value === '__none__' ? '' : value,
-                                );
-                                clearErrors('payee_id');
-                            }}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="No payee" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__none__">
-                                    No payee
-                                </SelectItem>
-                                {payees.map((payee) => (
-                                    <SelectItem
-                                        key={payee.id}
-                                        value={String(payee.id)}
-                                    >
-                                        {payee.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                                            options={payees.map((payee) => ({
+                                                value: String(payee.id),
+                                                label: payee.name,
+                                            }))}
+                                            value={data.payee_id || null}
+                                            onValueChange={(value) => {
+                                                setData('payee_id', value ?? '');
+                                                clearErrors('payee_id');
+                                            }}
+                                            placeholder="No payee"
+                                            searchPlaceholder="Search payees..."
+                                            allOption="No payee"
+                                        />
                         <InputError message={errors.payee_id} />
                     </div>
 
@@ -357,33 +344,54 @@ export default function EditBill({
                         </div>
                     </div>
 
-                    {/* Recurrence day — only relevant for monthly/custom */}
+                    {/* Recurrence day — relevant for monthly/yearly/custom */}
                     {(data.recurrence_type === 'monthly' ||
+                        data.recurrence_type === 'yearly' ||
                         data.recurrence_type === 'custom') && (
                         <div className="grid gap-2">
-                            <Label htmlFor="recurrence_day">
+                            <Label>
                                 Day of month{' '}
                                 <span className="text-muted-foreground">
-                                    (optional, 1-31)
+                                    (required)
                                 </span>
                             </Label>
-                            <Input
-                                id="recurrence_day"
-                                name="recurrence_day"
-                                type="number"
-                                inputMode="decimal"
-                                min="1"
-                                max="31"
-                                value={data.recurrence_day}
-                                onChange={(e) => {
-                                    setData('recurrence_day', e.target.value);
-                                    clearErrors('recurrence_day');
-                                }}
-                                placeholder="e.g. 15"
-                            />
+                            <div className="grid grid-cols-7 gap-1">
+                                {Array.from(
+                                    { length: 31 },
+                                    (_, i) => i + 1,
+                                ).map((day) => (
+                                    <button
+                                        key={day}
+                                        type="button"
+                                        className={`flex h-9 w-full items-center justify-center rounded-md text-sm transition-colors ${
+                                            data.recurrence_day === String(day)
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'hover:bg-accent hover:text-accent-foreground'
+                                        }`}
+                                        onClick={() => {
+                                            setData(
+                                                'recurrence_day',
+                                                String(day),
+                                            );
+                                            clearErrors('recurrence_day');
+                                        }}
+                                    >
+                                        {day}
+                                    </button>
+                                ))}
+                            </div>
                             <InputError message={errors.recurrence_day} />
                         </div>
                     )}
+
+                    {/* Recurrence preview */}
+                    <p className="text-sm text-muted-foreground italic">
+                        {describeRecurrence(
+                            data.recurrence_type,
+                            data.recurrence_interval,
+                            data.recurrence_day,
+                        )}
+                    </p>
 
                     {/* Auto-create */}
                     <div className="flex items-center gap-3">

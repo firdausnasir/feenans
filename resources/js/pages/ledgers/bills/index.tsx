@@ -50,6 +50,7 @@ import {
     index as billsIndex,
     toggle,
 } from '@/routes/ledgers/bills';
+import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, Bill, BreadcrumbItem, Ledger } from '@/types';
 
 const COLUMN_COUNT = 9;
@@ -291,6 +292,16 @@ function BillRow({
                                     ))}
                                 </TableBody>
                             </Table>
+                            <div className="pt-2 text-center">
+                                <Link
+                                    href={transactionsIndex.url(ledgerId, {
+                                        query: { search: bill.name },
+                                    })}
+                                    className="text-xs font-medium text-primary hover:underline"
+                                >
+                                    View all transactions
+                                </Link>
+                            </div>
                         </div>
                     </TableCell>
                 </TableRow>

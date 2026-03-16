@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { SearchableSelect } from '@/components/searchable-select';
 import {
     Select,
     SelectContent,
@@ -24,7 +25,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
-import { formatAbsAmount } from '@/lib/format';
+import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     destroy as destroyBudget,
@@ -49,14 +50,92 @@ type FormState = {
     rollover: boolean;
 };
 
-const emptyForm = (): FormState => ({
-    category_id: '__none__',
-    amount: '',
-    period: 'monthly',
-    start_date: new Date().toISOString().slice(0, 10),
-    end_date: '',
-    rollover: false,
-});
+function getCycleBounds(
+    referenceDate: Date,
+    cycleStartDay: number,
+): { start: Date; end: Date } {
+    const day = referenceDate.getDate();
+    let start: Date;
+
+    if (day >= cycleStartDay) {
+        start = new Date(
+            referenceDate.getFullYear(),
+            referenceDate.getMonth(),
+            cycleStartDay,
+        );
+    } else {
+        const prevYear =
+            referenceDate.getMonth() === 0
+                ? referenceDate.getFullYear() - 1
+                : referenceDate.getFullYear();
+        const prevMonth =
+            referenceDate.getMonth() === 0 ? 11 : referenceDate.getMonth() - 1;
+        const maxDay = new Date(prevYear, prevMonth + 1, 0).getDate();
+        start = new Date(prevYear, prevMonth, Math.min(cycleStartDay, maxDay));
+    }
+
+    const endRaw = new Date(
+        start.getFullYear(),
+        start.getMonth() + 1,
+        start.getDate() - 1,
+    );
+
+    return { start, end: endRaw };
+}
+
+function toDateString(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+
+    return `${y}-${m}-${d}`;
+}
+
+function getPeriodBoundsForType(
+    period: string,
+    cycleStartDay: number,
+): { start: string; end: string } {
+    const today = new Date();
+
+    if (period === 'weekly') {
+        const dayOfWeek = today.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const start = new Date(today);
+        start.setDate(today.getDate() + mondayOffset);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+
+        return { start: toDateString(start), end: toDateString(end) };
+    }
+
+    if (period === 'yearly') {
+        const start = new Date(today.getFullYear(), 0, 1);
+        const end = new Date(today.getFullYear(), 11, 31);
+
+        return { start: toDateString(start), end: toDateString(end) };
+    }
+
+    const { start, end } = getCycleBounds(today, cycleStartDay);
+
+    return { start: toDateString(start), end: toDateString(end) };
+}
+
+function getCycleStart(cycleStartDay: number): string {
+    const { start } = getCycleBounds(new Date(), cycleStartDay);
+
+    return toDateString(start);
+}
+
+function makeEmptyForm(cycleStartDay: number): FormState {
+    return {
+        category_id: '__none__',
+        amount: '',
+        period: 'monthly',
+        start_date: getCycleStart(cycleStartDay),
+        end_date: '',
+        rollover: false,
+    };
+}
 
 const statusColor: Record<string, string> = {
     good: 'bg-green-500',
@@ -80,10 +159,12 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
 
     const [showCreate, setShowCreate] = useState(false);
     const [editBudget, setEditBudget] = useState<BudgetStat | null>(null);
-    const [form, setForm] = useState<FormState>(emptyForm());
+    const [form, setForm] = useState<FormState>(
+        makeEmptyForm(ledger.cycle_start_day),
+    );
 
     const handleCreate = () => {
-        setForm(emptyForm());
+        setForm(makeEmptyForm(ledger.cycle_start_day));
         setShowCreate(true);
     };
 
@@ -96,7 +177,8 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                     : '__none__',
             amount: String(budget.amount),
             period: budget.period,
-            start_date: new Date().toISOString().slice(0, 10),
+            start_date:
+                budget.start_date ?? getCycleStart(ledger.cycle_start_day),
             end_date: '',
             rollover: budget.rollover,
         });
@@ -124,6 +206,12 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                         setEditBudget(null);
                         toast.success('Budget updated');
                     },
+                    onError: (errors) => {
+                        const firstError = Object.values(errors)[0];
+                        if (firstError) {
+                            toast.error(String(firstError));
+                        }
+                    },
                 },
             );
         } else {
@@ -131,6 +219,12 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                 onSuccess: () => {
                     setShowCreate(false);
                     toast.success('Budget created');
+                },
+                onError: (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
                 },
             });
         }
@@ -146,6 +240,12 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
             {
                 onSuccess: () => {
                     toast.success('Budget deleted');
+                },
+                onError: (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
                 },
             },
         );
@@ -186,7 +286,10 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                             <Card key={budget.id}>
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base">
+                                        <CardTitle className="inline-flex items-center gap-1.5 text-base">
+                                            {budget.category_color && (
+                                                <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: budget.category_color }} />
+                                            )}
                                             {budget.category_name}
                                         </CardTitle>
                                         <span
@@ -199,7 +302,9 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                         </span>
                                     </div>
                                     <p className="text-xs text-muted-foreground capitalize">
-                                        {budget.period}
+                                        {budget.period} &middot;{' '}
+                                        {formatDate(budget.period_start)} –{' '}
+                                        {formatDate(budget.period_end)}
                                     </p>
                                 </CardHeader>
                                 <CardContent className="flex flex-col gap-3">
@@ -270,34 +375,25 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                 <Label htmlFor="category_id">
                                     Category (leave empty for overall)
                                 </Label>
-                                <Select
-                                    value={form.category_id}
+                                <SearchableSelect
+                                    options={flatCategories.map((c) => ({
+                                        value: String(c.id),
+                                        label: c.parent_id
+                                            ? `  \u21B3 ${c.name}`
+                                            : c.name,
+                                        color: c.color,
+                                    }))}
+                                    value={form.category_id === '__none__' ? null : form.category_id}
                                     onValueChange={(val) =>
                                         setForm((f) => ({
                                             ...f,
-                                            category_id: val,
+                                            category_id: val ?? '__none__',
                                         }))
                                     }
-                                >
-                                    <SelectTrigger id="category_id">
-                                        <SelectValue placeholder="Overall budget" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="__none__">
-                                            Overall budget
-                                        </SelectItem>
-                                        {flatCategories.map((c) => (
-                                            <SelectItem
-                                                key={c.id}
-                                                value={String(c.id)}
-                                            >
-                                                {c.parent_id
-                                                    ? `  ↳ ${c.name}`
-                                                    : c.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    placeholder="Overall budget"
+                                    searchPlaceholder="Search categories..."
+                                    allOption="Overall budget"
+                                />
                             </div>
 
                             <div className="grid gap-2">
@@ -342,6 +438,22 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Current cycle:{' '}
+                                    {formatDate(
+                                        getPeriodBoundsForType(
+                                            form.period,
+                                            ledger.cycle_start_day,
+                                        ).start,
+                                    )}{' '}
+                                    –{' '}
+                                    {formatDate(
+                                        getPeriodBoundsForType(
+                                            form.period,
+                                            ledger.cycle_start_day,
+                                        ).end,
+                                    )}
+                                </p>
                             </div>
 
                             <div className="grid gap-2">

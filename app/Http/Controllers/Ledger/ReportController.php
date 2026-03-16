@@ -6,7 +6,6 @@ use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReportFilterRequest;
 use App\Models\Ledger;
-use App\Services\TransactionService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -16,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class ReportController extends Controller
 {
-    public function index(ReportFilterRequest $request, Ledger $ledger, TransactionService $transactionService): Response
+    public function index(ReportFilterRequest $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
@@ -50,9 +49,8 @@ class ReportController extends Controller
         // --- Income Payee Breakdown (income only, within date range) ---
         $incomePayeeBreakdown = $this->buildIncomePayeeBreakdown($ledger, $dateFrom, $dateTo, $accountId);
 
-        // --- Statement Cycles (2-year lookback, independent of trend date range) ---
-        $cyclesFrom = $parsedTo->subYears(2);
-        $statementCycles = $this->buildStatementCycles($ledger, $transactionService, $cyclesFrom, $parsedTo);
+        // --- Spending Heatmap ---
+        $spendingHeatmap = $this->buildSpendingHeatmap($ledger, $dateFrom, $dateTo, $accountId);
 
         // --- Comparison period (optional) ---
         $comparison = null;
@@ -70,12 +68,6 @@ class ReportController extends Controller
             );
         }
 
-        // --- Credit Accounts ---
-        $creditAccounts = $ledger->accounts()
-            ->whereNotNull('statement_day')
-            ->get(['id', 'name', 'statement_day'])
-            ->values();
-
         // --- All accounts for filter dropdown ---
         $allAccounts = $ledger->accounts()->orderBy('name')->get(['id', 'name']);
 
@@ -86,8 +78,7 @@ class ReportController extends Controller
             'payeeBreakdown' => $payeeBreakdown,
             'incomeCategoryBreakdown' => $incomeCategoryBreakdown,
             'incomePayeeBreakdown' => $incomePayeeBreakdown,
-            'statementCycles' => $statementCycles,
-            'creditAccounts' => $creditAccounts,
+            'spendingHeatmap' => $spendingHeatmap,
             'allAccounts' => $allAccounts,
             'comparison' => $comparison,
             'dateRange' => [
@@ -98,6 +89,224 @@ class ReportController extends Controller
                 'compare_start' => $compareStart,
                 'compare_end' => $compareEnd,
             ],
+        ]);
+    }
+
+    public function financialHealth(Request $request, Ledger $ledger): Response
+    {
+        $this->authorize('view', $ledger);
+
+        $accounts = $ledger->accounts()->visible()->with('accountType')->get();
+
+        // Net worth over time: monthly snapshots going back 12 months
+        $today = CarbonImmutable::today();
+        $netWorthHistory = [];
+
+        for ($i = 11; $i >= 0; $i--) {
+            $date = $today->subMonths($i);
+            $cycleBounds = $ledger->cycleBounds($date);
+            $endDate = $cycleBounds['end']->toDateString();
+
+            $totalAssets = 0.0;
+            $totalLiabilities = 0.0;
+
+            foreach ($accounts as $account) {
+                $balance = (float) $account->initial_balance + (float) $account->transactions()
+                    ->where('transaction_date', '<=', $endDate)
+                    ->sum('amount');
+
+                // Determine if asset or liability based on account type
+                if (str_contains(strtolower($account->accountType->name ?? ''), 'liabilit') ||
+                    str_contains(strtolower($account->accountType->name ?? ''), 'credit')) {
+                    $totalLiabilities += abs($balance);
+                } else {
+                    $totalAssets += $balance;
+                }
+            }
+
+            $netWorthHistory[] = [
+                'month' => $cycleBounds['start']->format('Y-m'),
+                'assets' => round($totalAssets, 2),
+                'liabilities' => round($totalLiabilities, 2),
+                'net_worth' => round($totalAssets - $totalLiabilities, 2),
+            ];
+        }
+
+        // Savings rate: (income - expense) / income per month for last 12 months
+        $savingsRateHistory = [];
+
+        for ($i = 11; $i >= 0; $i--) {
+            $date = $today->subMonths($i);
+            $cycleBounds = $ledger->cycleBounds($date);
+            $start = $cycleBounds['start']->toDateString();
+            $end = $cycleBounds['end']->toDateString();
+
+            $income = (float) $ledger->transactions()
+                ->where('transaction_type', TransactionType::Income->value)
+                ->whereBetween('transaction_date', [$start, $end])
+                ->sum('amount');
+
+            $expense = abs((float) $ledger->transactions()
+                ->where('transaction_type', TransactionType::Expense->value)
+                ->whereBetween('transaction_date', [$start, $end])
+                ->sum('amount'));
+
+            $savingsRate = $income > 0 ? round((($income - $expense) / $income) * 100, 1) : 0;
+
+            $savingsRateHistory[] = [
+                'month' => $cycleBounds['start']->format('Y-m'),
+                'income' => round($income, 2),
+                'expense' => round($expense, 2),
+                'savings' => round($income - $expense, 2),
+                'rate' => $savingsRate,
+            ];
+        }
+
+        // Current snapshot
+        $currentAssets = 0.0;
+        $currentLiabilities = 0.0;
+
+        foreach ($accounts as $account) {
+            $balance = (float) $account->initial_balance + (float) $account->transactions()->sum('amount');
+
+            if (str_contains(strtolower($account->accountType->name ?? ''), 'liabilit') ||
+                str_contains(strtolower($account->accountType->name ?? ''), 'credit')) {
+                $currentLiabilities += abs($balance);
+            } else {
+                $currentAssets += $balance;
+            }
+        }
+
+        return Inertia::render('ledgers/reports/financial-health', [
+            'ledger' => $ledger,
+            'netWorthHistory' => $netWorthHistory,
+            'savingsRateHistory' => $savingsRateHistory,
+            'currentSnapshot' => [
+                'assets' => round($currentAssets, 2),
+                'liabilities' => round($currentLiabilities, 2),
+                'net_worth' => round($currentAssets - $currentLiabilities, 2),
+                'debt_to_asset_ratio' => $currentAssets > 0 ? round($currentLiabilities / $currentAssets, 2) : 0,
+            ],
+        ]);
+    }
+
+    public function budgetPerformance(Request $request, Ledger $ledger): Response
+    {
+        $this->authorize('view', $ledger);
+
+        $budgets = $ledger->budgets()->with('category')->where('is_active', true)->get();
+        $today = CarbonImmutable::today();
+        $currentCycle = $ledger->cycleBounds($today);
+
+        $budgetStats = [];
+
+        foreach ($budgets as $budget) {
+            $start = $currentCycle['start']->toDateString();
+            $end = $currentCycle['end']->toDateString();
+
+            $query = $ledger->transactions()
+                ->where('transaction_type', TransactionType::Expense->value)
+                ->whereBetween('transaction_date', [$start, $end]);
+
+            if ($budget->category_id) {
+                $query->where(function ($q) use ($budget) {
+                    $q->where('category_id', $budget->category_id)
+                        ->orWhereHas('category', fn ($sub) => $sub->where('parent_id', $budget->category_id));
+                });
+            }
+
+            $spent = abs((float) $query->sum('amount'));
+            $percentage = $budget->amount > 0 ? round(($spent / (float) $budget->amount) * 100, 1) : 0;
+
+            $budgetStats[] = [
+                'id' => $budget->id,
+                'category_name' => $budget->category?->name ?? 'Overall',
+                'amount' => round((float) $budget->amount, 2),
+                'spent' => round($spent, 2),
+                'remaining' => round((float) $budget->amount - $spent, 2),
+                'percentage' => $percentage,
+                'period' => $budget->period,
+                'status' => $percentage >= 100 ? 'over' : ($percentage >= 90 ? 'danger' : ($percentage >= 75 ? 'warning' : 'good')),
+            ];
+        }
+
+        return Inertia::render('ledgers/reports/budget-performance', [
+            'ledger' => $ledger,
+            'budgetStats' => $budgetStats,
+            'periodLabel' => $currentCycle['start']->format('M d').' – '.$currentCycle['end']->format('M d, Y'),
+        ]);
+    }
+
+    public function cashFlow(Request $request, Ledger $ledger): Response
+    {
+        $this->authorize('view', $ledger);
+
+        $today = CarbonImmutable::today();
+        $currentCycle = $ledger->cycleBounds($today);
+        $start = $currentCycle['start']->toDateString();
+        $end = $currentCycle['end']->toDateString();
+
+        // Daily cash flow for current cycle
+        $dailyFlow = $ledger->transactions()
+            ->whereIn('transaction_type', [TransactionType::Income->value, TransactionType::Expense->value])
+            ->whereBetween('transaction_date', [$start, $end])
+            ->selectRaw('transaction_date, transaction_type, SUM(amount) as total')
+            ->groupBy('transaction_date', 'transaction_type')
+            ->orderBy('transaction_date')
+            ->get();
+
+        $dailyCashFlow = [];
+        $cursor = $currentCycle['start'];
+
+        while ($cursor->lte($currentCycle['end'])) {
+            $dateStr = $cursor->toDateString();
+            $income = 0.0;
+            $expense = 0.0;
+
+            foreach ($dailyFlow as $row) {
+                if ($row->transaction_date->toDateString() === $dateStr) {
+                    if ($row->transaction_type === TransactionType::Income->value) {
+                        $income += (float) $row->total;
+                    } else {
+                        $expense += abs((float) $row->total);
+                    }
+                }
+            }
+
+            $dailyCashFlow[] = [
+                'date' => $dateStr,
+                'income' => round($income, 2),
+                'expense' => round($expense, 2),
+                'net' => round($income - $expense, 2),
+            ];
+
+            $cursor = $cursor->addDay();
+        }
+
+        // Upcoming recurring transactions
+        $upcomingBills = $ledger->bills()
+            ->where('is_active', true)
+            ->where('next_due_date', '>=', $today->toDateString())
+            ->where('next_due_date', '<=', $today->addMonths(3)->toDateString())
+            ->with(['account', 'category', 'payee'])
+            ->orderBy('next_due_date')
+            ->get()
+            ->map(fn ($bill) => [
+                'id' => $bill->id,
+                'name' => $bill->name,
+                'amount' => round((float) $bill->amount, 2),
+                'transaction_type' => $bill->transaction_type,
+                'next_due_date' => $bill->next_due_date->toDateString(),
+                'account_name' => $bill->account?->name,
+            ])
+            ->values()
+            ->toArray();
+
+        return Inertia::render('ledgers/reports/cash-flow', [
+            'ledger' => $ledger,
+            'dailyCashFlow' => $dailyCashFlow,
+            'upcomingBills' => $upcomingBills,
+            'periodLabel' => $currentCycle['start']->format('M d').' – '.$currentCycle['end']->format('M d, Y'),
         ]);
     }
 
@@ -662,55 +871,6 @@ class ReportController extends Controller
     }
 
     /**
-     * Build statement cycles for all credit accounts (constrained to a date range).
-     *
-     * @return array<int, array{account_id: int, account_name: string, start_date: string, end_date: string, total: float}>
-     */
-    private function buildStatementCycles(
-        Ledger $ledger,
-        TransactionService $transactionService,
-        CarbonImmutable $from,
-        CarbonImmutable $to,
-    ): array {
-        $creditAccounts = $ledger->accounts()
-            ->whereNotNull('statement_day')
-            ->with(['transactions' => fn ($q) => $q->whereBetween('transaction_date', [$from->toDateString(), $to->toDateString()])->orderBy('transaction_date')])
-            ->get();
-
-        $cycles = [];
-
-        foreach ($creditAccounts as $account) {
-            foreach ($account->transactions as $transaction) {
-                [$start, $end] = $transactionService->statementCycleBounds(
-                    $account,
-                    CarbonImmutable::parse($transaction->transaction_date),
-                );
-
-                $key = $account->id.'-'.$start->toDateString().'-'.$end->toDateString();
-
-                if (! isset($cycles[$key])) {
-                    $cycles[$key] = [
-                        'account_id' => $account->id,
-                        'account_name' => $account->name,
-                        'start_date' => $start->toDateString(),
-                        'end_date' => $end->toDateString(),
-                        'total' => 0.0,
-                    ];
-                }
-
-                $cycles[$key]['total'] += (float) $transaction->amount;
-            }
-        }
-
-        foreach ($cycles as &$cycle) {
-            $cycle['total'] = round($cycle['total'], 2);
-        }
-        unset($cycle);
-
-        return array_values($cycles);
-    }
-
-    /**
      * Build comparison data between the current period and a comparison period.
      *
      * Returns category deltas, monthly trend overlay, and summary stats.
@@ -926,5 +1086,31 @@ class ReportController extends Controller
         }
 
         return 'custom';
+    }
+
+    /**
+     * Build daily spending amounts for the heatmap.
+     *
+     * @return array<int, array{date: string, amount: float}>
+     */
+    private function buildSpendingHeatmap(Ledger $ledger, string $dateFrom, string $dateTo, ?string $accountId = null): array
+    {
+        $query = $ledger->transactions()
+            ->where('transaction_type', TransactionType::Expense->value)
+            ->whereBetween('transaction_date', [$dateFrom, $dateTo])
+            ->selectRaw('transaction_date, SUM(ABS(amount)) as total')
+            ->groupBy('transaction_date');
+
+        if ($accountId) {
+            $query->where('account_id', $accountId);
+        }
+
+        return $query->get()
+            ->map(fn ($row) => [
+                'date' => $row->transaction_date->toDateString(),
+                'amount' => round((float) $row->total, 2),
+            ])
+            ->values()
+            ->toArray();
     }
 }

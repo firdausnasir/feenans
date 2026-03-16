@@ -37,7 +37,7 @@ test('report page returns trend and category breakdown data', function () {
         ->has('monthlyTrend')
         ->has('categoryBreakdown')
         ->has('dateRange')
-        ->has('creditAccounts')
+        ->has('spendingHeatmap')
         ->etc()
     );
 });
@@ -158,13 +158,11 @@ test('category breakdown only includes expenses not income', function () {
     );
 });
 
-test('report page includes credit statement cycle data', function () {
+test('report page includes spending heatmap data', function () {
     $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->credit()->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create([
-        'statement_day' => 15,
-    ]);
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
     $category = Category::factory()->for($ledger)->create();
 
     Transaction::factory()
@@ -174,43 +172,67 @@ test('report page includes credit statement cycle data', function () {
         ->create([
             'transaction_type' => 'expense',
             'amount' => '-80.00',
-            'transaction_date' => '2026-01-10',
+            'transaction_date' => '2026-03-10',
         ]);
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.reports.index', $ledger));
+        ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31');
 
     $response->assertInertia(fn (Assert $page) => $page
-        ->has('statementCycles', 1)
-        ->where('statementCycles.0.start_date', '2025-12-16')
-        ->where('statementCycles.0.end_date', '2026-01-15')
-        ->where('statementCycles.0.account_name', $account->name)
-        ->where('statementCycles.0.total', fn ($v) => (float) $v === -80.0)
+        ->has('spendingHeatmap', 1)
+        ->where('spendingHeatmap.0.date', '2026-03-10')
+        ->where('spendingHeatmap.0.amount', fn ($v) => (float) $v === 80.0)
         ->etc()
     );
 });
 
-test('report page returns credit accounts list', function () {
+test('financial health report page renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->credit()->create();
-    $creditAccount = Account::factory()->for($ledger)->for($accountType)->create([
-        'statement_day' => 25,
-    ]);
-    $normalAccountType = AccountType::factory()->for($ledger)->create();
-    Account::factory()->for($ledger)->for($normalAccountType)->create([
-        'statement_day' => null,
-    ]);
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.reports.index', $ledger));
+        ->get(route('ledgers.reports.financial-health', $ledger));
 
     $response->assertInertia(fn (Assert $page) => $page
-        ->has('creditAccounts', 1)
-        ->where('creditAccounts.0.id', $creditAccount->id)
-        ->where('creditAccounts.0.name', $creditAccount->name)
+        ->component('ledgers/reports/financial-health')
+        ->has('netWorthHistory')
+        ->has('savingsRateHistory')
+        ->has('currentSnapshot')
+        ->etc()
+    );
+});
+
+test('budget performance report page renders successfully', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.budget-performance', $ledger));
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/budget-performance')
+        ->has('budgetStats')
+        ->has('periodLabel')
+        ->etc()
+    );
+});
+
+test('cash flow report page renders successfully', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.reports.cash-flow', $ledger));
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/reports/cash-flow')
+        ->has('dailyCashFlow')
+        ->has('upcomingBills')
+        ->has('periodLabel')
         ->etc()
     );
 });

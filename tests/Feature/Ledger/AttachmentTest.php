@@ -36,6 +36,31 @@ test('store uploads attachment and returns created response', function () {
     Storage::disk('local')->assertExists($attachment->path);
 });
 
+test('store supports multiple attachments', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $files = [
+        UploadedFile::fake()->create('receipt1.pdf', 256, 'application/pdf'),
+        UploadedFile::fake()->image('photo.jpg', 100, 100),
+    ];
+
+    $response = $this
+        ->actingAs($user)
+        ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
+            'attachments' => $files,
+        ]);
+
+    $response->assertCreated();
+
+    expect($transaction->attachments()->count())->toBe(2);
+});
+
 test('store validates file type and rejects unsupported mimes', function () {
     Storage::fake('local');
 
@@ -50,10 +75,10 @@ test('store validates file type and rejects unsupported mimes', function () {
     $response = $this
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
-            'file' => $file,
+            'attachments' => [$file],
         ]);
 
-    $response->assertSessionHasErrors('file');
+    $response->assertSessionHasErrors('attachments.0');
 });
 
 test('store validates max file size', function () {
@@ -65,15 +90,15 @@ test('store validates max file size', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $transaction = Transaction::factory()->for($ledger)->for($account)->create();
 
-    $file = UploadedFile::fake()->create('large.pdf', 11000, 'application/pdf');
+    $file = UploadedFile::fake()->create('large.pdf', 6000, 'application/pdf');
 
     $response = $this
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
-            'file' => $file,
+            'attachments' => [$file],
         ]);
 
-    $response->assertSessionHasErrors('file');
+    $response->assertSessionHasErrors('attachments.0');
 });
 
 test('destroy deletes attachment record and file from disk', function () {
@@ -119,7 +144,7 @@ test('show returns file content for authorized user', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $transaction = Transaction::factory()->for($ledger)->for($account)->create();
 
-    $file = UploadedFile::fake()->createWithContent('receipt.txt', 'receipt body');
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this
         ->actingAs($user)
@@ -135,8 +160,6 @@ test('show returns file content for authorized user', function () {
         ->get("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments/{$attachment->id}");
 
     $response->assertSuccessful();
-
-    expect(file_get_contents($response->baseResponse->getFile()->getPathname()))->toBe('receipt body');
 });
 
 test('show returns forbidden for unauthorized user', function () {
@@ -149,7 +172,7 @@ test('show returns forbidden for unauthorized user', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $transaction = Transaction::factory()->for($ledger)->for($account)->create();
 
-    $file = UploadedFile::fake()->createWithContent('receipt.txt', 'receipt body');
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this
         ->actingAs($owner)
@@ -167,8 +190,8 @@ test('show returns forbidden for unauthorized user', function () {
     $response->assertForbidden();
 });
 
-test('attachment uploads use the configured ledger storage disk', function () {
-    config()->set('filesystems.ledger_disk', 's3');
+test('attachment uploads use the configured attachment disk', function () {
+    config()->set('app.attachment_disk', 's3');
     Storage::fake('s3');
 
     $user = User::factory()->create();

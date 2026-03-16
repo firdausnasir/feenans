@@ -10,48 +10,55 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rules\File;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
-    protected function ledgerDisk(): string
+    protected function attachmentDisk(): string
     {
-        return (string) config('filesystems.ledger_disk', config('filesystems.default', 'local'));
+        return (string) config('app.attachment_disk', 'local');
     }
 
     public function store(Request $request, Ledger $ledger, Transaction $transaction): JsonResponse
     {
         $this->authorize('view', $ledger);
 
+        // Support both single 'file' and multiple 'attachments[]' uploads
+        if ($request->hasFile('file') && ! $request->hasFile('attachments')) {
+            $request->merge(['attachments' => [$request->file('file')]]);
+        }
+
         $validated = $request->validate([
-            'file' => [
-                'required',
-                File::types(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'csv'])
-                    ->max(10 * 1024),
-            ],
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,gif,webp'],
         ]);
 
-        $file = $validated['file'];
-        $path = $file->store("attachments/{$ledger->id}", $this->ledgerDisk());
+        $disk = $this->attachmentDisk();
+        $uploaded = [];
 
-        $attachment = $transaction->attachments()->create([
-            'filename' => $file->getClientOriginalName(),
-            'path' => $path,
-            'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
-            'size' => $file->getSize(),
-        ])->load('transaction');
+        foreach ($validated['attachments'] as $file) {
+            $path = $file->store("attachments/{$ledger->id}", $disk);
+
+            $uploaded[] = $transaction->attachments()->create([
+                'filename' => $file->getClientOriginalName(),
+                'path' => $path,
+                'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
+                'size' => $file->getSize(),
+            ])->load('transaction');
+        }
 
         return response()->json([
-            'attachment' => $attachment,
+            'attachments' => $uploaded,
         ], Response::HTTP_CREATED);
     }
 
-    public function show(Request $request, Ledger $ledger, Transaction $transaction, Attachment $attachment): BinaryFileResponse
+    public function show(Request $request, Ledger $ledger, Transaction $transaction, Attachment $attachment): StreamedResponse
     {
         $this->authorize('view', $ledger);
 
-        return response()->file(Storage::disk($this->ledgerDisk())->path($attachment->path), [
+        $disk = Storage::disk($this->attachmentDisk());
+
+        return $disk->response($attachment->path, $attachment->filename, [
             'Content-Type' => $attachment->mime_type,
         ]);
     }
@@ -60,7 +67,7 @@ class AttachmentController extends Controller
     {
         $this->authorize('delete', $ledger);
 
-        Storage::disk($this->ledgerDisk())->delete($attachment->path);
+        Storage::disk($this->attachmentDisk())->delete($attachment->path);
         $attachment->delete();
 
         return response()->noContent();

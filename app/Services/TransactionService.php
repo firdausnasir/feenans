@@ -10,6 +10,7 @@ use App\Models\Payee;
 use App\Models\Transaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class TransactionService
@@ -26,8 +27,8 @@ class TransactionService
     }
 
     /**
-     * @param  array<int, array{amount:mixed,category_id:mixed,description:mixed}>|null  $splits
-     * @return array<int, array{amount:float,category_id:mixed,description:mixed}>
+     * @param  array<int, array{amount:mixed,category_id:mixed,description:mixed,payee_id?:mixed}>|null  $splits
+     * @return array<int, array{amount:float,category_id:mixed,description:mixed,payee_id:mixed}>
      */
     protected function normalizeSplits(TransactionType $transactionType, ?array $splits): array
     {
@@ -39,6 +40,7 @@ class TransactionService
             return [
                 'amount' => $this->normalizeAmount($transactionType, $split['amount'] ?? 0),
                 'category_id' => $split['category_id'] ?? null,
+                'payee_id' => $split['payee_id'] ?? null,
                 'description' => $split['description'] ?? null,
             ];
         }, $splits);
@@ -289,6 +291,7 @@ class TransactionService
                     ->where('transfer_pair_id', $transaction->transfer_pair_id)
                     ->get()
                     ->each(function (Transaction $pairedTransaction): void {
+                        $this->deleteAttachments($pairedTransaction);
                         $pairedTransaction->forceDelete();
                     });
             });
@@ -296,11 +299,27 @@ class TransactionService
             return;
         }
 
+        $this->deleteAttachments($transaction);
         $transaction->forceDelete();
     }
 
     /**
-     * @param  array<int, array{amount:mixed,category_id:mixed,description:mixed}>|null  $splits
+     * Delete all attachment files from disk and remove records.
+     */
+    private function deleteAttachments(Transaction $transaction): void
+    {
+        $disk = Storage::disk(
+            (string) config('app.attachment_disk', 'local')
+        );
+
+        foreach ($transaction->attachments as $attachment) {
+            $disk->delete($attachment->path);
+            $attachment->delete();
+        }
+    }
+
+    /**
+     * @param  array<int, array{amount:mixed,category_id:mixed,description:mixed,payee_id?:mixed}>|null  $splits
      */
     protected function syncSplits(Transaction $transaction, ?array $splits): void
     {
@@ -313,6 +332,7 @@ class TransactionService
         $transaction->splits()->createMany(array_map(function (array $split): array {
             return [
                 'category_id' => $split['category_id'] ?? null,
+                'payee_id' => $split['payee_id'] ?? null,
                 'amount' => $split['amount'],
                 'description' => $split['description'] ?? null,
             ];

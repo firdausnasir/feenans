@@ -24,6 +24,7 @@ class Account extends Model
         'ledger_id',
         'account_type_id',
         'name',
+        'color',
         'initial_balance',
         'statement_day',
         'include_in_totals',

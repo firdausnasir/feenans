@@ -16,8 +16,10 @@ use App\Models\User;
 use App\Services\BudgetService;
 use App\Services\TransactionService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,14 +32,14 @@ class TransactionController extends Controller
         private readonly BudgetService $budgetService,
     ) {}
 
-    public function index(Request $request, Ledger $ledger): Response
+    public function index(Request $request, Ledger $ledger): Response|JsonResponse
     {
         $this->authorize('view', $ledger);
 
         ['start' => $start, 'end' => $end] = $ledger->cycleBounds(CarbonImmutable::now());
 
         $query = $ledger->transactions()
-            ->with(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category'])
+            ->with(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category', 'splits.payee'])
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
 
@@ -78,6 +80,12 @@ class TransactionController extends Controller
             $query->whereHas('tags', fn ($q) => $q->where('tags.id', $request->get('tag_id')));
         }
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'transactions' => $query->paginate(25)->withQueryString(),
+            ]);
+        }
+
         return Inertia::render('ledgers/transactions/index', [
             'ledger' => $ledger,
             'transactions' => $query->paginate(25)->withQueryString(),
@@ -102,6 +110,8 @@ class TransactionController extends Controller
     public function store(StoreTransactionRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('view', $ledger);
+
+        $this->resolveInlinePayee($request, $ledger);
 
         if ($request->string('transaction_type')->value() === TransactionType::Transfer->value) {
             $this->transactionService->storeTransfer($ledger, [
@@ -135,6 +145,10 @@ class TransactionController extends Controller
             $transaction->tags()->sync($request->input('tag_ids', []));
         }
 
+        if ($request->hasFile('attachments')) {
+            $this->storeAttachments($ledger, $transaction, $request->file('attachments'));
+        }
+
         $this->budgetService->checkThresholds(
             $ledger,
             $request->filled('category_id') ? $request->integer('category_id') : null,
@@ -143,6 +157,23 @@ class TransactionController extends Controller
         $this->celebrateFirstTransaction();
 
         return back();
+    }
+
+    /**
+     * If the request carries a new_payee_name (and no payee_id), create the
+     * payee on the fly and merge its id back into the request so downstream
+     * code can treat it as a regular payee_id.
+     */
+    private function resolveInlinePayee(Request $request, Ledger $ledger): void
+    {
+        $newPayeeName = trim((string) $request->input('new_payee_name'));
+
+        if ($newPayeeName === '' || $request->filled('payee_id')) {
+            return;
+        }
+
+        $payee = $ledger->payees()->create(['name' => $newPayeeName]);
+        $request->merge(['payee_id' => $payee->id]);
     }
 
     private function celebrateFirstTransaction(): void
@@ -158,13 +189,34 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Store attachment files for a given transaction.
+     *
+     * @param  array<int, UploadedFile>  $files
+     */
+    private function storeAttachments(Ledger $ledger, Transaction $transaction, array $files): void
+    {
+        $disk = (string) config('app.attachment_disk', 'local');
+
+        foreach ($files as $file) {
+            $path = $file->store("attachments/{$ledger->id}", $disk);
+
+            $transaction->attachments()->create([
+                'filename' => $file->getClientOriginalName(),
+                'path' => $path,
+                'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
+                'size' => $file->getSize(),
+            ]);
+        }
+    }
+
     public function edit(Request $request, Ledger $ledger, Transaction $transaction): Response
     {
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/transactions/edit', [
             'ledger' => $ledger,
-            'transaction' => $transaction->load(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category']),
+            'transaction' => $transaction->load(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category', 'splits.payee']),
             'accounts' => $ledger->accounts()
                 ->where(fn ($q) => $q->visible()->orWhere('id', $transaction->account_id))
                 ->with('accountType')
@@ -179,6 +231,8 @@ class TransactionController extends Controller
     public function update(UpdateTransactionRequest $request, Ledger $ledger, Transaction $transaction): RedirectResponse
     {
         $this->authorize('update', $ledger);
+
+        $this->resolveInlinePayee($request, $ledger);
 
         $data = $request->validated();
         $newType = TransactionType::from($data['transaction_type']);

@@ -22,6 +22,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -90,14 +91,6 @@ type CategoryBreakdownResponse = {
     parents: ParentCategory[];
 };
 
-type StatementCycle = {
-    account_id: number;
-    account_name: string;
-    start_date: string;
-    end_date: string;
-    total: number;
-};
-
 type DateRange = {
     date_from: string;
     date_to: string;
@@ -116,7 +109,10 @@ type PayeeBreakdownItem = {
     percentage: number;
 };
 
-type CreditAccount = Pick<Account, 'id' | 'name' | 'statement_day'>;
+type HeatmapDay = {
+    date: string;
+    amount: number;
+};
 
 type CategoryDelta = {
     name: string;
@@ -256,7 +252,7 @@ const PRESETS: Preset[] = [
     },
     {
         key: 'last_3_months',
-        label: 'Last 3 months',
+        label: '3 months',
         compute: (today, csd) => {
             const { start: curStart, end: curEnd } = getCycleBounds(today, csd);
             const start = goBackNCycles(curStart, 3, csd);
@@ -269,7 +265,7 @@ const PRESETS: Preset[] = [
     },
     {
         key: 'last_6_months',
-        label: 'Last 6 months',
+        label: '6 months',
         compute: (today, csd) => {
             const { start: curStart, end: curEnd } = getCycleBounds(today, csd);
             const start = goBackNCycles(curStart, 6, csd);
@@ -459,13 +455,23 @@ function DateRangeSelector({
     const [filtersOpen, setFiltersOpen] = useState(false);
 
     return (
-        <Card>
-            <CardContent className="space-y-3 pt-6">
-                {/* Mobile filter toggle */}
+        <Card
+            className={filtersOpen ? '' : 'cursor-pointer'}
+            onClick={() => {
+                if (!filtersOpen) {
+                    setFiltersOpen(true);
+                }
+            }}
+        >
+            <CardContent className="space-y-3 px-4 py-2">
+                {/* Filter toggle */}
                 <button
                     type="button"
-                    className="flex w-full items-center justify-between sm:hidden"
-                    onClick={() => setFiltersOpen(!filtersOpen)}
+                    className="flex w-full items-center justify-between"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setFiltersOpen(!filtersOpen);
+                    }}
                 >
                     <div className="flex items-center gap-2">
                         <SlidersHorizontal className="size-4 text-muted-foreground" />
@@ -473,16 +479,19 @@ function DateRangeSelector({
                             {formatDate(dateRange.date_from)} &ndash;{' '}
                             {formatDate(dateRange.date_to)}
                         </span>
+                        {dateRange.account_id && (
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                Filtered
+                            </span>
+                        )}
                     </div>
                     <ChevronDown
                         className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
                     />
                 </button>
 
-                <div
-                    className={`space-y-3 ${filtersOpen ? '' : 'hidden'} sm:block`}
-                >
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className={`space-y-3 ${filtersOpen ? '' : 'hidden'}`}>
+                    <div className="flex flex-wrap items-center gap-1.5">
                         {PRESETS.map((preset) => (
                             <Button
                                 key={preset.key}
@@ -492,6 +501,7 @@ function DateRangeSelector({
                                         ? 'default'
                                         : 'outline'
                                 }
+                                className="h-7 px-2.5 text-xs"
                                 onClick={() => applyPreset(preset)}
                             >
                                 {preset.label}
@@ -501,6 +511,7 @@ function DateRangeSelector({
                         <Button
                             size="sm"
                             variant={compareEnabled ? 'default' : 'outline'}
+                            className="h-7 px-2.5 text-xs"
                             onClick={handleCompareToggle}
                         >
                             Compare
@@ -633,7 +644,7 @@ function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
     }
 
     return (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={250}>
             <ComposedChart
                 data={chartData}
                 margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
@@ -904,137 +915,6 @@ function CategoryBreakdownSection({
                         )}
                 </div>
             </div>
-        </div>
-    );
-}
-
-function StatementCyclesSection({
-    cycles,
-    creditAccounts,
-}: {
-    cycles: StatementCycle[];
-    creditAccounts: CreditAccount[];
-}) {
-    const [selectedAccountId, setSelectedAccountId] = useState<string>(
-        creditAccounts[0]?.id?.toString() ?? 'all',
-    );
-
-    const filteredCycles =
-        selectedAccountId !== 'all'
-            ? cycles.filter((c) => c.account_id === Number(selectedAccountId))
-            : cycles;
-
-    // Sort cycles by start_date descending
-    const sortedCycles = [...filteredCycles].sort(
-        (a, b) =>
-            new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
-    );
-
-    return (
-        <div className="space-y-4">
-            {creditAccounts.length > 1 && (
-                <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium">Account</Label>
-                    <Select
-                        value={selectedAccountId}
-                        onValueChange={setSelectedAccountId}
-                    >
-                        <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Select account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All accounts</SelectItem>
-                            {creditAccounts.map((acc) => (
-                                <SelectItem
-                                    key={acc.id}
-                                    value={acc.id.toString()}
-                                >
-                                    {acc.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-
-            {sortedCycles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                    No statement cycles found.
-                </p>
-            ) : (
-                <>
-                    {/* Mobile card list */}
-                    <div className="divide-y sm:hidden">
-                        {sortedCycles.map((cycle, i) => (
-                            <div key={i} className="space-y-1 py-2.5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="text-sm text-muted-foreground">
-                                        {formatDate(cycle.start_date)} –{' '}
-                                        {formatDate(cycle.end_date)}
-                                    </div>
-                                    <span
-                                        className={`shrink-0 text-sm font-semibold tabular-nums ${
-                                            cycle.total >= 0
-                                                ? 'text-green-600 dark:text-green-400'
-                                                : 'text-red-500'
-                                        }`}
-                                    >
-                                        {cycle.total < 0 ? '–' : ''}
-                                        {formatAbsAmount(Math.abs(cycle.total))}
-                                    </span>
-                                </div>
-                                {creditAccounts.length > 1 && (
-                                    <p className="text-xs text-muted-foreground">
-                                        {cycle.account_name}
-                                    </p>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    <Table className="hidden sm:table">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Cycle start</TableHead>
-                                <TableHead>Cycle end</TableHead>
-                                {creditAccounts.length > 1 && (
-                                    <TableHead>Account</TableHead>
-                                )}
-                                <TableHead className="text-right">
-                                    Total
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {sortedCycles.map((cycle, i) => (
-                                <TableRow key={i}>
-                                    <TableCell className="text-muted-foreground">
-                                        {formatDate(cycle.start_date)}
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground">
-                                        {formatDate(cycle.end_date)}
-                                    </TableCell>
-                                    {creditAccounts.length > 1 && (
-                                        <TableCell>
-                                            {cycle.account_name}
-                                        </TableCell>
-                                    )}
-                                    <TableCell
-                                        className={`text-right font-semibold tabular-nums ${
-                                            cycle.total >= 0
-                                                ? 'text-green-600 dark:text-green-400'
-                                                : 'text-red-500'
-                                        }`}
-                                    >
-                                        {cycle.total < 0 ? '–' : ''}
-                                        {formatAbsAmount(Math.abs(cycle.total))}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </>
-            )}
         </div>
     );
 }
@@ -1348,6 +1228,208 @@ function IncomeCategoryBreakdownSection({
     );
 }
 
+// ─── Spending Heatmap ─────────────────────────────────────────────────────────
+
+function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
+    if (data.length === 0) {
+        return (
+            <EmptyState
+                icon={<BarChart3 className="size-6" />}
+                title="No spending data"
+                description="No transactions found for the heatmap."
+            />
+        );
+    }
+
+    const maxAmount = Math.max(...data.map((d) => d.amount), 1);
+
+    function getIntensity(amount: number): string {
+        if (amount === 0) {
+            return 'bg-muted';
+        }
+
+        const ratio = amount / maxAmount;
+
+        if (ratio < 0.2) {
+            return 'bg-orange-200 dark:bg-orange-900/30';
+        }
+
+        if (ratio < 0.4) {
+            return 'bg-orange-300 dark:bg-orange-800/40';
+        }
+
+        if (ratio < 0.6) {
+            return 'bg-red-300 dark:bg-red-700/40';
+        }
+
+        if (ratio < 0.8) {
+            return 'bg-red-400 dark:bg-red-600/50';
+        }
+
+        return 'bg-red-500 dark:bg-red-500/60';
+    }
+
+    // Build a lookup map for quick access
+    const dayMap = new Map(data.map((d) => [d.date, d.amount]));
+
+    // Determine date range and limit to last 3 months if too large
+    const sortedDates = data
+        .map((d) => new Date(d.date + 'T00:00:00'))
+        .sort((a, b) => a.getTime() - b.getTime());
+    const rawStart = sortedDates[0];
+    const rawEnd = sortedDates[sortedDates.length - 1];
+
+    // If range > 6 months, show only last 3 months
+    const sixMonthsMs = 6 * 30 * 24 * 60 * 60 * 1000;
+    const effectiveStart =
+        rawEnd.getTime() - rawStart.getTime() > sixMonthsMs
+            ? new Date(rawEnd.getFullYear(), rawEnd.getMonth() - 2, 1)
+            : rawStart;
+
+    // Group days by month
+    type MonthData = {
+        key: string;
+        label: string;
+        year: number;
+        month: number;
+        days: { day: number; amount: number; dateStr: string }[];
+        firstDayOfWeek: number;
+        totalDays: number;
+    };
+
+    const months: MonthData[] = [];
+    const cursor = new Date(
+        effectiveStart.getFullYear(),
+        effectiveStart.getMonth(),
+        1,
+    );
+
+    while (cursor <= rawEnd) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
+        const totalDays = new Date(year, month + 1, 0).getDate();
+        const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=Sun
+        const label = new Date(year, month, 1).toLocaleDateString('en-MY', {
+            month: 'short',
+            year: '2-digit',
+        });
+        const days: MonthData['days'] = [];
+
+        for (let d = 1; d <= totalDays; d++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            days.push({
+                day: d,
+                amount: dayMap.get(dateStr) ?? 0,
+                dateStr,
+            });
+        }
+
+        months.push({
+            key: `${year}-${month}`,
+            label,
+            year,
+            month,
+            days,
+            firstDayOfWeek,
+            totalDays,
+        });
+
+        cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return (
+        <div className="space-y-4">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {months.map((m) => {
+                    // Build a 6-row x 7-col grid (Mon-Sun)
+                    // Convert Sunday-based firstDayOfWeek to Monday-based
+                    const mondayStart =
+                        m.firstDayOfWeek === 0 ? 6 : m.firstDayOfWeek - 1;
+                    const cells: ({
+                        day: number;
+                        amount: number;
+                        dateStr: string;
+                    } | null)[] = [];
+
+                    // Pad empty cells before the 1st
+                    for (let i = 0; i < mondayStart; i++) {
+                        cells.push(null);
+                    }
+
+                    // Add actual days
+                    for (const day of m.days) {
+                        cells.push(day);
+                    }
+
+                    // Pad to complete the last week
+                    while (cells.length % 7 !== 0) {
+                        cells.push(null);
+                    }
+
+                    // Build rows
+                    const rows: (typeof cells)[] = [];
+
+                    for (let i = 0; i < cells.length; i += 7) {
+                        rows.push(cells.slice(i, i + 7));
+                    }
+
+                    return (
+                        <div key={m.key}>
+                            <p className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                                {m.label}
+                            </p>
+                            <div className="grid grid-cols-7 gap-1">
+                                {weekdayLabels.map((wd) => (
+                                    <div
+                                        key={wd}
+                                        className="flex h-5 items-center justify-center text-[10px] text-muted-foreground"
+                                    >
+                                        {wd.charAt(0)}
+                                    </div>
+                                ))}
+                                {rows.flatMap((row, ri) =>
+                                    row.map((cell, ci) =>
+                                        cell ? (
+                                            <div
+                                                key={`${ri}-${ci}`}
+                                                className={`flex h-5 w-full items-center justify-center rounded-sm text-[9px] font-medium ${getIntensity(cell.amount)} ${cell.amount > 0 ? 'text-foreground/70' : 'text-muted-foreground/50'}`}
+                                                title={`${cell.dateStr}: ${formatAbsAmount(cell.amount)}`}
+                                            >
+                                                {cell.day}
+                                            </div>
+                                        ) : (
+                                            <div
+                                                key={`${ri}-${ci}`}
+                                                className="h-5 w-full"
+                                            />
+                                        ),
+                                    ),
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>Less</span>
+                <div className="flex gap-1">
+                    <div className="h-4 w-4 rounded-sm bg-muted" />
+                    <div className="h-4 w-4 rounded-sm bg-orange-200 dark:bg-orange-900/30" />
+                    <div className="h-4 w-4 rounded-sm bg-orange-300 dark:bg-orange-800/40" />
+                    <div className="h-4 w-4 rounded-sm bg-red-300 dark:bg-red-700/40" />
+                    <div className="h-4 w-4 rounded-sm bg-red-400 dark:bg-red-600/50" />
+                    <div className="h-4 w-4 rounded-sm bg-red-500 dark:bg-red-500/60" />
+                </div>
+                <span>More</span>
+            </div>
+        </div>
+    );
+}
+
 // ─── Comparison ──────────────────────────────────────────────────────────────
 
 function DeltaIndicator({
@@ -1474,7 +1556,7 @@ function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
     }));
 
     return (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={250}>
             <ComposedChart
                 data={chartData}
                 margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
@@ -1656,7 +1738,7 @@ function ComparisonSection({ comparison }: { comparison: ComparisonData }) {
                     <CardHeader>
                         <CardTitle>Trend comparison</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="min-w-0 overflow-hidden">
                         <ComparisonTrendChart data={comparison.trendOverlay} />
                     </CardContent>
                 </Card>
@@ -1710,8 +1792,7 @@ export default function ReportsIndex({
     payeeBreakdown,
     incomeCategoryBreakdown,
     incomePayeeBreakdown,
-    statementCycles,
-    creditAccounts,
+    spendingHeatmap,
     allAccounts,
     comparison,
     dateRange,
@@ -1722,8 +1803,7 @@ export default function ReportsIndex({
     payeeBreakdown: PayeeBreakdownItem[];
     incomeCategoryBreakdown: CategoryBreakdownResponse;
     incomePayeeBreakdown: PayeeBreakdownItem[];
-    statementCycles: StatementCycle[];
-    creditAccounts: CreditAccount[];
+    spendingHeatmap: HeatmapDay[];
     allAccounts: ReportAccount[];
     comparison: ComparisonData | null;
     dateRange: DateRange;
@@ -1749,17 +1829,23 @@ export default function ReportsIndex({
                             Reports
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Monthly trends, category totals, and credit
-                            statement cycles.
+                            Analyse your finances with detailed breakdowns and
+                            trends.
                         </p>
                     </div>
-                    <Button variant="outline" size="sm" asChild>
-                        <a
-                            href={`/ledgers/${ledger.id}/reports/export-pdf?month=${dateRange.date_from.substring(0, 7)}`}
-                        >
-                            Export PDF
-                        </a>
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <ReportViewSelect
+                            ledgerId={ledger.id}
+                            currentView="income-expense"
+                        />
+                        <Button variant="outline" size="sm" asChild>
+                            <a
+                                href={`/ledgers/${ledger.id}/reports/export-pdf?month=${dateRange.date_from.substring(0, 7)}`}
+                            >
+                                Export PDF
+                            </a>
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Date range selector */}
@@ -1793,7 +1879,7 @@ export default function ReportsIndex({
                         <CardHeader>
                             <CardTitle>Monthly trend</CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="min-w-0 overflow-hidden">
                             <MonthlyTrendChart data={monthlyTrend} />
                         </CardContent>
                     </Card>
@@ -1849,20 +1935,15 @@ export default function ReportsIndex({
                     </Card>
                 </div>
 
-                {/* Credit statement cycles */}
-                {creditAccounts.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Statement cycles</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <StatementCyclesSection
-                                cycles={statementCycles}
-                                creditAccounts={creditAccounts}
-                            />
-                        </CardContent>
-                    </Card>
-                )}
+                {/* Spending heatmap */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Spending heatmap</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <SpendingHeatmap data={spendingHeatmap} />
+                    </CardContent>
+                </Card>
             </div>
         </AppLayout>
     );

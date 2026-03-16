@@ -152,11 +152,13 @@ class BudgetService
             $spent = $this->getSpent($budget, $ledger);
             $remaining = max(0, $allocated - $spent);
             $percentage = $allocated > 0 ? min(100, round(($spent / $allocated) * 100, 1)) : 0;
+            [$periodStart, $periodEnd] = $this->getPeriodBounds($budget, $ledger);
 
             return [
                 'id' => $budget->id,
                 'category_id' => $budget->category_id,
                 'category_name' => $budget->category?->name ?? 'Overall',
+                'category_color' => $budget->category?->color,
                 'amount' => $allocated,
                 'period' => $budget->period,
                 'spent' => $spent,
@@ -164,6 +166,9 @@ class BudgetService
                 'percentage' => $percentage,
                 'status' => $percentage >= 100 ? 'over' : ($percentage >= 90 ? 'danger' : ($percentage >= 75 ? 'warning' : 'good')),
                 'rollover' => $budget->rollover,
+                'period_start' => $periodStart->toDateString(),
+                'period_end' => $periodEnd->toDateString(),
+                'start_date' => $budget->start_date?->toDateString(),
             ];
         })->all();
     }

@@ -86,7 +86,7 @@ export function CommandPalette({
                   url: categoriesIndex.url(ledgerId),
               },
               {
-                  label: 'Settings',
+                  label: 'Workspace Settings',
                   icon: Settings,
                   url: settingsIndex.url(ledgerId),
               },

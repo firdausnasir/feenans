@@ -233,6 +233,13 @@ export default function AccountsIndex({
                                     >
                                         &#8942;&#8942;
                                     </span>
+                                    <span
+                                        className="inline-block h-3 w-3 rounded-full"
+                                        style={{
+                                            backgroundColor:
+                                                account.color ?? '#6B7280',
+                                        }}
+                                    />
                                     <p className="text-base font-semibold group-hover:underline">
                                         {account.name}
                                     </p>

@@ -1,24 +1,9 @@
-import type { Page } from '@inertiajs/core';
-import { Form, Link, router } from '@inertiajs/react';
-import confetti from 'canvas-confetti';
-import { Check, ChevronsUpDown, CreditCard, PlusCircle } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import PayeeController from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
 import InputError from '@/components/input-error';
+import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-    CommandSeparator,
-} from '@/components/ui/command';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
@@ -30,30 +15,23 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectLabel,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { create as accountsCreate } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
+import type { Page } from '@inertiajs/core';
+import { Form, Link } from '@inertiajs/react';
+import confetti from 'canvas-confetti';
+import { CreditCard, Paperclip, PlusCircle, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 type TransactionMode = 'expense' | 'income' | 'transfer';
 type SplitDraft = {
     id: number;
     amount: string;
     category_id: string;
+    payee_id: string;
     description: string;
 };
 
@@ -68,8 +46,6 @@ export type DuplicateData = {
     notes: string | null;
     tag_ids: number[];
 };
-
-const NEW_PAYEE_SENTINEL = '__new__';
 
 export function AddTransactionModal({
     ledger,
@@ -109,21 +85,19 @@ export function AddTransactionModal({
     const [toAccountId, setToAccountId] = useState<string>(
         accounts.length > 1 ? String(accounts[1].id) : '',
     );
-    const [categoryId, setCategoryId] = useState<string>('none');
+    const [categoryId, setCategoryId] = useState<string>('');
     const [payees, setPayees] = useState<Payee[]>(initialPayees);
     const [selectedPayeeId, setSelectedPayeeId] = useState<string>('');
-    const [payeePopoverOpen, setPayeePopoverOpen] = useState(false);
-    const [showNewPayeeInput, setShowNewPayeeInput] = useState(false);
-    const [newPayeeName, setNewPayeeName] = useState('');
-    const [creatingPayee, setCreatingPayee] = useState(false);
+    const [newPayeeNameForSubmit, setNewPayeeNameForSubmit] = useState('');
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
     const [isSplitTransaction, setIsSplitTransaction] = useState(false);
     const [amount, setAmount] = useState('');
     const [splitRows, setSplitRows] = useState<SplitDraft[]>([
-        { id: 1, amount: '', category_id: '', description: '' },
-        { id: 2, amount: '', category_id: '', description: '' },
+        { id: 1, amount: '', category_id: '', payee_id: '', description: '' },
+        { id: 2, amount: '', category_id: '', payee_id: '', description: '' },
     ]);
-    const newPayeeInputRef = useRef<HTMLInputElement>(null);
+    const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const amountInputRef = useRef<HTMLInputElement>(null);
     const [rapidEntry, setRapidEntry] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -153,7 +127,7 @@ export function AddTransactionModal({
                   : '',
         );
         setCategoryId(
-            initialData.category_id ? String(initialData.category_id) : 'none',
+            initialData.category_id ? String(initialData.category_id) : '',
         );
         setSelectedPayeeId(
             initialData.payee_id ? String(initialData.payee_id) : '',
@@ -164,13 +138,12 @@ export function AddTransactionModal({
         setTransactionDate(new Date().toISOString().slice(0, 10));
     }
 
-    function handleSourceAccountChange(newAccountId: string) {
-        setAccountId(newAccountId);
+    function handleSourceAccountChange(newAccountId: string | null) {
+        const id = newAccountId ?? '';
+        setAccountId(id);
 
-        if (newAccountId === toAccountId) {
-            const fallback = accounts.find(
-                (a) => String(a.id) !== newAccountId,
-            );
+        if (id === toAccountId) {
+            const fallback = accounts.find((a) => String(a.id) !== id);
             setToAccountId(fallback ? String(fallback.id) : '');
         }
     }
@@ -201,15 +174,33 @@ export function AddTransactionModal({
         }));
     }, [categories, mode]);
 
-    const selectedPayeeLabel = useMemo(() => {
-        if (!selectedPayeeId) {
-            return 'Select payee...';
-        }
+    // Build SearchableSelect options for categories
+    const categoryOptions = useMemo(() => {
+        return groupedCategories.flatMap(({ parent, children }) => {
+            const items = [
+                {
+                    value: String(parent.id),
+                    label:
+                        children.length > 0
+                            ? `${parent.name} (general)`
+                            : parent.name,
+                    group: children.length > 0 ? parent.name : undefined,
+                    color: parent.color,
+                },
+            ];
 
-        const found = payees.find((p) => String(p.id) === selectedPayeeId);
+            children.forEach((child) => {
+                items.push({
+                    value: String(child.id),
+                    label: child.name,
+                    group: parent.name,
+                    color: child.color,
+                });
+            });
 
-        return found ? found.name : 'Select payee...';
-    }, [payees, selectedPayeeId]);
+            return items;
+        });
+    }, [groupedCategories]);
 
     const splitTotal = useMemo(
         () =>
@@ -224,71 +215,6 @@ export function AddTransactionModal({
         return Number(((Number(amount || 0) || 0) - splitTotal).toFixed(2));
     }, [amount, splitTotal]);
 
-    function handlePayeeSelect(value: string) {
-        if (value === NEW_PAYEE_SENTINEL) {
-            setShowNewPayeeInput(true);
-            setSelectedPayeeId('');
-            setPayeePopoverOpen(false);
-            setTimeout(() => newPayeeInputRef.current?.focus(), 0);
-        } else {
-            setShowNewPayeeInput(false);
-            setSelectedPayeeId(value === selectedPayeeId ? '' : value);
-            setPayeePopoverOpen(false);
-        }
-    }
-
-    function confirmNewPayee() {
-        const name = newPayeeName.trim();
-
-        if (!name || creatingPayee) {
-            return;
-        }
-
-        setCreatingPayee(true);
-
-        router.post(
-            PayeeController.store.url(ledger.id),
-            { name },
-            {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: (page) => {
-                    // The new payee list comes back via shared/page props — but since
-                    // this is a quick AJAX-style operation we optimistically add it.
-                    // If the page refreshes the prop, it will be up-to-date already.
-                    const allPayees = (page.props as { payees?: Payee[] })
-                        .payees;
-
-                    if (allPayees) {
-                        setPayees(allPayees);
-                        const created = allPayees.find((p) => p.name === name);
-
-                        if (created) {
-                            setSelectedPayeeId(String(created.id));
-                        }
-                    } else {
-                        // Optimistic: create a temporary entry with a negative id
-                        const tempId = Date.now();
-                        const newPayee: Payee = {
-                            id: tempId,
-                            ledger_id: ledger.id,
-                            name,
-                        };
-                        setPayees((prev) => [...prev, newPayee]);
-                        setSelectedPayeeId(String(tempId));
-                    }
-
-                    setShowNewPayeeInput(false);
-                    setNewPayeeName('');
-                    setCreatingPayee(false);
-                },
-                onError: () => {
-                    setCreatingPayee(false);
-                },
-            },
-        );
-    }
-
     function addSplitRow() {
         setSplitRows((prev) => [
             ...prev,
@@ -296,6 +222,7 @@ export function AddTransactionModal({
                 id: splitRowId.current++,
                 amount: '',
                 category_id: '',
+                payee_id: '',
                 description: '',
             },
         ]);
@@ -319,20 +246,45 @@ export function AddTransactionModal({
         setMode('expense');
         setAccountId(accounts.length > 0 ? String(accounts[0].id) : '');
         setToAccountId(accounts.length > 1 ? String(accounts[1].id) : '');
-        setCategoryId('none');
+        setCategoryId('');
         setSelectedPayeeId('');
-        setShowNewPayeeInput(false);
-        setNewPayeeName('');
+        setNewPayeeNameForSubmit('');
         setSelectedTagIds([]);
         setIsSplitTransaction(false);
         setAmount('');
         setSplitRows([
-            { id: 1, amount: '', category_id: '', description: '' },
-            { id: 2, amount: '', category_id: '', description: '' },
+            {
+                id: 1,
+                amount: '',
+                category_id: '',
+                payee_id: '',
+                description: '',
+            },
+            {
+                id: 2,
+                amount: '',
+                category_id: '',
+                payee_id: '',
+                description: '',
+            },
         ]);
         splitRowId.current = 3;
+        setPendingFiles([]);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
         setDuplicateDate(null);
         setTransactionDate(new Date().toISOString().slice(0, 10));
+    }
+
+    function syncFileInput(files: File[]) {
+        if (!fileInputRef.current) {
+            return;
+        }
+
+        const dataTransfer = new DataTransfer();
+        files.forEach((file) => dataTransfer.items.add(file));
+        fileInputRef.current.files = dataTransfer.files;
     }
 
     function handleSuccess(page: Page) {
@@ -403,28 +355,35 @@ export function AddTransactionModal({
                         {...TransactionController.store.form(ledger.id)}
                         className="space-y-6"
                         onSuccess={handleSuccess}
+                        onError={(errors) => {
+                            const firstError = Object.values(errors)[0];
+                            if (firstError) {
+                                toast.error(String(firstError));
+                            }
+                        }}
                     >
                         {({ errors, processing }) => (
                             <>
-                                <div className="flex gap-2">
+                                <div className="grid grid-cols-3 gap-1">
                                     {(
                                         [
                                             'expense',
                                             'income',
                                             'transfer',
-                                        ] as TransactionMode[]
-                                    ).map((value) => (
+                                        ] as const
+                                    ).map((type) => (
                                         <Button
-                                            key={value}
+                                            key={type}
                                             type="button"
                                             variant={
-                                                mode === value
+                                                mode === type
                                                     ? 'default'
                                                     : 'outline'
                                             }
-                                            onClick={() => setMode(value)}
+                                            className="capitalize"
+                                            onClick={() => setMode(type)}
                                         >
-                                            {value}
+                                            {type}
                                         </Button>
                                     ))}
                                 </div>
@@ -447,6 +406,11 @@ export function AddTransactionModal({
                                                   type="hidden"
                                                   name={`splits[${index}][category_id]`}
                                                   value={split.category_id}
+                                              />
+                                              <input
+                                                  type="hidden"
+                                                  name={`splits[${index}][payee_id]`}
+                                                  value={split.payee_id}
                                               />
                                               <input
                                                   type="hidden"
@@ -496,28 +460,21 @@ export function AddTransactionModal({
                                             name="account_id"
                                             value={accountId}
                                         />
-                                        <Select
-                                            value={accountId}
+                                        <SearchableSelect
+                                            options={accounts.map(
+                                                (account) => ({
+                                                    value: String(account.id),
+                                                    label: account.name,
+                                                    color: account.color,
+                                                }),
+                                            )}
+                                            value={accountId || null}
                                             onValueChange={
                                                 handleSourceAccountChange
                                             }
-                                        >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select account" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {accounts.map((account) => (
-                                                    <SelectItem
-                                                        key={account.id}
-                                                        value={String(
-                                                            account.id,
-                                                        )}
-                                                    >
-                                                        {account.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                            placeholder="Select account"
+                                            searchPlaceholder="Search accounts..."
+                                        />
                                         <InputError
                                             message={errors.account_id}
                                         />
@@ -551,32 +508,25 @@ export function AddTransactionModal({
                                             name="to_account_id"
                                             value={toAccountId}
                                         />
-                                        <Select
-                                            value={toAccountId}
-                                            onValueChange={setToAccountId}
-                                        >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select destination" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {accounts
-                                                    .filter(
-                                                        (a) =>
-                                                            String(a.id) !==
-                                                            accountId,
-                                                    )
-                                                    .map((account) => (
-                                                        <SelectItem
-                                                            key={account.id}
-                                                            value={String(
-                                                                account.id,
-                                                            )}
-                                                        >
-                                                            {account.name}
-                                                        </SelectItem>
-                                                    ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <SearchableSelect
+                                            options={accounts
+                                                .filter(
+                                                    (a) =>
+                                                        String(a.id) !==
+                                                        accountId,
+                                                )
+                                                .map((account) => ({
+                                                    value: String(account.id),
+                                                    label: account.name,
+                                                    color: account.color,
+                                                }))}
+                                            value={toAccountId || null}
+                                            onValueChange={(v) =>
+                                                setToAccountId(v ?? '')
+                                            }
+                                            placeholder="Select destination"
+                                            searchPlaceholder="Search accounts..."
+                                        />
                                         <InputError
                                             message={errors.to_account_id}
                                         />
@@ -612,89 +562,24 @@ export function AddTransactionModal({
                                                     <input
                                                         type="hidden"
                                                         name="category_id"
-                                                        value={
-                                                            categoryId ===
-                                                            'none'
-                                                                ? ''
-                                                                : categoryId
-                                                        }
-                                                    />
-                                                    <Select
                                                         value={categoryId}
-                                                        onValueChange={
-                                                            setCategoryId
+                                                    />
+                                                    <SearchableSelect
+                                                        options={
+                                                            categoryOptions
                                                         }
-                                                    >
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select category" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="none">
-                                                                No category
-                                                            </SelectItem>
-                                                            {groupedCategories.map(
-                                                                ({
-                                                                    parent,
-                                                                    children,
-                                                                }) =>
-                                                                    children.length >
-                                                                    0 ? (
-                                                                        <SelectGroup
-                                                                            key={
-                                                                                parent.id
-                                                                            }
-                                                                        >
-                                                                            <SelectLabel>
-                                                                                {
-                                                                                    parent.name
-                                                                                }
-                                                                            </SelectLabel>
-                                                                            <SelectItem
-                                                                                value={String(
-                                                                                    parent.id,
-                                                                                )}
-                                                                            >
-                                                                                {
-                                                                                    parent.name
-                                                                                }{' '}
-                                                                                (general)
-                                                                            </SelectItem>
-                                                                            {children.map(
-                                                                                (
-                                                                                    child,
-                                                                                ) => (
-                                                                                    <SelectItem
-                                                                                        key={
-                                                                                            child.id
-                                                                                        }
-                                                                                        value={String(
-                                                                                            child.id,
-                                                                                        )}
-                                                                                    >
-                                                                                        {
-                                                                                            child.name
-                                                                                        }
-                                                                                    </SelectItem>
-                                                                                ),
-                                                                            )}
-                                                                        </SelectGroup>
-                                                                    ) : (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                parent.id
-                                                                            }
-                                                                            value={String(
-                                                                                parent.id,
-                                                                            )}
-                                                                        >
-                                                                            {
-                                                                                parent.name
-                                                                            }
-                                                                        </SelectItem>
-                                                                    ),
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
+                                                        value={
+                                                            categoryId || null
+                                                        }
+                                                        onValueChange={(v) =>
+                                                            setCategoryId(
+                                                                v ?? '',
+                                                            )
+                                                        }
+                                                        placeholder="No category"
+                                                        searchPlaceholder="Search categories..."
+                                                        allOption="No category"
+                                                    />
                                                     <InputError
                                                         message={
                                                             errors.category_id
@@ -706,196 +591,65 @@ export function AddTransactionModal({
                                                 <div className="grid gap-2">
                                                     <Label>Payee</Label>
 
-                                                    {/* Always-present hidden input so payee_id is always in the form data */}
                                                     <input
                                                         type="hidden"
                                                         name="payee_id"
+                                                        value={selectedPayeeId}
+                                                    />
+                                                    <input
+                                                        type="hidden"
+                                                        name="new_payee_name"
                                                         value={
-                                                            showNewPayeeInput
-                                                                ? ''
-                                                                : selectedPayeeId
+                                                            newPayeeNameForSubmit
                                                         }
                                                     />
 
-                                                    <Popover
-                                                        open={payeePopoverOpen}
-                                                        onOpenChange={
-                                                            setPayeePopoverOpen
+                                                    <SearchableSelect
+                                                        options={payees.map(
+                                                            (payee) => ({
+                                                                value: String(
+                                                                    payee.id,
+                                                                ),
+                                                                label: payee.name,
+                                                            }),
+                                                        )}
+                                                        value={
+                                                            selectedPayeeId ||
+                                                            (newPayeeNameForSubmit
+                                                                ? `new:${newPayeeNameForSubmit}`
+                                                                : null)
                                                         }
-                                                    >
-                                                        <PopoverTrigger asChild>
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                role="combobox"
-                                                                aria-expanded={
-                                                                    payeePopoverOpen
-                                                                }
-                                                                className={cn(
-                                                                    'w-full justify-between font-normal',
-                                                                    !selectedPayeeId &&
-                                                                        !showNewPayeeInput &&
-                                                                        'text-muted-foreground',
-                                                                )}
-                                                            >
-                                                                {showNewPayeeInput
-                                                                    ? 'Creating new payee...'
-                                                                    : selectedPayeeLabel}
-                                                                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent
-                                                            className="w-[--radix-popover-trigger-width] p-0"
-                                                            align="start"
-                                                        >
-                                                            <Command>
-                                                                <CommandInput placeholder="Search payees..." />
-                                                                <CommandList>
-                                                                    <CommandEmpty>
-                                                                        No payee
-                                                                        found.
-                                                                    </CommandEmpty>
-                                                                    <CommandGroup>
-                                                                        <CommandItem
-                                                                            value=""
-                                                                            onSelect={() =>
-                                                                                handlePayeeSelect(
-                                                                                    '',
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            <Check
-                                                                                className={cn(
-                                                                                    'mr-2 size-4',
-                                                                                    selectedPayeeId ===
-                                                                                        ''
-                                                                                        ? 'opacity-100'
-                                                                                        : 'opacity-0',
-                                                                                )}
-                                                                            />
-                                                                            No
-                                                                            payee
-                                                                        </CommandItem>
-                                                                        {payees.map(
-                                                                            (
-                                                                                payee,
-                                                                            ) => (
-                                                                                <CommandItem
-                                                                                    key={
-                                                                                        payee.id
-                                                                                    }
-                                                                                    value={
-                                                                                        payee.name
-                                                                                    }
-                                                                                    onSelect={() =>
-                                                                                        handlePayeeSelect(
-                                                                                            String(
-                                                                                                payee.id,
-                                                                                            ),
-                                                                                        )
-                                                                                    }
-                                                                                >
-                                                                                    <Check
-                                                                                        className={cn(
-                                                                                            'mr-2 size-4',
-                                                                                            selectedPayeeId ===
-                                                                                                String(
-                                                                                                    payee.id,
-                                                                                                )
-                                                                                                ? 'opacity-100'
-                                                                                                : 'opacity-0',
-                                                                                        )}
-                                                                                    />
-                                                                                    {
-                                                                                        payee.name
-                                                                                    }
-                                                                                </CommandItem>
-                                                                            ),
-                                                                        )}
-                                                                    </CommandGroup>
-                                                                    <CommandSeparator />
-                                                                    <CommandGroup>
-                                                                        <CommandItem
-                                                                            value={
-                                                                                NEW_PAYEE_SENTINEL
-                                                                            }
-                                                                            onSelect={() =>
-                                                                                handlePayeeSelect(
-                                                                                    NEW_PAYEE_SENTINEL,
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            <PlusCircle className="mr-2 size-4" />
-                                                                            Create
-                                                                            new
-                                                                            payee
-                                                                        </CommandItem>
-                                                                    </CommandGroup>
-                                                                </CommandList>
-                                                            </Command>
-                                                        </PopoverContent>
-                                                    </Popover>
-
-                                                    {showNewPayeeInput && (
-                                                        <div className="flex gap-2">
-                                                            <Input
-                                                                ref={
-                                                                    newPayeeInputRef
-                                                                }
-                                                                placeholder="New payee name"
-                                                                value={
-                                                                    newPayeeName
-                                                                }
-                                                                onChange={(e) =>
-                                                                    setNewPayeeName(
-                                                                        e.target
-                                                                            .value,
-                                                                    )
-                                                                }
-                                                                onKeyDown={(
-                                                                    e,
-                                                                ) => {
-                                                                    if (
-                                                                        e.key ===
-                                                                        'Enter'
-                                                                    ) {
-                                                                        e.preventDefault();
-                                                                        confirmNewPayee();
-                                                                    }
-
-                                                                    if (
-                                                                        e.key ===
-                                                                        'Escape'
-                                                                    ) {
-                                                                        setShowNewPayeeInput(
-                                                                            false,
-                                                                        );
-                                                                        setNewPayeeName(
-                                                                            '',
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                className="flex-1"
-                                                            />
-                                                            <Button
-                                                                type="button"
-                                                                size="icon"
-                                                                disabled={
-                                                                    creatingPayee ||
-                                                                    !newPayeeName.trim()
-                                                                }
-                                                                onClick={
-                                                                    confirmNewPayee
-                                                                }
-                                                            >
-                                                                <Check className="size-4" />
-                                                            </Button>
-                                                        </div>
-                                                    )}
+                                                        onValueChange={(v) => {
+                                                            setSelectedPayeeId(
+                                                                v ?? '',
+                                                            );
+                                                            setNewPayeeNameForSubmit(
+                                                                '',
+                                                            );
+                                                        }}
+                                                        placeholder="No payee"
+                                                        searchPlaceholder="Search payees..."
+                                                        allOption="No payee"
+                                                        creatable
+                                                        onCreate={(name) => {
+                                                            setSelectedPayeeId(
+                                                                '',
+                                                            );
+                                                            setNewPayeeNameForSubmit(
+                                                                name,
+                                                            );
+                                                        }}
+                                                        createLabel={
+                                                            newPayeeNameForSubmit
+                                                                ? `${newPayeeNameForSubmit} (new)`
+                                                                : undefined
+                                                        }
+                                                    />
 
                                                     <InputError
                                                         message={
-                                                            errors.payee_id
+                                                            errors.payee_id ??
+                                                            errors.new_payee_name
                                                         }
                                                     />
                                                 </div>
@@ -927,188 +681,161 @@ export function AddTransactionModal({
                                                 </div>
 
                                                 <div className="space-y-3">
-                                                    {splitRows.map((split) => (
-                                                        <div
-                                                            key={split.id}
-                                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[120px_1fr_1fr_auto]"
-                                                        >
-                                                            <div className="grid gap-2">
-                                                                <Label>
-                                                                    Amount
-                                                                </Label>
-                                                                <Input
-                                                                    type="number"
-                                                                    inputMode="decimal"
-                                                                    step="0.01"
-                                                                    min="0.01"
-                                                                    value={
-                                                                        split.amount
-                                                                    }
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) => {
-                                                                        const value =
-                                                                            e
-                                                                                .target
-                                                                                .value;
-
-                                                                        if (
-                                                                            value !==
-                                                                                '' &&
-                                                                            Number(
-                                                                                value,
-                                                                            ) <
-                                                                                0
-                                                                        ) {
-                                                                            return;
+                                                    {splitRows.map(
+                                                        (split, index) => (
+                                                            <div
+                                                                key={split.id}
+                                                                className="space-y-3 rounded-lg border p-3"
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-sm font-medium">
+                                                                        Split{' '}
+                                                                        {index +
+                                                                            1}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={
+                                                                            splitRows.length <=
+                                                                            2
                                                                         }
-
-                                                                        updateSplitRow(
-                                                                            split.id,
-                                                                            'amount',
-                                                                            value,
-                                                                        );
-                                                                    }}
-                                                                />
+                                                                        className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                                                        onClick={() =>
+                                                                            removeSplitRow(
+                                                                                split.id,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <X className="size-4" />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div className="grid gap-1">
+                                                                        <Label className="text-xs">
+                                                                            Amount
+                                                                        </Label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            inputMode="decimal"
+                                                                            step="0.01"
+                                                                            min="0.01"
+                                                                            value={
+                                                                                split.amount
+                                                                            }
+                                                                            onChange={(
+                                                                                e,
+                                                                            ) => {
+                                                                                const value =
+                                                                                    e
+                                                                                        .target
+                                                                                        .value;
+                                                                                if (
+                                                                                    value !==
+                                                                                        '' &&
+                                                                                    Number(
+                                                                                        value,
+                                                                                    ) <
+                                                                                        0
+                                                                                ) {
+                                                                                    return;
+                                                                                }
+                                                                                updateSplitRow(
+                                                                                    split.id,
+                                                                                    'amount',
+                                                                                    value,
+                                                                                );
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                    <div className="grid gap-1">
+                                                                        <Label className="text-xs">
+                                                                            Category
+                                                                        </Label>
+                                                                        <SearchableSelect
+                                                                            options={
+                                                                                categoryOptions
+                                                                            }
+                                                                            value={
+                                                                                split.category_id ||
+                                                                                null
+                                                                            }
+                                                                            onValueChange={(
+                                                                                value,
+                                                                            ) =>
+                                                                                updateSplitRow(
+                                                                                    split.id,
+                                                                                    'category_id',
+                                                                                    value ??
+                                                                                        '',
+                                                                                )
+                                                                            }
+                                                                            placeholder="No category"
+                                                                            searchPlaceholder="Search categories..."
+                                                                            allOption="No category"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div className="grid gap-1">
+                                                                        <Label className="text-xs">
+                                                                            Payee
+                                                                        </Label>
+                                                                        <SearchableSelect
+                                                                            options={payees.map(
+                                                                                (
+                                                                                    payee,
+                                                                                ) => ({
+                                                                                    value: String(
+                                                                                        payee.id,
+                                                                                    ),
+                                                                                    label: payee.name,
+                                                                                }),
+                                                                            )}
+                                                                            value={
+                                                                                split.payee_id ||
+                                                                                null
+                                                                            }
+                                                                            onValueChange={(
+                                                                                value,
+                                                                            ) =>
+                                                                                updateSplitRow(
+                                                                                    split.id,
+                                                                                    'payee_id',
+                                                                                    value ??
+                                                                                        '',
+                                                                                )
+                                                                            }
+                                                                            placeholder="No payee"
+                                                                            searchPlaceholder="Search payees..."
+                                                                            allOption="No payee"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="grid gap-1">
+                                                                        <Label className="text-xs">
+                                                                            Description
+                                                                        </Label>
+                                                                        <Input
+                                                                            value={
+                                                                                split.description
+                                                                            }
+                                                                            onChange={(
+                                                                                e,
+                                                                            ) =>
+                                                                                updateSplitRow(
+                                                                                    split.id,
+                                                                                    'description',
+                                                                                    e
+                                                                                        .target
+                                                                                        .value,
+                                                                                )
+                                                                            }
+                                                                            placeholder="Optional split detail"
+                                                                        />
+                                                                    </div>
+                                                                </div>
                                                             </div>
-
-                                                            <div className="grid gap-2">
-                                                                <Label>
-                                                                    Category
-                                                                </Label>
-                                                                <Select
-                                                                    value={
-                                                                        split.category_id ||
-                                                                        'none'
-                                                                    }
-                                                                    onValueChange={(
-                                                                        value,
-                                                                    ) =>
-                                                                        updateSplitRow(
-                                                                            split.id,
-                                                                            'category_id',
-                                                                            value ===
-                                                                                'none'
-                                                                                ? ''
-                                                                                : value,
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <SelectTrigger className="w-full">
-                                                                        <SelectValue placeholder="No category" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="none">
-                                                                            No
-                                                                            category
-                                                                        </SelectItem>
-                                                                        {groupedCategories.map(
-                                                                            ({
-                                                                                parent,
-                                                                                children,
-                                                                            }) =>
-                                                                                children.length >
-                                                                                0 ? (
-                                                                                    <SelectGroup
-                                                                                        key={
-                                                                                            parent.id
-                                                                                        }
-                                                                                    >
-                                                                                        <SelectLabel>
-                                                                                            {
-                                                                                                parent.name
-                                                                                            }
-                                                                                        </SelectLabel>
-                                                                                        <SelectItem
-                                                                                            value={String(
-                                                                                                parent.id,
-                                                                                            )}
-                                                                                        >
-                                                                                            {
-                                                                                                parent.name
-                                                                                            }
-                                                                                        </SelectItem>
-                                                                                        {children.map(
-                                                                                            (
-                                                                                                child,
-                                                                                            ) => (
-                                                                                                <SelectItem
-                                                                                                    key={
-                                                                                                        child.id
-                                                                                                    }
-                                                                                                    value={String(
-                                                                                                        child.id,
-                                                                                                    )}
-                                                                                                >
-                                                                                                    {
-                                                                                                        child.name
-                                                                                                    }
-                                                                                                </SelectItem>
-                                                                                            ),
-                                                                                        )}
-                                                                                    </SelectGroup>
-                                                                                ) : (
-                                                                                    <SelectItem
-                                                                                        key={
-                                                                                            parent.id
-                                                                                        }
-                                                                                        value={String(
-                                                                                            parent.id,
-                                                                                        )}
-                                                                                    >
-                                                                                        {
-                                                                                            parent.name
-                                                                                        }
-                                                                                    </SelectItem>
-                                                                                ),
-                                                                        )}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-
-                                                            <div className="grid gap-2">
-                                                                <Label>
-                                                                    Description
-                                                                </Label>
-                                                                <Input
-                                                                    value={
-                                                                        split.description
-                                                                    }
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) =>
-                                                                        updateSplitRow(
-                                                                            split.id,
-                                                                            'description',
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    placeholder="Optional split detail"
-                                                                />
-                                                            </div>
-
-                                                            <div className="flex items-end justify-end">
-                                                                <Button
-                                                                    type="button"
-                                                                    size="sm"
-                                                                    variant="ghost"
-                                                                    disabled={
-                                                                        splitRows.length <=
-                                                                        2
-                                                                    }
-                                                                    onClick={() =>
-                                                                        removeSplitRow(
-                                                                            split.id,
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    Remove
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        ),
+                                                    )}
                                                 </div>
 
                                                 <div className="flex items-center justify-between rounded-lg bg-background px-3 py-2 text-sm">
@@ -1162,6 +889,98 @@ export function AddTransactionModal({
                                         placeholder="Optional details"
                                     />
                                     <InputError message={errors.notes} />
+                                </div>
+
+                                {/* Attachments */}
+                                <div className="grid gap-2">
+                                    <Label>Attachments</Label>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        name="attachments[]"
+                                        multiple
+                                        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const newFiles = Array.from(
+                                                e.target.files ?? [],
+                                            );
+                                            const updated = [
+                                                ...pendingFiles,
+                                                ...newFiles,
+                                            ];
+                                            setPendingFiles(updated);
+                                            syncFileInput(updated);
+                                        }}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-fit gap-1.5"
+                                        onClick={() => {
+                                            if (fileInputRef.current) {
+                                                fileInputRef.current.value = '';
+                                            }
+                                            fileInputRef.current?.click();
+                                        }}
+                                    >
+                                        <Paperclip className="size-3.5" />
+                                        Attach files
+                                    </Button>
+                                    <p className="text-xs text-muted-foreground">
+                                        Max 5 MB per file. PDF, JPG, PNG, GIF,
+                                        WebP accepted.
+                                    </p>
+                                    {pendingFiles.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            {pendingFiles.map((file, index) => (
+                                                <div
+                                                    key={`${file.name}-${index}`}
+                                                    className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm"
+                                                >
+                                                    <span className="min-w-0 truncate">
+                                                        {file.name}{' '}
+                                                        <span className="text-muted-foreground">
+                                                            (
+                                                            {(
+                                                                file.size / 1024
+                                                            ).toFixed(0)}{' '}
+                                                            KB)
+                                                        </span>
+                                                    </span>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="ml-2 size-6 shrink-0 p-0"
+                                                        onClick={() => {
+                                                            const updated =
+                                                                pendingFiles.filter(
+                                                                    (_, i) =>
+                                                                        i !==
+                                                                        index,
+                                                                );
+                                                            setPendingFiles(
+                                                                updated,
+                                                            );
+                                                            syncFileInput(
+                                                                updated,
+                                                            );
+                                                        }}
+                                                    >
+                                                        <X className="size-3.5" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <InputError
+                                        message={errors['attachments']}
+                                    />
+                                    <InputError
+                                        message={errors['attachments.0']}
+                                    />
                                 </div>
 
                                 {tags.length > 0 && (
@@ -1233,17 +1052,8 @@ export function AddTransactionModal({
                                     </Label>
                                 </div>
 
-                                <Button
-                                    disabled={processing || showNewPayeeInput}
-                                    title={
-                                        showNewPayeeInput
-                                            ? 'Confirm new payee first'
-                                            : undefined
-                                    }
-                                >
-                                    {showNewPayeeInput
-                                        ? 'Confirm new payee first'
-                                        : 'Save transaction'}
+                                <Button disabled={processing}>
+                                    Save transaction
                                 </Button>
                             </>
                         )}

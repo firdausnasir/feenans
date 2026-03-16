@@ -1,15 +1,5 @@
-import { Head, Link, router } from '@inertiajs/react';
-import {
-    MoreHorizontal,
-    Paperclip,
-    Receipt,
-    SlidersHorizontal,
-    ChevronDown,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { AddTransactionModal } from '@/components/add-transaction-modal';
 import type { DuplicateData } from '@/components/add-transaction-modal';
+import { AddTransactionModal } from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
@@ -59,8 +49,8 @@ import {
     bulkUpdate,
     destroy,
     exportMethod as exportTransactions,
-    index as transactionsIndex,
     restore,
+    index as transactionsIndex,
     update,
 } from '@/routes/ledgers/transactions';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
@@ -76,6 +66,16 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ChevronDown,
+    MoreHorizontal,
+    Paperclip,
+    Receipt,
+    SlidersHorizontal,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 type Filters = {
     search: string | null;
@@ -160,6 +160,7 @@ function transactionCategoryOptions(
             label: category.parent_id
                 ? `${categories.find((item) => item.id === category.parent_id)?.name} > ${category.name}`
                 : category.name,
+            color: category.color,
         }));
 }
 
@@ -387,7 +388,13 @@ function EditTransactionModal({
                     toast.success('Transaction updated');
                     onClose();
                 },
-                onError: () => setProcessing(false),
+                onError: (errors) => {
+                    setProcessing(false);
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
+                },
             },
         );
     }
@@ -402,7 +409,13 @@ function EditTransactionModal({
                     toast.success('Transaction deleted');
                     onClose();
                 },
-                onError: () => setDeleting(false),
+                onError: (errors) => {
+                    setDeleting(false);
+                    const firstError = Object.values(errors)[0];
+                    if (firstError) {
+                        toast.error(String(firstError));
+                    }
+                },
             },
         );
     }
@@ -417,10 +430,9 @@ function EditTransactionModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid gap-2">
-                        <Label>Type</Label>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-3 gap-1">
                             {(['expense', 'income', 'transfer'] as const).map(
                                 (t) => (
                                     <Button
@@ -507,6 +519,7 @@ function EditTransactionModal({
                             options={accounts.map((a) => ({
                                 value: String(a.id),
                                 label: a.name,
+                                color: a.color,
                             }))}
                             value={form.account_id}
                             onValueChange={(value) =>
@@ -690,6 +703,7 @@ function EditTransactionModal({
                                     .map((a) => ({
                                         value: String(a.id),
                                         label: a.name,
+                                        color: a.color,
                                     }))}
                                 value={form.to_account_id || null}
                                 onValueChange={(value) =>
@@ -1248,7 +1262,7 @@ export default function TransactionsIndex({
                         title="Transactions"
                         description={`Review all activity in ${ledger.name}.`}
                     />
-                    <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                         <Button
                             variant="outline"
                             size="sm"
@@ -1284,14 +1298,24 @@ export default function TransactionsIndex({
                 </div>
 
                 {/* Filters bar */}
-                <Card>
-                    <CardContent className="pt-6">
+                <Card
+                    className={filtersOpen ? '' : 'cursor-pointer'}
+                    onClick={() => {
+                        if (!filtersOpen) {
+                            setFiltersOpen(true);
+                        }
+                    }}
+                >
+                    <CardContent className="px-4 py-2">
                         <div className="flex flex-col gap-3">
                             {/* Mobile filter toggle */}
                             <button
                                 type="button"
-                                className="flex items-center justify-between sm:hidden"
-                                onClick={() => setFiltersOpen(!filtersOpen)}
+                                className="flex items-center justify-between"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFiltersOpen(!filtersOpen);
+                                }}
                             >
                                 <div className="flex items-center gap-2">
                                     <SlidersHorizontal className="size-4 text-muted-foreground" />
@@ -1316,7 +1340,7 @@ export default function TransactionsIndex({
                             </button>
 
                             <div
-                                className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'} sm:flex`}
+                                className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'}`}
                             >
                                 <div className="mb-3">
                                     <Input
@@ -1367,6 +1391,7 @@ export default function TransactionsIndex({
                                             options={accounts.map((a) => ({
                                                 value: String(a.id),
                                                 label: a.name,
+                                                color: a.color,
                                             }))}
                                             value={localFilters.account_id}
                                             onValueChange={(value) =>
@@ -1391,6 +1416,7 @@ export default function TransactionsIndex({
                                                 (c) => ({
                                                     value: String(c.id),
                                                     label: c.name,
+                                                    color: c.color,
                                                     group: c.parent_id
                                                         ? categories.find(
                                                               (p) =>
@@ -1750,48 +1776,43 @@ export default function TransactionsIndex({
                                                 </div>
                                             )}
                                             {/* Badges row */}
-                                            <div className="flex flex-wrap items-center gap-1 pl-8">
-                                                <Badge
-                                                    variant={
-                                                        TYPE_BADGE_VARIANT[
-                                                            transaction
-                                                                .transaction_type
-                                                        ] ?? 'secondary'
-                                                    }
-                                                    className="text-[10px]"
-                                                >
-                                                    {
-                                                        transaction.transaction_type
-                                                    }
-                                                </Badge>
-                                                {(transaction.splits ?? [])
-                                                    .length > 0 && (
-                                                    <Badge
-                                                        variant="secondary"
-                                                        className="text-[10px]"
-                                                    >
-                                                        {
-                                                            transaction.splits
-                                                                ?.length
-                                                        }{' '}
-                                                        splits
-                                                    </Badge>
-                                                )}
-                                                {(transaction.attachments ?? [])
-                                                    .length > 0 && (
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="text-[10px]"
-                                                    >
-                                                        <Paperclip className="mr-0.5 h-2.5 w-2.5" />
-                                                        {
-                                                            transaction
-                                                                .attachments
-                                                                ?.length
-                                                        }
-                                                    </Badge>
-                                                )}
-                                            </div>
+                                            {((transaction.splits ?? [])
+                                                .length > 0 ||
+                                                (transaction.attachments ?? [])
+                                                    .length > 0) && (
+                                                <div className="flex flex-wrap items-center gap-1 pl-8">
+                                                    {(transaction.splits ?? [])
+                                                        .length > 0 && (
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className="text-[10px]"
+                                                        >
+                                                            {
+                                                                transaction
+                                                                    .splits
+                                                                    ?.length
+                                                            }{' '}
+                                                            splits
+                                                        </Badge>
+                                                    )}
+                                                    {(
+                                                        transaction.attachments ??
+                                                        []
+                                                    ).length > 0 && (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="text-[10px]"
+                                                        >
+                                                            <Paperclip className="mr-0.5 h-2.5 w-2.5" />
+                                                            {
+                                                                transaction
+                                                                    .attachments
+                                                                    ?.length
+                                                            }
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            )}
                                             {/* Split details */}
                                             {(transaction.splits ?? []).length >
                                                 0 && (
@@ -1852,6 +1873,9 @@ export default function TransactionsIndex({
                                     <TableHead className="hidden lg:table-cell">
                                         Payee
                                     </TableHead>
+                                    <TableHead className="hidden xl:table-cell">
+                                        Tags
+                                    </TableHead>
                                     <TableHead className="text-right">
                                         Amount
                                     </TableHead>
@@ -1867,7 +1891,7 @@ export default function TransactionsIndex({
                                 {transactions.data.length === 0 ? (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={runningBalances ? 10 : 9}
+                                            colSpan={runningBalances ? 11 : 10}
                                         >
                                             <EmptyState
                                                 icon={
@@ -1920,65 +1944,50 @@ export default function TransactionsIndex({
                                                             ?.name ??
                                                         '—'}
                                                 </span>
-                                                <Badge
-                                                    variant={
-                                                        TYPE_BADGE_VARIANT[
-                                                            transaction
-                                                                .transaction_type
-                                                        ] ?? 'secondary'
-                                                    }
-                                                    className="ml-2"
-                                                >
-                                                    {
-                                                        transaction.transaction_type
-                                                    }
-                                                </Badge>
-                                                {(transaction.tags ?? [])
-                                                    .length > 0 && (
-                                                    <span className="ml-2 inline-flex flex-wrap gap-1">
-                                                        {(
-                                                            transaction.tags ??
-                                                            []
-                                                        ).map((tag) => (
-                                                            <TagPill
-                                                                key={tag.id}
-                                                                tag={tag}
-                                                            />
-                                                        ))}
-                                                    </span>
-                                                )}
-                                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                    {(transaction.splits ?? [])
-                                                        .length > 0 && (
-                                                        <Badge variant="secondary">
-                                                            {
-                                                                transaction
-                                                                    .splits
-                                                                    ?.length
-                                                            }{' '}
-                                                            splits
-                                                        </Badge>
-                                                    )}
-                                                    {(
+                                                {((transaction.splits ?? [])
+                                                    .length > 0 ||
+                                                    (
                                                         transaction.attachments ??
                                                         []
-                                                    ).length > 0 && (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="gap-1"
-                                                        >
-                                                            <Paperclip className="size-3" />
-                                                            {
-                                                                transaction
-                                                                    .attachments
-                                                                    ?.length
-                                                            }
-                                                        </Badge>
-                                                    )}
-                                                </div>
+                                                    ).length > 0) && (
+                                                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                        {(
+                                                            transaction.splits ??
+                                                            []
+                                                        ).length > 0 && (
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="text-[10px]"
+                                                            >
+                                                                {
+                                                                    transaction
+                                                                        .splits
+                                                                        ?.length
+                                                                }{' '}
+                                                                splits
+                                                            </Badge>
+                                                        )}
+                                                        {(
+                                                            transaction.attachments ??
+                                                            []
+                                                        ).length > 0 && (
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="gap-1 text-[10px]"
+                                                            >
+                                                                <Paperclip className="size-2.5" />
+                                                                {
+                                                                    transaction
+                                                                        .attachments
+                                                                        ?.length
+                                                                }
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {(transaction.splits ?? [])
                                                     .length > 0 && (
-                                                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                                    <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                                                         {(
                                                             transaction.splits ??
                                                             []
@@ -2014,6 +2023,22 @@ export default function TransactionsIndex({
                                             </TableCell>
                                             <TableCell className="hidden text-muted-foreground lg:table-cell">
                                                 {transaction.payee?.name ?? '—'}
+                                            </TableCell>
+                                            <TableCell className="hidden xl:table-cell">
+                                                {(transaction.tags ?? [])
+                                                    .length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(
+                                                            transaction.tags ??
+                                                            []
+                                                        ).map((tag) => (
+                                                            <TagPill
+                                                                key={tag.id}
+                                                                tag={tag}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </TableCell>
                                             <TableCell
                                                 className={`text-right font-semibold tabular-nums ${amountColor(transaction)}`}

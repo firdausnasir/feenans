@@ -2,6 +2,7 @@ import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import AccountController from '@/actions/App/Http/Controllers/Ledger/AccountController';
+import { ColorPicker } from '@/components/color-picker';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ export default function CreateAccount({
     const { data, setData, post, processing, errors, clearErrors } = useForm({
         account_type_id: String(accountTypes[0]?.id ?? ''),
         name: '',
+        color: '#6B7280',
         initial_balance: '0',
         include_in_totals: '1',
     });
@@ -61,9 +63,7 @@ export default function CreateAccount({
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
                 >
                     <div className="grid gap-2">
-                        <Label htmlFor="account_type_id">
-                            Account type
-                        </Label>
+                        <Label htmlFor="account_type_id">Account type</Label>
                         <Select
                             value={data.account_type_id}
                             onValueChange={(value) => {
@@ -108,9 +108,22 @@ export default function CreateAccount({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="initial_balance">
-                            Initial balance
-                        </Label>
+                        <Label>Color</Label>
+                        <ColorPicker
+                            value={data.color}
+                            onChange={(color) => {
+                                setData('color', color);
+                                clearErrors('color');
+                            }}
+                        />
+                        <InputError message={errors.color} />
+                        <p className="text-xs text-muted-foreground">
+                            Choose a color to identify this account.
+                        </p>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="initial_balance">Initial balance</Label>
                         <Input
                             id="initial_balance"
                             name="initial_balance"
@@ -126,14 +139,12 @@ export default function CreateAccount({
                         />
                         <InputError message={errors.initial_balance} />
                         <p className="text-xs text-muted-foreground">
-                            Enter your current account balance. This is
-                            your starting point for tracking.
+                            Enter your current account balance. This is your
+                            starting point for tracking.
                         </p>
                     </div>
 
-                    <Button disabled={processing}>
-                        Create account
-                    </Button>
+                    <Button disabled={processing}>Create account</Button>
                 </form>
             </div>
         </AppLayout>
