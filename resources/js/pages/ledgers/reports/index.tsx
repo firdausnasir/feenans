@@ -22,6 +22,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -463,131 +464,106 @@ function DateRangeSelector({
                 }
             }}
         >
-            <CardContent className="space-y-3 px-4 py-2">
-                {/* Filter toggle */}
-                <button
-                    type="button"
-                    className="flex w-full items-center justify-between"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setFiltersOpen(!filtersOpen);
-                    }}
-                >
-                    <div className="flex items-center gap-2">
-                        <SlidersHorizontal className="size-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">
-                            {formatDate(dateRange.date_from)} &ndash;{' '}
-                            {formatDate(dateRange.date_to)}
-                        </span>
-                        {dateRange.account_id && (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                                Filtered
+            <CardContent className="px-4 py-2">
+                <div className="flex flex-col gap-3">
+                    {/* Filter toggle */}
+                    <button
+                        type="button"
+                        className="flex w-full items-center justify-between"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setFiltersOpen(!filtersOpen);
+                        }}
+                    >
+                        <div className="flex min-w-0 items-center gap-2">
+                            <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm font-medium">
+                                {[
+                                    `${formatDate(dateRange.date_from)} – ${formatDate(dateRange.date_to)}`,
+                                    ...(dateRange.account_id
+                                        ? [
+                                              allAccounts.find(
+                                                  (a) =>
+                                                      a.id.toString() ===
+                                                      dateRange.account_id,
+                                              )?.name ?? 'Account',
+                                          ]
+                                        : []),
+                                    ...(dateRange.compare_start &&
+                                    dateRange.compare_end
+                                        ? [
+                                              `vs ${formatDate(dateRange.compare_start)} – ${formatDate(dateRange.compare_end)}`,
+                                          ]
+                                        : []),
+                                ].join(' · ')}
                             </span>
-                        )}
-                    </div>
-                    <ChevronDown
-                        className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
-                    />
-                </button>
-
-                <div className={`space-y-3 ${filtersOpen ? '' : 'hidden'}`}>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        {PRESETS.map((preset) => (
-                            <Button
-                                key={preset.key}
-                                size="sm"
-                                variant={
-                                    dateRange.preset === preset.key
-                                        ? 'default'
-                                        : 'outline'
-                                }
-                                className="h-7 px-2.5 text-xs"
-                                onClick={() => applyPreset(preset)}
-                            >
-                                {preset.label}
-                            </Button>
-                        ))}
-
-                        <Button
-                            size="sm"
-                            variant={compareEnabled ? 'default' : 'outline'}
-                            className="h-7 px-2.5 text-xs"
-                            onClick={handleCompareToggle}
-                        >
-                            Compare
-                        </Button>
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                        {allAccounts.length > 0 && (
-                            <div className="grid gap-1">
-                                <Label className="text-xs">Account</Label>
-                                <Select
-                                    value={dateRange.account_id ?? 'all'}
-                                    onValueChange={handleAccountChange}
-                                >
-                                    <SelectTrigger className="h-8 w-full text-xs sm:w-40">
-                                        <SelectValue placeholder="All accounts" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">
-                                            All accounts
-                                        </SelectItem>
-                                        {allAccounts.map((account) => (
-                                            <SelectItem
-                                                key={account.id}
-                                                value={account.id.toString()}
-                                            >
-                                                {account.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
-                            <div className="grid gap-1">
-                                <Label className="text-xs">From</Label>
-                                <DatePicker
-                                    value={customFrom}
-                                    onChange={(date) => setCustomFrom(date)}
-                                    placeholder="Start date"
-                                    className="h-8 text-xs"
-                                />
-                            </div>
-                            <div className="grid gap-1">
-                                <Label className="text-xs">To</Label>
-                                <DatePicker
-                                    value={customTo}
-                                    onChange={(date) => setCustomTo(date)}
-                                    placeholder="End date"
-                                    className="h-8 text-xs"
-                                />
-                            </div>
                         </div>
-                        <Button
-                            size="sm"
-                            className="w-full sm:w-auto"
-                            onClick={applyCustomRange}
-                        >
-                            Apply
-                        </Button>
-                    </div>
+                        <ChevronDown
+                            className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
+                        />
+                    </button>
 
-                    {/* Comparison date picker row */}
-                    {compareEnabled && (
-                        <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-end">
-                            <p className="text-xs font-medium text-muted-foreground sm:self-center">
-                                Compare with:
-                            </p>
+                    <div className={`space-y-3 ${filtersOpen ? '' : 'hidden'}`}>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {PRESETS.map((preset) => (
+                                <Button
+                                    key={preset.key}
+                                    size="sm"
+                                    variant={
+                                        dateRange.preset === preset.key
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                    className="h-7 px-2.5 text-xs"
+                                    onClick={() => applyPreset(preset)}
+                                >
+                                    {preset.label}
+                                </Button>
+                            ))}
+
+                            <Button
+                                size="sm"
+                                variant={compareEnabled ? 'default' : 'outline'}
+                                className="h-7 px-2.5 text-xs"
+                                onClick={handleCompareToggle}
+                            >
+                                Compare
+                            </Button>
+                        </div>
+
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                            {allAccounts.length > 0 && (
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">Account</Label>
+                                    <Select
+                                        value={dateRange.account_id ?? 'all'}
+                                        onValueChange={handleAccountChange}
+                                    >
+                                        <SelectTrigger className="h-8 w-full text-xs sm:w-40">
+                                            <SelectValue placeholder="All accounts" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">
+                                                All accounts
+                                            </SelectItem>
+                                            {allAccounts.map((account) => (
+                                                <SelectItem
+                                                    key={account.id}
+                                                    value={account.id.toString()}
+                                                >
+                                                    {account.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
                                 <div className="grid gap-1">
                                     <Label className="text-xs">From</Label>
                                     <DatePicker
-                                        value={compareFrom}
-                                        onChange={(date) =>
-                                            setCompareFrom(date)
-                                        }
+                                        value={customFrom}
+                                        onChange={(date) => setCustomFrom(date)}
                                         placeholder="Start date"
                                         className="h-8 text-xs"
                                     />
@@ -595,32 +571,72 @@ function DateRangeSelector({
                                 <div className="grid gap-1">
                                     <Label className="text-xs">To</Label>
                                     <DatePicker
-                                        value={compareTo}
-                                        onChange={(date) => setCompareTo(date)}
+                                        value={customTo}
+                                        onChange={(date) => setCustomTo(date)}
                                         placeholder="End date"
                                         className="h-8 text-xs"
                                     />
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                <Button
-                                    size="sm"
-                                    className="flex-1 sm:flex-initial"
-                                    onClick={applyComparison}
-                                >
-                                    Compare
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="flex-1 sm:flex-initial"
-                                    onClick={suggestPreviousPeriod}
-                                >
-                                    Previous period
-                                </Button>
-                            </div>
+                            <Button
+                                size="sm"
+                                className="w-full sm:w-auto"
+                                onClick={applyCustomRange}
+                            >
+                                Apply
+                            </Button>
                         </div>
-                    )}
+
+                        {/* Comparison date picker row */}
+                        {compareEnabled && (
+                            <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-end">
+                                <p className="text-xs font-medium text-muted-foreground sm:self-center">
+                                    Compare with:
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">From</Label>
+                                        <DatePicker
+                                            value={compareFrom}
+                                            onChange={(date) =>
+                                                setCompareFrom(date)
+                                            }
+                                            placeholder="Start date"
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">To</Label>
+                                        <DatePicker
+                                            value={compareTo}
+                                            onChange={(date) =>
+                                                setCompareTo(date)
+                                            }
+                                            placeholder="End date"
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        className="flex-1 sm:flex-initial"
+                                        onClick={applyComparison}
+                                    >
+                                        Compare
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="flex-1 sm:flex-initial"
+                                        onClick={suggestPreviousPeriod}
+                                    >
+                                        Previous period
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </CardContent>
         </Card>
@@ -1823,16 +1839,11 @@ export default function ReportsIndex({
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Reports
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Analyse your finances with detailed breakdowns and
-                            trends.
-                        </p>
-                    </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <Heading
+                        title="Reports"
+                        description="Analyse your finances with detailed breakdowns and trends."
+                    />
                     <div className="flex items-center gap-2">
                         <ReportViewSelect
                             ledgerId={ledger.id}
@@ -1840,7 +1851,7 @@ export default function ReportsIndex({
                         />
                         <Button variant="outline" size="sm" asChild>
                             <a
-                                href={`/ledgers/${ledger.id}/reports/export-pdf?month=${dateRange.date_from.substring(0, 7)}`}
+                                href={`/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`}
                             >
                                 Export PDF
                             </a>

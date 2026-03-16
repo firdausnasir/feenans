@@ -295,7 +295,7 @@ function BillRow({
                             <div className="pt-2 text-center">
                                 <Link
                                     href={transactionsIndex.url(ledgerId, {
-                                        query: { search: bill.name },
+                                        query: { bill_id: String(bill.id) },
                                     })}
                                     className="text-xs font-medium text-primary hover:underline"
                                 >

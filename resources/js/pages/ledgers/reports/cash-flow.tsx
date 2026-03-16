@@ -11,7 +11,9 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -246,19 +248,24 @@ export default function CashFlowPage({
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Reports
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Cash flow for {periodLabel}.
-                        </p>
-                    </div>
-                    <ReportViewSelect
-                        ledgerId={ledger.id}
-                        currentView="cash-flow"
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <Heading
+                        title="Reports"
+                        description={`Cash flow for ${periodLabel}.`}
                     />
+                    <div className="flex items-center gap-2">
+                        <ReportViewSelect
+                            ledgerId={ledger.id}
+                            currentView="cash-flow"
+                        />
+                        <Button variant="outline" size="sm" asChild>
+                            <a
+                                href={`/ledgers/${ledger.id}/reports/export-pdf`}
+                            >
+                                Export PDF
+                            </a>
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Summary cards */}

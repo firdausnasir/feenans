@@ -190,8 +190,8 @@ test('show returns forbidden for unauthorized user', function () {
     $response->assertForbidden();
 });
 
-test('attachment uploads use the configured attachment disk', function () {
-    config()->set('app.attachment_disk', 's3');
+test('attachment uploads use the configured filesystem disk', function () {
+    config()->set('filesystems.default', 's3');
     Storage::fake('s3');
 
     $user = User::factory()->create();

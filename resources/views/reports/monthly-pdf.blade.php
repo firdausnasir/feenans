@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Monthly Report - {{ $ledgerName }}</title>
+    <title>Report - {{ $ledgerName }}</title>
     <style>
         * {
             margin: 0;
@@ -130,7 +130,7 @@
 <body>
     <div class="header">
         <h1>{{ $ledgerName }}</h1>
-        <h2>Monthly Report &mdash; {{ $monthLabel }}</h2>
+        <h2>Report &mdash; {{ $monthLabel }}</h2>
     </div>
 
     <div class="summary-box">

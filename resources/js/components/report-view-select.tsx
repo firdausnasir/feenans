@@ -1,17 +1,16 @@
-import { router } from '@inertiajs/react';
 import {
     Select,
     SelectContent,
     SelectItem,
-    SelectTrigger,
-    SelectValue,
+    SelectTrigger
 } from '@/components/ui/select';
 import {
-    index as reportsIndex,
-    financialHealth as financialHealthRoute,
     budgetPerformance as budgetPerformanceRoute,
     cashFlow as cashFlowRoute,
+    financialHealth as financialHealthRoute,
+    index as reportsIndex,
 } from '@/routes/ledgers/reports';
+import { router } from '@inertiajs/react';
 
 type ReportViewSelectProps = {
     ledgerId: number;
@@ -40,14 +39,22 @@ function getViewUrl(ledgerId: number, viewKey: string): string {
     }
 }
 
-export function ReportViewSelect({ ledgerId, currentView }: ReportViewSelectProps) {
+function getViewLabel(viewKey: string): string {
+    return VIEWS.find((v) => v.key === viewKey)?.label ?? 'Select view';
+}
+
+export function ReportViewSelect({
+    ledgerId,
+    currentView,
+}: ReportViewSelectProps) {
     return (
         <Select
+            key={currentView}
             value={currentView}
             onValueChange={(val) => router.visit(getViewUrl(ledgerId, val))}
         >
-            <SelectTrigger className="w-[200px] bg-primary text-primary-foreground">
-                <SelectValue />
+            <SelectTrigger className="w-[200px] bg-primary text-white [&_svg]:text-white/70">
+                <span className="truncate">{getViewLabel(currentView)}</span>
             </SelectTrigger>
             <SelectContent>
                 {VIEWS.map((view) => (

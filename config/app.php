@@ -118,18 +118,6 @@ return [
     |
     */
 
-    /*
-    |--------------------------------------------------------------------------
-    | Attachment Disk
-    |--------------------------------------------------------------------------
-    |
-    | The disk used for storing transaction attachments. Set to "r2" to use
-    | Cloudflare R2 or any other configured disk in filesystems.php.
-    |
-    */
-
-    'attachment_disk' => env('ATTACHMENT_DISK', 'local'),
-
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),

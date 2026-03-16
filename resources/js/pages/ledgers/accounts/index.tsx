@@ -3,6 +3,7 @@ import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { toggleVisibility } from '@/actions/App/Http/Controllers/Ledger/AccountController';
+import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -326,14 +327,10 @@ export default function AccountsIndex({
 
             <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Accounts
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Track balances across all ledger accounts.
-                        </p>
-                    </div>
+                    <Heading
+                        title="Accounts"
+                        description="Track balances across all ledger accounts."
+                    />
 
                     <div className="flex w-full items-center gap-4 md:w-auto">
                         <div className="flex items-center gap-2">

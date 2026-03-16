@@ -230,7 +230,7 @@ export default function PayeesIndex({
 
         try {
             const url = transactionsIndex.url(ledger.id, {
-                query: { payee_id: String(payee.id) },
+                query: { 'payee_ids[]': String(payee.id) },
             });
             const response = await fetch(url, {
                 headers: { Accept: 'application/json' },
@@ -614,8 +614,7 @@ export default function PayeesIndex({
                             </div>
                         ) : payeeTransactions.length === 0 ? (
                             <p className="py-6 text-center text-sm text-muted-foreground">
-                                No transactions found for this payee in the
-                                current period.
+                                No transactions found for this payee.
                             </p>
                         ) : (
                             <div className="space-y-2">
@@ -690,7 +689,7 @@ export default function PayeesIndex({
                                                 ledger.id,
                                                 {
                                                     query: {
-                                                        payee_id: String(
+                                                        'payee_ids[]': String(
                                                             selectedPayee?.id ??
                                                                 '',
                                                         ),

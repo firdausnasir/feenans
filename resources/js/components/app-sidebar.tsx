@@ -37,7 +37,7 @@ import { index as reportsIndex } from '@/routes/ledgers/reports';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
 import { index as tagsIndex } from '@/routes/ledgers/tags';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { NavItem } from '@/types';
+import type { NavGroup } from '@/types';
 
 export function AppSidebar() {
     const { currentLedger } = usePage().props as {
@@ -52,57 +52,77 @@ export function AppSidebar() {
 
     const ledgerId = currentLedger?.id;
 
-    const mainNavItems: NavItem[] = ledgerId
+    const navGroups: NavGroup[] = ledgerId
         ? [
               {
-                  title: 'Dashboard',
-                  href: dashboard.url(ledgerId),
-                  icon: LayoutGrid,
+                  label: 'Overview',
+                  items: [
+                      {
+                          title: 'Dashboard',
+                          href: dashboard.url(ledgerId),
+                          icon: LayoutGrid,
+                      },
+                      {
+                          title: 'Reports',
+                          href: reportsIndex.url(ledgerId),
+                          icon: BarChart3,
+                      },
+                  ],
               },
               {
-                  title: 'Accounts',
-                  href: accountsIndex.url(ledgerId),
-                  icon: CreditCard,
+                  label: 'Activity',
+                  items: [
+                      {
+                          title: 'Accounts',
+                          href: accountsIndex.url(ledgerId),
+                          icon: CreditCard,
+                      },
+                      {
+                          title: 'Transactions',
+                          href: transactionsIndex.url(ledgerId),
+                          icon: Receipt,
+                      },
+                      {
+                          title: 'Recurring',
+                          href: billsIndex.url(ledgerId),
+                          icon: RefreshCw,
+                      },
+                  ],
               },
               {
-                  title: 'Transactions',
-                  href: transactionsIndex.url(ledgerId),
-                  icon: Receipt,
+                  label: 'Plan',
+                  items: [
+                      {
+                          title: 'Budgets',
+                          href: budgetsIndex.url(ledgerId),
+                          icon: PiggyBank,
+                      },
+                      {
+                          title: 'Payees',
+                          href: payeesIndex.url(ledgerId),
+                          icon: Users,
+                      },
+                  ],
               },
               {
-                  title: 'Import',
-                  href: importCreate.url(ledgerId),
-                  icon: Upload,
-              },
-              {
-                  title: 'Categories',
-                  href: categoriesIndex.url(ledgerId),
-                  icon: Tag,
-              },
-              {
-                  title: 'Tags',
-                  href: tagsIndex.url(ledgerId),
-                  icon: Hash,
-              },
-              {
-                  title: 'Recurring',
-                  href: billsIndex.url(ledgerId),
-                  icon: RefreshCw,
-              },
-              {
-                  title: 'Budgets',
-                  href: budgetsIndex.url(ledgerId),
-                  icon: PiggyBank,
-              },
-              {
-                  title: 'Payees',
-                  href: payeesIndex.url(ledgerId),
-                  icon: Users,
-              },
-              {
-                  title: 'Reports',
-                  href: reportsIndex.url(ledgerId),
-                  icon: BarChart3,
+                  label: 'Manage',
+                  items: [
+                      {
+                          title: 'Categories',
+                          href: categoriesIndex.url(ledgerId),
+                          icon: Tag,
+                      },
+                      {
+                          title: 'Tags',
+                          href: tagsIndex.url(ledgerId),
+                          icon: Hash,
+                      },
+                      {
+                          title: 'Import',
+                          href: importCreate.url(ledgerId),
+                          icon: Upload,
+                      },
+                  ],
               },
           ]
         : [];
@@ -116,7 +136,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain groups={navGroups} />
             </SidebarContent>
 
             <SidebarFooter>

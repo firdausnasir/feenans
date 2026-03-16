@@ -351,7 +351,7 @@ export default function LedgerDashboard({
                         <Link
                             href={transactionsIndex.url(ledger.id, {
                                 query: {
-                                    transaction_type: 'income',
+                                    'transaction_types[]': 'income',
                                     date_from: cycleDates.start,
                                     date_to: cycleDates.end,
                                 },
@@ -370,7 +370,7 @@ export default function LedgerDashboard({
                         <Link
                             href={transactionsIndex.url(ledger.id, {
                                 query: {
-                                    transaction_type: 'expense',
+                                    'transaction_types[]': 'expense',
                                     date_from: cycleDates.start,
                                     date_to: cycleDates.end,
                                 },
@@ -832,7 +832,7 @@ export default function LedgerDashboard({
                                                                 ledger.id,
                                                                 {
                                                                     query: {
-                                                                        category_id:
+                                                                        'category_ids[]':
                                                                             category.id,
                                                                         date_from:
                                                                             cycleDates.start,

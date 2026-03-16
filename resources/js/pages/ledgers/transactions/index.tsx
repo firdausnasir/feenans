@@ -25,13 +25,6 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
     Table,
@@ -81,11 +74,12 @@ type Filters = {
     search: string | null;
     date_from: string;
     date_to: string;
-    account_id: string | null;
-    category_id: string | null;
-    transaction_type: string | null;
-    payee_id: string | null;
-    tag_id: string | null;
+    account_ids: string[];
+    category_ids: string[];
+    transaction_types: string[];
+    payee_ids: string[];
+    tag_ids: string[];
+    bill_id: string | null;
     uncategorized: string | null;
 };
 
@@ -1022,15 +1016,21 @@ export default function TransactionsIndex({
     }
 
     function handleApplyFilters() {
-        router.get(
-            transactionsIndex.url(ledger.id),
-            Object.fromEntries(
-                Object.entries(localFilters).filter(
-                    ([, v]) => v !== null && v !== '',
-                ),
-            ) as Record<string, string>,
-            { preserveState: true },
-        );
+        const params: Record<string, string | string[]> = {};
+
+        for (const [key, val] of Object.entries(localFilters)) {
+            if (Array.isArray(val)) {
+                if (val.length > 0) {
+                    params[key] = val;
+                }
+            } else if (val !== null && val !== '') {
+                params[key] = val;
+            }
+        }
+
+        router.get(transactionsIndex.url(ledger.id), params, {
+            preserveState: true,
+        });
     }
 
     function handleResetFilters() {
@@ -1160,12 +1160,9 @@ export default function TransactionsIndex({
         ...(parent.children ?? []),
     ]);
 
-    const isAccountFiltered =
-        filters.account_id !== null &&
-        filters.account_id !== '' &&
-        filters.account_id !== 'all';
+    const isAccountFiltered = filters.account_ids.length === 1;
     const filteredAccount = isAccountFiltered
-        ? accounts.find((a) => String(a.id) === filters.account_id)
+        ? accounts.find((a) => String(a.id) === filters.account_ids[0])
         : null;
 
     // Compute running balances when a single account is filtered
@@ -1236,20 +1233,68 @@ export default function TransactionsIndex({
         return balances;
     })();
 
-    const activeFilterCount =
-        [
-            localFilters.search,
-            localFilters.account_id,
-            localFilters.category_id,
-            localFilters.transaction_type,
-            localFilters.payee_id,
-            localFilters.tag_id,
-            localFilters.uncategorized,
-        ].filter((v) => v !== null && v !== '' && v !== 'all').length +
-        (localFilters.date_from !== filters.date_from ||
-        localFilters.date_to !== filters.date_to
-            ? 1
-            : 0);
+    const activeFilterLabels = (() => {
+        const labels: string[] = [];
+
+        if (localFilters.date_from || localFilters.date_to) {
+            const from = localFilters.date_from
+                ? formatDate(localFilters.date_from)
+                : 'Start';
+            const to = localFilters.date_to
+                ? formatDate(localFilters.date_to)
+                : 'Now';
+            labels.push(`${from} – ${to}`);
+        }
+
+        if (localFilters.search) {
+            labels.push(`"${localFilters.search}"`);
+        }
+
+        for (const id of localFilters.account_ids) {
+            const account = accounts.find((a) => String(a.id) === id);
+            if (account) {
+                labels.push(account.name);
+            }
+        }
+
+        const allCats = categories.flatMap((p) => [p, ...(p.children ?? [])]);
+        for (const id of localFilters.category_ids) {
+            const cat = allCats.find((c) => String(c.id) === id);
+            if (cat) {
+                labels.push(cat.name);
+            }
+        }
+
+        for (const type of localFilters.transaction_types) {
+            labels.push(type.charAt(0).toUpperCase() + type.slice(1));
+        }
+
+        for (const id of localFilters.payee_ids) {
+            const payee = payees.find((p) => String(p.id) === id);
+            if (payee) {
+                labels.push(payee.name);
+            }
+        }
+
+        for (const id of localFilters.tag_ids) {
+            const tag = tags.find((t) => String(t.id) === id);
+            if (tag) {
+                labels.push(tag.name);
+            }
+        }
+
+        if (localFilters.uncategorized === '1') {
+            labels.push('Uncategorized');
+        }
+
+        if (localFilters.bill_id) {
+            labels.push('Recurring');
+        }
+
+        return labels;
+    })();
+
+    const activeFilterCount = activeFilterLabels.length;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -1273,14 +1318,29 @@ export default function TransactionsIndex({
                                 href={
                                     exportTransactions.url(ledger.id) +
                                     '?' +
-                                    new URLSearchParams(
-                                        Object.fromEntries(
-                                            Object.entries(localFilters).filter(
-                                                ([, v]) =>
-                                                    v != null && v !== '',
-                                            ) as [string, string][],
-                                        ),
-                                    ).toString()
+                                    (() => {
+                                        const params = new URLSearchParams();
+
+                                        for (const [key, val] of Object.entries(
+                                            localFilters,
+                                        )) {
+                                            if (Array.isArray(val)) {
+                                                for (const v of val) {
+                                                    params.append(
+                                                        `${key}[]`,
+                                                        v,
+                                                    );
+                                                }
+                                            } else if (
+                                                val != null &&
+                                                val !== ''
+                                            ) {
+                                                params.append(key, val);
+                                            }
+                                        }
+
+                                        return params.toString();
+                                    })()
                                 }
                                 download
                             >
@@ -1317,21 +1377,24 @@ export default function TransactionsIndex({
                                     setFiltersOpen(!filtersOpen);
                                 }}
                             >
-                                <div className="flex items-center gap-2">
-                                    <SlidersHorizontal className="size-4 text-muted-foreground" />
-                                    <span className="text-sm font-medium">
-                                        {localFilters.date_from ||
-                                        localFilters.date_to
-                                            ? `${localFilters.date_from ? formatDate(localFilters.date_from) : 'Start'} – ${localFilters.date_to ? formatDate(localFilters.date_to) : 'Now'}`
-                                            : 'All dates'}
-                                    </span>
-                                    {activeFilterCount > 0 && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="text-xs"
-                                        >
-                                            {activeFilterCount}
-                                        </Badge>
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                    <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
+                                    {activeFilterCount === 0 ? (
+                                        <span className="text-sm text-muted-foreground">
+                                            No filters applied
+                                        </span>
+                                    ) : (
+                                        <div className="flex flex-wrap items-center gap-1">
+                                            {activeFilterLabels.map((label) => (
+                                                <Badge
+                                                    key={label}
+                                                    variant="secondary"
+                                                    className="text-xs font-normal"
+                                                >
+                                                    {label}
+                                                </Badge>
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                                 <ChevronDown
@@ -1388,22 +1451,22 @@ export default function TransactionsIndex({
                                             Account
                                         </Label>
                                         <SearchableSelect
+                                            multiple
                                             options={accounts.map((a) => ({
                                                 value: String(a.id),
                                                 label: a.name,
                                                 color: a.color,
                                             }))}
-                                            value={localFilters.account_id}
+                                            value={localFilters.account_ids}
                                             onValueChange={(value) =>
                                                 setLocalFilters((prev) => ({
                                                     ...prev,
-                                                    account_id: value,
+                                                    account_ids: value,
                                                 }))
                                             }
                                             placeholder="All accounts"
                                             searchPlaceholder="Search accounts..."
                                             emptyMessage="No accounts found."
-                                            allOption="All accounts"
                                         />
                                     </div>
 
@@ -1412,6 +1475,7 @@ export default function TransactionsIndex({
                                             Category
                                         </Label>
                                         <SearchableSelect
+                                            multiple
                                             options={flatCategories.map(
                                                 (c) => ({
                                                     value: String(c.id),
@@ -1426,75 +1490,70 @@ export default function TransactionsIndex({
                                                         : undefined,
                                                 }),
                                             )}
-                                            value={localFilters.category_id}
+                                            value={localFilters.category_ids}
                                             onValueChange={(value) =>
                                                 setLocalFilters((prev) => ({
                                                     ...prev,
-                                                    category_id: value,
+                                                    category_ids: value,
                                                 }))
                                             }
                                             placeholder="All categories"
                                             searchPlaceholder="Search categories..."
                                             emptyMessage="No categories found."
-                                            allOption="All categories"
                                         />
                                     </div>
 
                                     <div className="grid gap-1">
                                         <Label className="text-xs">Type</Label>
-                                        <Select
+                                        <SearchableSelect
+                                            multiple
+                                            options={[
+                                                {
+                                                    value: 'expense',
+                                                    label: 'Expense',
+                                                },
+                                                {
+                                                    value: 'income',
+                                                    label: 'Income',
+                                                },
+                                                {
+                                                    value: 'transfer',
+                                                    label: 'Transfer',
+                                                },
+                                            ]}
                                             value={
-                                                localFilters.transaction_type ??
-                                                'all'
+                                                localFilters.transaction_types
                                             }
                                             onValueChange={(value) =>
                                                 setLocalFilters((prev) => ({
                                                     ...prev,
-                                                    transaction_type:
-                                                        value === 'all'
-                                                            ? null
-                                                            : value,
+                                                    transaction_types: value,
                                                 }))
                                             }
-                                        >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="All types" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">
-                                                    All types
-                                                </SelectItem>
-                                                <SelectItem value="expense">
-                                                    Expense
-                                                </SelectItem>
-                                                <SelectItem value="income">
-                                                    Income
-                                                </SelectItem>
-                                                <SelectItem value="transfer">
-                                                    Transfer
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                            placeholder="All types"
+                                            searchPlaceholder="Search types..."
+                                            emptyMessage="No types found."
+                                        />
                                     </div>
 
                                     <div className="grid gap-1">
                                         <Label className="text-xs">Payee</Label>
                                         <SearchableSelect
+                                            multiple
                                             options={payees.map((p) => ({
                                                 value: String(p.id),
                                                 label: p.name,
                                             }))}
-                                            value={localFilters.payee_id}
+                                            value={localFilters.payee_ids}
                                             onValueChange={(value) =>
                                                 setLocalFilters((prev) => ({
                                                     ...prev,
-                                                    payee_id: value,
+                                                    payee_ids: value,
                                                 }))
                                             }
                                             placeholder="All payees"
                                             searchPlaceholder="Search payees..."
                                             emptyMessage="No payees found."
-                                            allOption="All payees"
                                         />
                                     </div>
 
@@ -1504,21 +1563,21 @@ export default function TransactionsIndex({
                                                 Tag
                                             </Label>
                                             <SearchableSelect
+                                                multiple
                                                 options={tags.map((t) => ({
                                                     value: String(t.id),
                                                     label: t.name,
                                                 }))}
-                                                value={localFilters.tag_id}
+                                                value={localFilters.tag_ids}
                                                 onValueChange={(value) =>
                                                     setLocalFilters((prev) => ({
                                                         ...prev,
-                                                        tag_id: value,
+                                                        tag_ids: value,
                                                     }))
                                                 }
                                                 placeholder="All tags"
                                                 searchPlaceholder="Search tags..."
                                                 emptyMessage="No tags found."
-                                                allOption="All tags"
                                             />
                                         </div>
                                     )}

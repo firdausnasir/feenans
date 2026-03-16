@@ -14,11 +14,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
-    protected function attachmentDisk(): string
-    {
-        return (string) config('app.attachment_disk', 'local');
-    }
-
     public function store(Request $request, Ledger $ledger, Transaction $transaction): JsonResponse
     {
         $this->authorize('view', $ledger);
@@ -33,11 +28,10 @@ class AttachmentController extends Controller
             'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,gif,webp'],
         ]);
 
-        $disk = $this->attachmentDisk();
         $uploaded = [];
 
         foreach ($validated['attachments'] as $file) {
-            $path = $file->store("attachments/{$ledger->id}", $disk);
+            $path = $file->store("attachments/{$ledger->id}");
 
             $uploaded[] = $transaction->attachments()->create([
                 'filename' => $file->getClientOriginalName(),
@@ -56,9 +50,7 @@ class AttachmentController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        $disk = Storage::disk($this->attachmentDisk());
-
-        return $disk->response($attachment->path, $attachment->filename, [
+        return Storage::response($attachment->path, $attachment->filename, [
             'Content-Type' => $attachment->mime_type,
         ]);
     }
@@ -67,7 +59,7 @@ class AttachmentController extends Controller
     {
         $this->authorize('delete', $ledger);
 
-        Storage::disk($this->attachmentDisk())->delete($attachment->path);
+        Storage::delete($attachment->path);
         $attachment->delete();
 
         return response()->noContent();

@@ -36,36 +36,48 @@ class TransactionController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        ['start' => $start, 'end' => $end] = $ledger->cycleBounds(CarbonImmutable::now());
-
         $query = $ledger->transactions()
             ->with(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category', 'splits.payee'])
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
 
-        $dateFrom = $request->get('date_from', $start->toDateString());
-        $dateTo = $request->get('date_to', $end->toDateString());
-
-        $query->whereBetween('transaction_date', [$dateFrom, $dateTo]);
-
-        if ($request->filled('account_id')) {
-            $query->where('account_id', $request->get('account_id'));
+        if ($request->filled('bill_id')) {
+            $query->where('bill_id', $request->get('bill_id'));
         }
 
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->get('category_id'));
+        $dateFrom = $request->get('date_from');
+        $dateTo = $request->get('date_to');
+
+        if ($dateFrom && $dateTo) {
+            $query->whereBetween('transaction_date', [$dateFrom, $dateTo]);
+        } elseif ($dateFrom) {
+            $query->where('transaction_date', '>=', $dateFrom);
+        } elseif ($dateTo) {
+            $query->where('transaction_date', '<=', $dateTo);
+        }
+
+        $accountIds = $this->resolveArrayFilter($request, 'account_ids');
+        if ($accountIds !== null) {
+            $query->whereIn('account_id', $accountIds);
+        }
+
+        $categoryIds = $this->resolveArrayFilter($request, 'category_ids');
+        if ($categoryIds !== null) {
+            $query->whereIn('category_id', $categoryIds);
         }
 
         if ($request->boolean('uncategorized')) {
             $query->whereNull('category_id')->where('transaction_type', '!=', 'transfer');
         }
 
-        if ($request->filled('transaction_type')) {
-            $query->where('transaction_type', $request->get('transaction_type'));
+        $transactionTypes = $this->resolveArrayFilter($request, 'transaction_types');
+        if ($transactionTypes !== null) {
+            $query->whereIn('transaction_type', $transactionTypes);
         }
 
-        if ($request->filled('payee_id')) {
-            $query->where('payee_id', $request->get('payee_id'));
+        $payeeIds = $this->resolveArrayFilter($request, 'payee_ids');
+        if ($payeeIds !== null) {
+            $query->whereIn('payee_id', $payeeIds);
         }
 
         if ($request->filled('search')) {
@@ -76,8 +88,9 @@ class TransactionController extends Controller
             });
         }
 
-        if ($request->filled('tag_id')) {
-            $query->whereHas('tags', fn ($q) => $q->where('tags.id', $request->get('tag_id')));
+        $tagIds = $this->resolveArrayFilter($request, 'tag_ids');
+        if ($tagIds !== null) {
+            $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tagIds));
         }
 
         if ($request->wantsJson()) {
@@ -94,14 +107,15 @@ class TransactionController extends Controller
             'payees' => $ledger->payees()->orderBy('name')->get(),
             'tags' => $ledger->tags()->orderBy('name')->get(),
             'filters' => [
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'account_id' => $request->get('account_id'),
-                'category_id' => $request->get('category_id'),
-                'transaction_type' => $request->get('transaction_type'),
-                'payee_id' => $request->get('payee_id'),
+                'date_from' => $dateFrom ?? '',
+                'date_to' => $dateTo ?? '',
+                'account_ids' => $accountIds ?? [],
+                'category_ids' => $categoryIds ?? [],
+                'transaction_types' => $transactionTypes ?? [],
+                'payee_ids' => $payeeIds ?? [],
+                'tag_ids' => $tagIds ?? [],
                 'search' => $request->get('search'),
-                'tag_id' => $request->get('tag_id'),
+                'bill_id' => $request->get('bill_id'),
                 'uncategorized' => $request->boolean('uncategorized') ? '1' : null,
             ],
         ]);
@@ -157,6 +171,29 @@ class TransactionController extends Controller
         $this->celebrateFirstTransaction();
 
         return back();
+    }
+
+    /**
+     * Resolve an array filter from the request.
+     * Supports both `key[]` (standard array) and `key` (comma-separated or single value) formats.
+     *
+     * @return string[]|null
+     */
+    private function resolveArrayFilter(Request $request, string $key): ?array
+    {
+        $value = $request->input($key);
+
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+
+        if (is_array($value)) {
+            $filtered = array_filter($value, fn ($v) => $v !== null && $v !== '');
+
+            return $filtered !== [] ? array_values($filtered) : null;
+        }
+
+        return [(string) $value];
     }
 
     /**
@@ -341,20 +378,24 @@ class TransactionController extends Controller
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
 
-        if ($request->filled('account_id')) {
-            $query->where('account_id', $request->get('account_id'));
+        $accountIds = $this->resolveArrayFilter($request, 'account_ids');
+        if ($accountIds !== null) {
+            $query->whereIn('account_id', $accountIds);
         }
 
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->get('category_id'));
+        $categoryIds = $this->resolveArrayFilter($request, 'category_ids');
+        if ($categoryIds !== null) {
+            $query->whereIn('category_id', $categoryIds);
         }
 
-        if ($request->filled('transaction_type')) {
-            $query->where('transaction_type', $request->get('transaction_type'));
+        $transactionTypes = $this->resolveArrayFilter($request, 'transaction_types');
+        if ($transactionTypes !== null) {
+            $query->whereIn('transaction_type', $transactionTypes);
         }
 
-        if ($request->filled('payee_id')) {
-            $query->where('payee_id', $request->get('payee_id'));
+        $payeeIds = $this->resolveArrayFilter($request, 'payee_ids');
+        if ($payeeIds !== null) {
+            $query->whereIn('payee_id', $payeeIds);
         }
 
         if ($request->filled('search')) {

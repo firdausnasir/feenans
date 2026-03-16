@@ -308,12 +308,8 @@ class TransactionService
      */
     private function deleteAttachments(Transaction $transaction): void
     {
-        $disk = Storage::disk(
-            (string) config('app.attachment_disk', 'local')
-        );
-
         foreach ($transaction->attachments as $attachment) {
-            $disk->delete($attachment->path);
+            Storage::delete($attachment->path);
             $attachment->delete();
         }
     }

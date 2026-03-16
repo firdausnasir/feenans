@@ -314,11 +314,15 @@ class ReportController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        $month = $request->query('month', CarbonImmutable::today()->format('Y-m'));
-        $parsedMonth = CarbonImmutable::createFromFormat('Y-m', $month);
-
-        $dateFrom = $parsedMonth->startOfMonth();
-        $dateTo = $parsedMonth->endOfMonth();
+        if ($request->filled('date_from') && $request->filled('date_to')) {
+            $dateFrom = CarbonImmutable::parse($request->query('date_from'));
+            $dateTo = CarbonImmutable::parse($request->query('date_to'));
+        } else {
+            $month = $request->query('month', CarbonImmutable::today()->format('Y-m'));
+            $parsedMonth = CarbonImmutable::createFromFormat('Y-m', $month);
+            $dateFrom = $parsedMonth->startOfMonth();
+            $dateTo = $parsedMonth->endOfMonth();
+        }
 
         $dateFromStr = $dateFrom->toDateString();
         $dateToStr = $dateTo->toDateString();
@@ -383,9 +387,11 @@ class ReportController extends Controller
             ];
         }
 
+        $periodLabel = $dateFrom->format('d M Y').' – '.$dateTo->format('d M Y');
+
         $pdf = Pdf::loadView('reports.monthly-pdf', [
             'ledgerName' => $ledger->name,
-            'monthLabel' => $parsedMonth->format('F Y'),
+            'monthLabel' => $periodLabel,
             'incomeTotal' => round($incomeTotal, 2),
             'expenseTotal' => round($expenseTotal, 2),
             'netTotal' => $netTotal,
@@ -394,7 +400,7 @@ class ReportController extends Controller
             'generatedAt' => CarbonImmutable::now()->format('d M Y, H:i'),
         ]);
 
-        $filename = 'report-'.$ledger->name.'-'.$month.'.pdf';
+        $filename = 'report-'.$ledger->name.'-'.$dateFromStr.'-to-'.$dateToStr.'.pdf';
 
         return $pdf->download($filename);
     }
