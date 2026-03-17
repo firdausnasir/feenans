@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -25,20 +24,5 @@ class ApiTokenController extends Controller
         $request->user()->tokens()->where('id', $tokenId)->delete();
 
         return back();
-    }
-
-    public function json(Request $request): JsonResponse
-    {
-        $tokens = $request->user()->tokens()
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(fn ($token) => [
-                'id' => $token->id,
-                'name' => $token->name,
-                'last_used_at' => $token->last_used_at?->toIso8601String(),
-                'created_at' => $token->created_at?->toIso8601String(),
-            ]);
-
-        return response()->json(['data' => $tokens]);
     }
 }

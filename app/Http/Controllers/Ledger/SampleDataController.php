@@ -21,13 +21,4 @@ class SampleDataController extends Controller
 
         return back()->with('success', 'Sample data loaded successfully.');
     }
-
-    public function destroy(Ledger $ledger, SampleDataService $sampleDataService): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $sampleDataService->remove($ledger);
-
-        return back()->with('success', 'Sample data removed successfully.');
-    }
 }

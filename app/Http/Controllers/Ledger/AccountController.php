@@ -4,13 +4,8 @@ namespace App\Http\Controllers\Ledger;
 
 use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ReorderRequest;
-use App\Http\Requests\StoreAccountRequest;
-use App\Http\Requests\UpdateAccountRequest;
 use App\Models\Account;
 use App\Models\Ledger;
-use Carbon\CarbonImmutable;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,15 +25,6 @@ class AccountController extends Controller
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/accounts/create');
-    }
-
-    public function store(StoreAccountRequest $request, Ledger $ledger): RedirectResponse
-    {
-        $this->authorize('view', $ledger);
-
-        $ledger->accounts()->create($request->validated());
-
-        return to_route('ledgers.accounts.index', $ledger);
     }
 
     public function show(Request $request, Ledger $ledger, Account $account): Response
@@ -116,72 +102,5 @@ class AccountController extends Controller
         return Inertia::render('ledgers/accounts/edit', [
             'accountId' => $account->id,
         ]);
-    }
-
-    public function update(UpdateAccountRequest $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $account->update($request->validated());
-
-        return to_route('ledgers.accounts.show', [$ledger, $account]);
-    }
-
-    public function destroy(Request $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('delete', $ledger);
-
-        $account->delete();
-
-        return to_route('ledgers.accounts.index', $ledger);
-    }
-
-    public function toggleVisibility(Request $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $account->update(['is_hidden' => ! $account->is_hidden]);
-
-        return back();
-    }
-
-    public function adjustBalance(Request $request, Ledger $ledger, Account $account): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $validated = $request->validate([
-            'new_balance' => ['required', 'numeric'],
-        ]);
-
-        $currentBalance = (float) $account->initial_balance + (float) $account->transactions()->sum('amount');
-        $newBalance = (float) $validated['new_balance'];
-        $difference = round($newBalance - $currentBalance, 2);
-
-        if ($difference == 0) {
-            return back();
-        }
-
-        $transactionType = $difference > 0 ? TransactionType::Income : TransactionType::Expense;
-
-        $ledger->transactions()->create([
-            'account_id' => $account->id,
-            'transaction_type' => $transactionType,
-            'amount' => $difference,
-            'description' => 'Balance adjustment',
-            'transaction_date' => CarbonImmutable::today()->toDateString(),
-        ]);
-
-        return back();
-    }
-
-    public function reorder(ReorderRequest $request, Ledger $ledger): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        foreach ($request->items as $item) {
-            $ledger->accounts()->where('id', $item['id'])->update(['position' => $item['position']]);
-        }
-
-        return back();
     }
 }

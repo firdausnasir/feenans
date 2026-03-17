@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Ledger\AccountController;
-use App\Http\Controllers\Ledger\AccountTypeController;
 use App\Http\Controllers\Ledger\ActivityLogController;
 use App\Http\Controllers\Ledger\ApiTokenController;
 use App\Http\Controllers\Ledger\AttachmentController;
@@ -33,37 +32,19 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
 
     // Budgets
     Route::get('ledgers/{ledger}/budgets', [BudgetController::class, 'index'])->name('ledgers.budgets.index');
-    Route::post('ledgers/{ledger}/budgets', [BudgetController::class, 'store'])->name('ledgers.budgets.store');
-    Route::put('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'update'])->name('ledgers.budgets.update');
-    Route::delete('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'destroy'])->name('ledgers.budgets.destroy');
 
     // Import
     Route::get('ledgers/{ledger}/import', [ImportController::class, 'create'])->name('ledgers.import.create');
-    Route::post('ledgers/{ledger}/import/parse', [ImportController::class, 'parse'])->name('ledgers.import.parse');
-    Route::post('ledgers/{ledger}/import', [ImportController::class, 'store'])->name('ledgers.import.store');
-    Route::get('ledgers/{ledger}/import/mappings', [ImportController::class, 'mappings'])->name('ledgers.import.mappings');
-    Route::post('ledgers/{ledger}/import/mappings', [ImportController::class, 'saveMapping'])->name('ledgers.import.mappings.store');
-    Route::delete('ledgers/{ledger}/import/mappings/{importMapping}', [ImportController::class, 'destroyMapping'])->name('ledgers.import.mappings.destroy');
 
-    // Transactions — bulk operations and export must come before {transaction} wildcard routes
-    Route::post('ledgers/{ledger}/transactions/bulk-update', [TransactionController::class, 'bulkUpdate'])
-        ->name('ledgers.transactions.bulk-update');
-    Route::post('ledgers/{ledger}/transactions/bulk-delete', [TransactionController::class, 'bulkDestroy'])
-        ->name('ledgers.transactions.bulk-destroy');
+    // Transactions
     Route::get('ledgers/{ledger}/transactions/export', [TransactionController::class, 'export'])
         ->name('ledgers.transactions.export');
-    Route::get('ledgers/{ledger}/transactions/select-all', [TransactionController::class, 'selectAll'])
-        ->name('ledgers.transactions.select-all');
     Route::get('ledgers/{ledger}/transactions', [TransactionController::class, 'index'])
         ->name('ledgers.transactions.index');
     Route::post('ledgers/{ledger}/transactions', [TransactionController::class, 'store'])
         ->name('ledgers.transactions.store');
     Route::get('ledgers/{ledger}/transactions/{transaction}/edit', [TransactionController::class, 'edit'])
         ->name('ledgers.transactions.edit');
-    Route::put('ledgers/{ledger}/transactions/{transaction}', [TransactionController::class, 'update'])
-        ->name('ledgers.transactions.update');
-    Route::delete('ledgers/{ledger}/transactions/{transaction}', [TransactionController::class, 'destroy'])
-        ->name('ledgers.transactions.destroy');
     Route::post('ledgers/{ledger}/transactions/{transaction}/attachments', [AttachmentController::class, 'store'])
         ->name('ledgers.transactions.attachments.store');
     Route::get('ledgers/{ledger}/transactions/{transaction}/attachments/{attachment}', [AttachmentController::class, 'show'])
@@ -71,79 +52,36 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::delete('ledgers/{ledger}/transactions/{transaction}/attachments/{attachment}', [AttachmentController::class, 'destroy'])
         ->name('ledgers.transactions.attachments.destroy');
 
-    // Accounts — reorder must come before {account} wildcard routes
-    Route::post('ledgers/{ledger}/accounts/reorder', [AccountController::class, 'reorder'])
-        ->name('ledgers.accounts.reorder');
+    // Accounts
     Route::get('ledgers/{ledger}/accounts', [AccountController::class, 'index'])
         ->name('ledgers.accounts.index');
     Route::get('ledgers/{ledger}/accounts/create', [AccountController::class, 'create'])
         ->name('ledgers.accounts.create');
-    Route::post('ledgers/{ledger}/accounts', [AccountController::class, 'store'])
-        ->name('ledgers.accounts.store');
     Route::get('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'show'])
         ->name('ledgers.accounts.show');
     Route::get('ledgers/{ledger}/accounts/{account}/export', [AccountController::class, 'export'])
         ->name('ledgers.accounts.export');
     Route::get('ledgers/{ledger}/accounts/{account}/edit', [AccountController::class, 'edit'])
         ->name('ledgers.accounts.edit');
-    Route::put('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'update'])
-        ->name('ledgers.accounts.update');
-    Route::delete('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'destroy'])
-        ->name('ledgers.accounts.destroy');
-    Route::patch('ledgers/{ledger}/accounts/{account}/toggle-visibility', [AccountController::class, 'toggleVisibility'])
-        ->name('ledgers.accounts.toggle-visibility');
-    Route::post('ledgers/{ledger}/accounts/{account}/adjust-balance', [AccountController::class, 'adjustBalance'])
-        ->name('ledgers.accounts.adjust-balance');
 
-    // Categories — reorder must come before {category} wildcard routes
-    Route::post('ledgers/{ledger}/categories/reorder', [CategoryController::class, 'reorder'])
-        ->name('ledgers.categories.reorder');
+    // Categories
     Route::get('ledgers/{ledger}/categories', [CategoryController::class, 'index'])
         ->name('ledgers.categories.index');
-    Route::get('ledgers/{ledger}/categories/create', [CategoryController::class, 'create'])
-        ->name('ledgers.categories.create');
-    Route::post('ledgers/{ledger}/categories', [CategoryController::class, 'store'])
-        ->name('ledgers.categories.store');
-    Route::put('ledgers/{ledger}/categories/{category}', [CategoryController::class, 'update'])
-        ->name('ledgers.categories.update');
-    Route::delete('ledgers/{ledger}/categories/{category}', [CategoryController::class, 'destroy'])
-        ->name('ledgers.categories.destroy');
 
     // Bills
     Route::get('ledgers/{ledger}/bills', [BillController::class, 'index'])
         ->name('ledgers.bills.index');
     Route::get('ledgers/{ledger}/bills/create', [BillController::class, 'create'])
         ->name('ledgers.bills.create');
-    Route::post('ledgers/{ledger}/bills', [BillController::class, 'store'])
-        ->name('ledgers.bills.store');
     Route::get('ledgers/{ledger}/bills/{bill}/edit', [BillController::class, 'edit'])
         ->name('ledgers.bills.edit');
-    Route::put('ledgers/{ledger}/bills/{bill}', [BillController::class, 'update'])
-        ->name('ledgers.bills.update');
-    Route::delete('ledgers/{ledger}/bills/{bill}', [BillController::class, 'destroy'])
-        ->name('ledgers.bills.destroy');
-    Route::post('ledgers/{ledger}/bills/{bill}/pay', [BillController::class, 'pay'])
-        ->name('ledgers.bills.pay');
-    Route::patch('ledgers/{ledger}/bills/{bill}/toggle', [BillController::class, 'toggle'])
-        ->name('ledgers.bills.toggle');
 
-    // Payees — merge must come before {payee} wildcard routes
-    Route::post('ledgers/{ledger}/payees/merge', [PayeeController::class, 'merge'])
-        ->name('ledgers.payees.merge');
+    // Payees
     Route::get('ledgers/{ledger}/payees', [PayeeController::class, 'index'])
         ->name('ledgers.payees.index');
-    Route::post('ledgers/{ledger}/payees', [PayeeController::class, 'store'])
-        ->name('ledgers.payees.store');
-    Route::put('ledgers/{ledger}/payees/{payee}', [PayeeController::class, 'update'])
-        ->name('ledgers.payees.update');
-    Route::delete('ledgers/{ledger}/payees/{payee}', [PayeeController::class, 'destroy'])
-        ->name('ledgers.payees.destroy');
 
     // Tags
     Route::get('ledgers/{ledger}/tags', [TagController::class, 'index'])->name('ledgers.tags.index');
-    Route::post('ledgers/{ledger}/tags', [TagController::class, 'store'])->name('ledgers.tags.store');
-    Route::put('ledgers/{ledger}/tags/{tag}', [TagController::class, 'update'])->name('ledgers.tags.update');
-    Route::delete('ledgers/{ledger}/tags/{tag}', [TagController::class, 'destroy'])->name('ledgers.tags.destroy');
 
     // Reports
     Route::get('ledgers/{ledger}/reports', [ReportController::class, 'index'])
@@ -162,8 +100,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     // Settings
     Route::get('ledgers/{ledger}/settings', [SettingsController::class, 'index'])
         ->name('ledgers.settings.index');
-    Route::put('ledgers/{ledger}/settings', [SettingsController::class, 'update'])
-        ->name('ledgers.settings.update');
 
     // Data Export
     Route::get('ledgers/{ledger}/export', DataExportController::class)
@@ -174,22 +110,8 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('api-tokens.store');
     Route::delete('api-tokens/{token}', [ApiTokenController::class, 'destroy'])
         ->name('api-tokens.destroy');
-    Route::get('api-tokens', [ApiTokenController::class, 'json'])
-        ->name('api-tokens.json');
-
-    // Account Types — reorder must come before {accountType} wildcard routes
-    Route::post('ledgers/{ledger}/account-types/reorder', [AccountTypeController::class, 'reorder'])
-        ->name('ledgers.account-types.reorder');
-    Route::post('ledgers/{ledger}/account-types', [AccountTypeController::class, 'store'])
-        ->name('ledgers.account-types.store');
-    Route::put('ledgers/{ledger}/account-types/{accountType}', [AccountTypeController::class, 'update'])
-        ->name('ledgers.account-types.update');
-    Route::delete('ledgers/{ledger}/account-types/{accountType}', [AccountTypeController::class, 'destroy'])
-        ->name('ledgers.account-types.destroy');
 
     // Sample Data
     Route::post('ledgers/{ledger}/sample-data', [SampleDataController::class, 'store'])
         ->name('ledgers.sample-data.store');
-    Route::delete('ledgers/{ledger}/sample-data', [SampleDataController::class, 'destroy'])
-        ->name('ledgers.sample-data.destroy');
 });
