@@ -30,13 +30,13 @@ import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
 import { formatAmount } from '@/lib/format';
+import type { Account, AccountType, BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     edit as editRoute,
     index as accountsIndex,
     show as accountShow,
 } from '@/routes/ledgers/accounts';
-import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
 type ApiAccount = Omit<Account, 'accountType'> & {
     account_type?: {

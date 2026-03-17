@@ -13,8 +13,8 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { create, dashboard, index } from '@/routes/ledgers';
 import type { Ledger } from '@/types';
+import { create, dashboard, index } from '@/routes/ledgers';
 
 type LedgerSummary = Pick<Ledger, 'id' | 'name' | 'currency_code'>;
 
