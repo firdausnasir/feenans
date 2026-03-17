@@ -1,12 +1,5 @@
 import { Head } from '@inertiajs/react';
-import {
-    ChevronDown,
-    Loader2,
-    MoreHorizontal,
-    Paperclip,
-    Receipt,
-    SlidersHorizontal,
-} from 'lucide-react';
+import { ChevronDown, Loader2, Receipt, SlidersHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
@@ -14,6 +7,7 @@ import { AddTransactionModal } from '@/components/add-transaction-modal';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
+import { TransactionCard } from '@/components/transaction-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,29 +21,15 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
-import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     exportMethod as exportTransactions,
@@ -202,24 +182,6 @@ function updateUrlParams(filters: Filters, page: number): void {
         : window.location.pathname;
 
     window.history.replaceState(null, '', newUrl);
-}
-
-function amountColor(transaction: Transaction): string {
-    if (transaction.transaction_type === 'transfer') {
-        return 'text-blue-500';
-    }
-
-    return parseFloat(transaction.amount) >= 0
-        ? 'text-green-600'
-        : 'text-red-500';
-}
-
-function amountPrefix(transaction: Transaction): string {
-    if (transaction.transaction_type === 'transfer') {
-        return '';
-    }
-
-    return parseFloat(transaction.amount) >= 0 ? '+' : '-';
 }
 
 type EditFormData = {
@@ -1019,17 +981,23 @@ function EditTransactionModal({
     );
 }
 
-function TransactionTableSkeleton() {
+function TransactionListSkeleton() {
     return (
-        <div className="space-y-3 p-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
-                    <Skeleton className="h-4 w-4" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="ml-auto h-4 w-16" />
+        <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-border p-4">
+                    <div className="flex items-start justify-between">
+                        <div className="space-y-2">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-3.5 w-24" />
+                            <Skeleton className="h-3 w-48" />
+                        </div>
+                        <Skeleton className="h-4 w-20" />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="h-3 w-20" />
+                    </div>
                 </div>
             ))}
         </div>
@@ -1814,562 +1782,126 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                     </div>
                 )}
 
-                {/* Table */}
-                <Card>
+                {/* Transaction list */}
+                <div>
                     {/* Showing X-Y of Z */}
                     {transactions.total > 0 && (
-                        <div className="px-6 pt-4 text-xs text-muted-foreground">
+                        <div className="mb-3 text-xs text-muted-foreground">
                             Showing {transactions.from}–{transactions.to} of{' '}
                             {transactions.total}
                         </div>
                     )}
 
-                    <CardContent className="p-0">
-                        {txLoading && !txResult ? (
-                            <TransactionTableSkeleton />
-                        ) : (
-                            <>
-                                {/* Mobile card list */}
-                                <div className="divide-y sm:hidden">
-                                    {transactions.data.length === 0 ? (
-                                        <EmptyState
-                                            icon={
-                                                <Receipt className="size-6" />
-                                            }
-                                            title="No transactions yet"
-                                            description="Start tracking your spending by adding your first transaction."
-                                        />
-                                    ) : (
-                                        <>
-                                            <div className="flex items-center gap-2 border-b px-4 py-2">
-                                                <Checkbox
-                                                    checked={
-                                                        allSelected
-                                                            ? true
-                                                            : someSelected
-                                                              ? 'indeterminate'
-                                                              : false
-                                                    }
-                                                    onCheckedChange={
-                                                        handleSelectAll
-                                                    }
-                                                />
-                                                <span className="text-xs text-muted-foreground">
-                                                    Select all
-                                                </span>
-                                            </div>
-                                            {transactions.data.map(
-                                                (transaction) => (
-                                                    <div
-                                                        key={transaction.id}
-                                                        className="space-y-1.5 px-4 py-3"
-                                                        onClick={() =>
-                                                            setEditTransaction(
-                                                                transaction,
-                                                            )
-                                                        }
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="flex min-w-0 flex-1 items-start gap-3">
-                                                                <div
-                                                                    className="pt-0.5"
-                                                                    onClick={(
-                                                                        e,
-                                                                    ) =>
-                                                                        e.stopPropagation()
-                                                                    }
-                                                                >
-                                                                    <Checkbox
-                                                                        checked={selectedIds.includes(
-                                                                            transaction.id,
-                                                                        )}
-                                                                        onCheckedChange={(
-                                                                            checked,
-                                                                        ) =>
-                                                                            handleSelectOne(
-                                                                                transaction.id,
-                                                                                checked,
-                                                                            )
-                                                                        }
-                                                                    />
-                                                                </div>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <p className="truncate text-sm font-medium">
-                                                                        {transaction.description ??
-                                                                            transaction
-                                                                                .payee
-                                                                                ?.name ??
-                                                                            '—'}
-                                                                    </p>
-                                                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                                                        {formatDate(
-                                                                            transaction.transaction_date,
-                                                                        )}
-                                                                        {transaction
-                                                                            .account
-                                                                            ?.name
-                                                                            ? ` · ${transaction.account.name}`
-                                                                            : ''}
-                                                                        {transaction
-                                                                            .category
-                                                                            ?.name
-                                                                            ? ` · ${transaction.category.name}`
-                                                                            : ''}
-                                                                        {transaction
-                                                                            .payee
-                                                                            ?.name
-                                                                            ? ` · ${transaction.payee.name}`
-                                                                            : ''}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex shrink-0 items-center gap-1">
-                                                                <span
-                                                                    className={`text-sm font-semibold tabular-nums ${amountColor(transaction)}`}
-                                                                >
-                                                                    {amountPrefix(
-                                                                        transaction,
-                                                                    )}
-                                                                    {formatAbsAmount(
-                                                                        transaction.amount,
-                                                                    )}
-                                                                </span>
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger
-                                                                        asChild
-                                                                        onClick={(
-                                                                            e,
-                                                                        ) =>
-                                                                            e.stopPropagation()
-                                                                        }
-                                                                    >
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-7 w-7"
-                                                                        >
-                                                                            <MoreHorizontal className="h-4 w-4" />
-                                                                        </Button>
-                                                                    </DropdownMenuTrigger>
-                                                                    <DropdownMenuContent align="end">
-                                                                        <DropdownMenuItem
-                                                                            onClick={(
-                                                                                e,
-                                                                            ) => {
-                                                                                e.stopPropagation();
-                                                                                setEditTransaction(
-                                                                                    transaction,
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            Edit
-                                                                        </DropdownMenuItem>
-                                                                        <DropdownMenuItem
-                                                                            onClick={(
-                                                                                e,
-                                                                            ) => {
-                                                                                e.stopPropagation();
-                                                                                handleDuplicate(
-                                                                                    transaction,
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            Duplicate
-                                                                        </DropdownMenuItem>
-                                                                        <DropdownMenuItem
-                                                                            className="text-destructive"
-                                                                            onClick={(
-                                                                                e,
-                                                                            ) => {
-                                                                                e.stopPropagation();
-                                                                                setDeleteConfirmTransaction(
-                                                                                    transaction,
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            Delete
-                                                                        </DropdownMenuItem>
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                            </div>
-                                                        </div>
-                                                        {/* Badges row */}
-                                                        {((
-                                                            transaction.splits ??
-                                                            []
-                                                        ).length > 0 ||
-                                                            (
-                                                                transaction.attachments ??
-                                                                []
-                                                            ).length > 0) && (
-                                                            <div className="flex flex-wrap items-center gap-1 pl-8">
-                                                                {(
-                                                                    transaction.splits ??
-                                                                    []
-                                                                ).length >
-                                                                    0 && (
-                                                                    <Badge
-                                                                        variant="secondary"
-                                                                        className="text-[10px]"
-                                                                    >
-                                                                        {
-                                                                            transaction
-                                                                                .splits
-                                                                                ?.length
-                                                                        }{' '}
-                                                                        splits
-                                                                    </Badge>
-                                                                )}
-                                                                {(
-                                                                    transaction.attachments ??
-                                                                    []
-                                                                ).length >
-                                                                    0 && (
-                                                                    <Badge
-                                                                        variant="outline"
-                                                                        className="text-[10px]"
-                                                                    >
-                                                                        <Paperclip className="mr-0.5 h-2.5 w-2.5" />
-                                                                        {
-                                                                            transaction
-                                                                                .attachments
-                                                                                ?.length
-                                                                        }
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {/* Split details */}
-                                                        {(
-                                                            transaction.splits ??
-                                                            []
-                                                        ).length > 0 && (
-                                                            <div className="space-y-1 pl-8">
-                                                                {(
-                                                                    transaction.splits ??
-                                                                    []
-                                                                ).map(
-                                                                    (split) => (
-                                                                        <div
-                                                                            key={
-                                                                                split.id
-                                                                            }
-                                                                            className="flex items-center justify-between text-xs text-muted-foreground"
-                                                                        >
-                                                                            <span className="truncate">
-                                                                                {split.description ??
-                                                                                    split
-                                                                                        .category
-                                                                                        ?.name ??
-                                                                                    'Uncategorized'}
-                                                                            </span>
-                                                                            <span className="ml-2 shrink-0 tabular-nums">
-                                                                                {formatAbsAmount(
-                                                                                    split.amount,
-                                                                                )}
-                                                                            </span>
-                                                                        </div>
-                                                                    ),
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ),
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                <Table className="hidden sm:table">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-10 pl-4">
-                                                <Checkbox
-                                                    checked={
-                                                        allSelected
-                                                            ? true
-                                                            : someSelected
-                                                              ? 'indeterminate'
-                                                              : false
-                                                    }
-                                                    onCheckedChange={
-                                                        handleSelectAll
-                                                    }
-                                                    aria-label="Select all"
-                                                />
-                                            </TableHead>
-                                            <TableHead>Date</TableHead>
-                                            <TableHead className="hidden md:table-cell">
-                                                Account
-                                            </TableHead>
-                                            <TableHead className="hidden lg:table-cell">
-                                                Category
-                                            </TableHead>
-                                            <TableHead className="hidden lg:table-cell">
-                                                Payee
-                                            </TableHead>
-                                            <TableHead>Description</TableHead>
-                                            <TableHead className="text-right">
-                                                Amount
-                                            </TableHead>
-                                            {runningBalances && (
-                                                <TableHead className="hidden text-right lg:table-cell">
-                                                    Balance
-                                                </TableHead>
-                                            )}
-                                            <TableHead className="w-10" />
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {transactions.data.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell
-                                                    colSpan={
-                                                        runningBalances ? 10 : 9
-                                                    }
-                                                >
-                                                    <EmptyState
-                                                        icon={
-                                                            <Receipt className="size-6" />
-                                                        }
-                                                        title="No transactions yet"
-                                                        description="Start tracking your spending by adding your first transaction."
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            transactions.data.map(
-                                                (transaction) => (
-                                                    <TableRow
-                                                        key={transaction.id}
-                                                        className="cursor-pointer"
-                                                        onClick={() =>
-                                                            setEditTransaction(
-                                                                transaction,
-                                                            )
-                                                        }
-                                                    >
-                                                        <TableCell
-                                                            className="pl-4"
-                                                            onClick={(e) =>
-                                                                e.stopPropagation()
-                                                            }
-                                                        >
-                                                            <Checkbox
-                                                                checked={selectedIds.includes(
-                                                                    transaction.id,
-                                                                )}
-                                                                onCheckedChange={(
-                                                                    checked,
-                                                                ) =>
-                                                                    handleSelectOne(
-                                                                        transaction.id,
-                                                                        checked,
-                                                                    )
-                                                                }
-                                                                aria-label={`Select transaction ${transaction.id}`}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell className="text-muted-foreground">
-                                                            {formatDate(
-                                                                transaction.transaction_date,
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="hidden text-muted-foreground md:table-cell">
-                                                            {transaction.account
-                                                                ?.name ?? '—'}
-                                                        </TableCell>
-                                                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                                                            {transaction
-                                                                .category
-                                                                ?.name ?? '—'}
-                                                        </TableCell>
-                                                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                                                            {transaction.payee
-                                                                ?.name ?? '—'}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <span className="font-medium">
-                                                                {transaction.description ??
-                                                                    transaction
-                                                                        .payee
-                                                                        ?.name ??
-                                                                    '—'}
-                                                            </span>
-                                                            {((
-                                                                transaction.splits ??
-                                                                []
-                                                            ).length > 0 ||
-                                                                (
-                                                                    transaction.attachments ??
-                                                                    []
-                                                                ).length >
-                                                                    0) && (
-                                                                <div className="mt-1 flex flex-wrap items-center gap-1">
-                                                                    {(
-                                                                        transaction.splits ??
-                                                                        []
-                                                                    ).length >
-                                                                        0 && (
-                                                                        <Badge
-                                                                            variant="secondary"
-                                                                            className="text-[10px]"
-                                                                        >
-                                                                            {
-                                                                                transaction
-                                                                                    .splits
-                                                                                    ?.length
-                                                                            }{' '}
-                                                                            splits
-                                                                        </Badge>
-                                                                    )}
-                                                                    {(
-                                                                        transaction.attachments ??
-                                                                        []
-                                                                    ).length >
-                                                                        0 && (
-                                                                        <Badge
-                                                                            variant="outline"
-                                                                            className="gap-1 text-[10px]"
-                                                                        >
-                                                                            <Paperclip className="size-2.5" />
-                                                                            {
-                                                                                transaction
-                                                                                    .attachments
-                                                                                    ?.length
-                                                                            }
-                                                                        </Badge>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                            {(
-                                                                transaction.splits ??
-                                                                []
-                                                            ).length > 0 && (
-                                                                <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                                                                    {(
-                                                                        transaction.splits ??
-                                                                        []
-                                                                    ).map(
-                                                                        (
-                                                                            split,
-                                                                        ) => (
-                                                                            <div
-                                                                                key={
-                                                                                    split.id
-                                                                                }
-                                                                                className="flex items-center justify-between gap-3"
-                                                                            >
-                                                                                <span className="truncate">
-                                                                                    {split.description ??
-                                                                                        split
-                                                                                            .category
-                                                                                            ?.name ??
-                                                                                        'Uncategorized'}
-                                                                                </span>
-                                                                                <span className="tabular-nums">
-                                                                                    {formatAbsAmount(
-                                                                                        split.amount,
-                                                                                    )}
-                                                                                </span>
-                                                                            </div>
-                                                                        ),
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell
-                                                            className={`text-right font-semibold tabular-nums ${amountColor(transaction)}`}
-                                                        >
-                                                            {amountPrefix(
-                                                                transaction,
-                                                            )}
-                                                            {formatAbsAmount(
-                                                                transaction.amount,
-                                                            )}
-                                                        </TableCell>
-                                                        {runningBalances && (
-                                                            <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
-                                                                {formatAmount(
-                                                                    runningBalances.get(
-                                                                        transaction.id,
-                                                                    ) ?? 0,
-                                                                )}
-                                                            </TableCell>
-                                                        )}
-                                                        <TableCell
-                                                            className="pr-4"
-                                                            onClick={(e) =>
-                                                                e.stopPropagation()
-                                                            }
-                                                        >
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger
-                                                                    asChild
-                                                                >
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="h-8 w-8 p-0"
-                                                                    >
-                                                                        <MoreHorizontal className="h-4 w-4" />
-                                                                        <span className="sr-only">
-                                                                            Actions
-                                                                        </span>
-                                                                    </Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end">
-                                                                    <DropdownMenuItem
-                                                                        onClick={() =>
-                                                                            setEditTransaction(
-                                                                                transaction,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        Edit
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem
-                                                                        onClick={() =>
-                                                                            handleDuplicate(
-                                                                                transaction,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        Duplicate
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem
-                                                                        className="text-destructive"
-                                                                        onClick={() =>
-                                                                            setDeleteConfirmTransaction(
-                                                                                transaction,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        Delete
-                                                                    </DropdownMenuItem>
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ),
-                                            )
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </>
-                        )}
-
-                        {/* Loading overlay for subsequent fetches */}
-                        {txLoading && txResult && (
-                            <div className="flex items-center justify-center border-t py-4">
-                                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    {txLoading && !txResult ? (
+                        <TransactionListSkeleton />
+                    ) : transactions.data.length === 0 ? (
+                        <EmptyState
+                            icon={<Receipt className="size-6" />}
+                            title="No transactions yet"
+                            description="Start tracking your spending by adding your first transaction."
+                        />
+                    ) : (
+                        <>
+                            {/* Select all header */}
+                            <div className="mb-2 flex items-center gap-2">
+                                <Checkbox
+                                    checked={
+                                        allSelected
+                                            ? true
+                                            : someSelected
+                                              ? 'indeterminate'
+                                              : false
+                                    }
+                                    onCheckedChange={handleSelectAll}
+                                    aria-label="Select all"
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                    Select all
+                                </span>
                             </div>
-                        )}
-                    </CardContent>
+
+                            {/* Select all across pages banner */}
+                            {allSelected &&
+                                !allAcrossPages &&
+                                transactions.total >
+                                    transactions.data.length && (
+                                    <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-center text-sm">
+                                        All {transactions.data.length}{' '}
+                                        transactions on this page are selected.{' '}
+                                        <button
+                                            type="button"
+                                            className="font-medium text-primary hover:underline"
+                                            disabled={loadingSelectAll}
+                                            onClick={handleSelectAllAcrossPages}
+                                        >
+                                            {loadingSelectAll
+                                                ? 'Loading...'
+                                                : `Select all ${transactions.total} matching transactions`}
+                                        </button>
+                                    </div>
+                                )}
+
+                            <div className="space-y-3">
+                                {transactions.data.map((transaction) => (
+                                    <TransactionCard
+                                        key={transaction.id}
+                                        transaction={transaction}
+                                        selectable
+                                        selected={selectedIds.includes(
+                                            transaction.id,
+                                        )}
+                                        onSelectChange={(checked) =>
+                                            handleSelectOne(
+                                                transaction.id,
+                                                checked,
+                                            )
+                                        }
+                                        runningBalance={
+                                            runningBalances?.get(
+                                                transaction.id,
+                                            ) ?? null
+                                        }
+                                        actions={[
+                                            {
+                                                label: 'Edit',
+                                                onClick: () =>
+                                                    setEditTransaction(
+                                                        transaction,
+                                                    ),
+                                            },
+                                            {
+                                                label: 'Duplicate',
+                                                onClick: () =>
+                                                    handleDuplicate(
+                                                        transaction,
+                                                    ),
+                                            },
+                                            {
+                                                label: 'Delete',
+                                                onClick: () =>
+                                                    setDeleteConfirmTransaction(
+                                                        transaction,
+                                                    ),
+                                                variant: 'destructive' as const,
+                                                separator: true,
+                                            },
+                                        ]}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    {/* Loading overlay for subsequent fetches */}
+                    {txLoading && txResult && (
+                        <div className="flex items-center justify-center py-4">
+                            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                    )}
 
                     {/* Pagination */}
                     {transactions.last_page > 1 && (
-                        <div className="flex items-center justify-between border-t border-border px-6 py-3">
+                        <div className="mt-4 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">
                                 Page {transactions.current_page} of{' '}
                                 {transactions.last_page}
@@ -2391,7 +1923,6 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                                         );
                                     }
 
-                                    // Extract page number from the link URL
                                     const linkUrl = new URL(
                                         link.url,
                                         window.location.origin,
@@ -2423,7 +1954,7 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                             </div>
                         </div>
                     )}
-                </Card>
+                </div>
             </div>
 
             {/* Edit modal */}

@@ -299,30 +299,32 @@ export default function AccountShow({ accountId }: { accountId: number }) {
                         </div>
                     </div>
                 ) : (
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <div className="flex items-center gap-2">
-                                {account.accountType?.color && (
-                                    <span
-                                        className="size-3 rounded-full"
-                                        style={{
-                                            backgroundColor:
-                                                account.accountType.color,
-                                        }}
-                                    />
+                    <div className="flex flex-col gap-4">
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    {account.accountType?.color && (
+                                        <span
+                                            className="size-3 shrink-0 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    account.accountType.color,
+                                            }}
+                                        />
+                                    )}
+                                    <h1 className="truncate text-2xl font-semibold tracking-tight">
+                                        {account.name}
+                                    </h1>
+                                </div>
+                                {account.accountType && (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {account.accountType.name}
+                                    </p>
                                 )}
-                                <h1 className="text-2xl font-semibold tracking-tight">
-                                    {account.name}
-                                </h1>
                             </div>
-                            {account.accountType && (
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    {account.accountType.name}
-                                </p>
-                            )}
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                             <AddTransactionModal
                                 ledger={{
                                     id: ledger!.id,
@@ -334,64 +336,80 @@ export default function AccountShow({ accountId }: { accountId: number }) {
                                 defaultAccountId={account.id}
                                 onModalClosed={refetchAll}
                             />
-                            <Button variant="outline" size="sm" asChild>
-                                <a
-                                    href={`/ledgers/${ledger!.id}/accounts/${account.id}/export`}
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-initial"
+                                    asChild
                                 >
-                                    Export CSV
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" asChild>
-                                <Link
-                                    href={editRoute.url({
-                                        ledger: ledger!.id,
-                                        account: account.id,
-                                    })}
+                                    <a
+                                        href={`/ledgers/${ledger!.id}/accounts/${account.id}/export`}
+                                    >
+                                        Export CSV
+                                    </a>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-initial"
+                                    asChild
                                 >
-                                    Edit
-                                </Link>
-                            </Button>
+                                    <Link
+                                        href={editRoute.url({
+                                            ledger: ledger!.id,
+                                            account: account.id,
+                                        })}
+                                    >
+                                        Edit
+                                    </Link>
+                                </Button>
 
-                            <Dialog
-                                open={showDeleteDialog}
-                                onOpenChange={setShowDeleteDialog}
-                            >
-                                <DialogTrigger asChild>
-                                    <Button variant="destructive" size="sm">
-                                        Delete
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
-                                        <DialogTitle>
-                                            Delete account
-                                        </DialogTitle>
-                                        <DialogDescription>
-                                            This will permanently delete{' '}
-                                            <strong>{account.name}</strong> and
-                                            all of its transactions. This action
-                                            cannot be undone.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <DialogFooter>
-                                        <Button
-                                            variant="outline"
-                                            onClick={() =>
-                                                setShowDeleteDialog(false)
-                                            }
-                                        >
-                                            Cancel
-                                        </Button>
+                                <Dialog
+                                    open={showDeleteDialog}
+                                    onOpenChange={setShowDeleteDialog}
+                                >
+                                    <DialogTrigger asChild>
                                         <Button
                                             variant="destructive"
-                                            onClick={handleDelete}
-                                            disabled={deleting}
+                                            size="sm"
+                                            className="flex-1 sm:flex-initial"
                                         >
-                                            Delete account
+                                            Delete
                                         </Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>
+                                                Delete account
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                This will permanently delete{' '}
+                                                <strong>{account.name}</strong>{' '}
+                                                and all of its transactions.
+                                                This action cannot be undone.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <DialogFooter>
+                                            <Button
+                                                variant="outline"
+                                                onClick={() =>
+                                                    setShowDeleteDialog(false)
+                                                }
+                                            >
+                                                Cancel
+                                            </Button>
+                                            <Button
+                                                variant="destructive"
+                                                onClick={handleDelete}
+                                                disabled={deleting}
+                                            >
+                                                Delete account
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
                         </div>
                     </div>
                 )}
