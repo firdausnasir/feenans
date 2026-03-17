@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
+import { TransactionCard } from '@/components/transaction-card';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -174,6 +175,8 @@ export default function AccountShow({ accountId }: { accountId: number }) {
 
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [deleteConfirmTransaction, setDeleteConfirmTransaction] =
+        useState<Transaction | null>(null);
 
     const {
         data: accountResponse,
@@ -277,6 +280,24 @@ export default function AccountShow({ accountId }: { accountId: number }) {
         params.append('account_ids[]', String(accountId));
 
         return `${txBase}?${params.toString()}`;
+    }
+
+    async function handleTransactionDelete() {
+        const transaction = deleteConfirmTransaction;
+
+        if (!transaction) {
+            return;
+        }
+
+        setDeleteConfirmTransaction(null);
+
+        try {
+            await api.delete(`${base}/transactions/${transaction.id}`);
+            toast.success('Transaction deleted');
+            refetchAll();
+        } catch {
+            toast.error('Failed to delete transaction');
+        }
     }
 
     return (
@@ -593,130 +614,114 @@ export default function AccountShow({ accountId }: { accountId: number }) {
                     </Card>
                 )}
 
-                {/* Transaction list */}
-                {transactionsLoading || !transactions ? (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm">
-                                Recent transactions
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {[1, 2, 3, 4, 5].map((i) => (
-                                <div
-                                    key={i}
-                                    className="flex items-center justify-between"
-                                >
-                                    <div>
-                                        <Skeleton className="mb-1 h-4 w-40" />
-                                        <Skeleton className="h-3 w-24" />
-                                    </div>
-                                    <Skeleton className="h-4 w-16" />
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="text-sm">
-                                Recent transactions
-                            </CardTitle>
+                {/* Recent transactions */}
+                <div>
+                    <div className="mb-3 flex items-center justify-between">
+                        <h2 className="text-sm font-semibold">
+                            Recent Transactions
+                        </h2>
+                        {transactions && transactions.total > 0 && (
                             <span className="text-xs text-muted-foreground">
                                 {transactions.total} total
                             </span>
-                        </CardHeader>
-                        <CardContent>
-                            {transactions.data.length === 0 ? (
-                                <div className="flex flex-col items-center gap-2 py-8 text-center">
-                                    <p className="text-sm font-medium">
-                                        No transactions yet
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Transactions for this account will
-                                        appear here.
-                                    </p>
+                        )}
+                    </div>
+
+                    {transactionsLoading || !transactions ? (
+                        <div className="space-y-3">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <Skeleton
+                                    key={i}
+                                    className="h-20 w-full rounded-lg"
+                                />
+                            ))}
+                        </div>
+                    ) : transactions.data.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-12 text-center">
+                            <p className="text-sm font-medium">
+                                No transactions yet
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Transactions for this account will appear here.
+                            </p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="space-y-3">
+                                {transactions.data.map((transaction) => (
+                                    <TransactionCard
+                                        key={transaction.id}
+                                        transaction={transaction}
+                                        editUrl={`/ledgers/${ledger!.id}/transactions/${transaction.id}/edit`}
+                                        actions={[
+                                            {
+                                                label: 'Edit',
+                                                onClick: () =>
+                                                    router.visit(
+                                                        `/ledgers/${ledger!.id}/transactions/${transaction.id}/edit`,
+                                                    ),
+                                            },
+                                            {
+                                                label: 'Delete',
+                                                onClick: () =>
+                                                    setDeleteConfirmTransaction(
+                                                        transaction,
+                                                    ),
+                                                variant: 'destructive' as const,
+                                                separator: true,
+                                            },
+                                        ]}
+                                    />
+                                ))}
+                            </div>
+
+                            {transactions.total > transactions.data.length && (
+                                <div className="mt-4 flex justify-center">
+                                    <Button variant="outline" size="sm" asChild>
+                                        <Link href={viewAllTransactionsUrl()}>
+                                            View all {transactions.total}{' '}
+                                            transactions
+                                        </Link>
+                                    </Button>
                                 </div>
-                            ) : (
-                                <>
-                                    <ul className="divide-y divide-border">
-                                        {transactions.data.map((t) => {
-                                            const amount = parseFloat(t.amount);
-                                            const isExpense = amount < 0;
-
-                                            return (
-                                                <li
-                                                    key={t.id}
-                                                    className="flex items-center justify-between gap-4 py-3"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <p className="truncate text-sm font-medium">
-                                                            {t.description ??
-                                                                t.payee?.name ??
-                                                                'No description'}
-                                                        </p>
-                                                        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                                            <span>
-                                                                {formatDate(
-                                                                    t.transaction_date,
-                                                                )}
-                                                            </span>
-                                                            {t.category && (
-                                                                <>
-                                                                    <span>
-                                                                        ·
-                                                                    </span>
-                                                                    <span>
-                                                                        {
-                                                                            t
-                                                                                .category
-                                                                                .name
-                                                                        }
-                                                                    </span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <p
-                                                        className={`shrink-0 text-sm font-semibold tabular-nums ${
-                                                            isExpense
-                                                                ? 'text-red-500'
-                                                                : 'text-green-600'
-                                                        }`}
-                                                    >
-                                                        {isExpense ? '-' : '+'}
-                                                        {formatAbsAmount(
-                                                            amount,
-                                                        )}
-                                                    </p>
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-
-                                    {transactions.total >
-                                        transactions.data.length && (
-                                        <div className="mt-4 flex justify-center border-t border-border pt-3">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                asChild
-                                            >
-                                                <Link
-                                                    href={viewAllTransactionsUrl()}
-                                                >
-                                                    View all{' '}
-                                                    {transactions.total}{' '}
-                                                    transactions
-                                                </Link>
-                                            </Button>
-                                        </div>
-                                    )}
-                                </>
                             )}
-                        </CardContent>
-                    </Card>
-                )}
+                        </>
+                    )}
+                </div>
+
+                {/* Delete transaction confirmation */}
+                <Dialog
+                    open={deleteConfirmTransaction !== null}
+                    onOpenChange={(open) =>
+                        !open && setDeleteConfirmTransaction(null)
+                    }
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Delete transaction</DialogTitle>
+                            <DialogDescription>
+                                This will permanently delete this transaction.
+                                This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    setDeleteConfirmTransaction(null)
+                                }
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleTransactionDelete}
+                            >
+                                Delete transaction
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppLayout>
     );

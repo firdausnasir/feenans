@@ -3,6 +3,7 @@ import { Loader2, Pencil, Search, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
+import { TransactionCard } from '@/components/transaction-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,17 +18,10 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-} from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
-import { formatAmount } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
@@ -716,8 +710,8 @@ export default function PayeesIndex() {
                 )}
             </div>
 
-            {/* Transaction drill-down sheet */}
-            <Sheet
+            {/* Transaction drill-down modal */}
+            <Dialog
                 open={selectedPayee !== null}
                 onOpenChange={(open) => {
                     if (!open) {
@@ -726,83 +720,30 @@ export default function PayeesIndex() {
                     }
                 }}
             >
-                <SheetContent
-                    side="right"
-                    className="overflow-y-auto sm:max-w-md"
-                >
-                    <SheetHeader>
-                        <SheetTitle>{selectedPayee?.name}</SheetTitle>
-                    </SheetHeader>
+                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{selectedPayee?.name}</DialogTitle>
+                        <DialogDescription>
+                            Recent transactions for this payee.
+                        </DialogDescription>
+                    </DialogHeader>
 
-                    <div className="px-4 pb-6">
+                    <div className="space-y-2">
                         {loadingTransactions ? (
                             <div className="flex items-center justify-center py-8">
                                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
                             </div>
                         ) : payeeTransactions.length === 0 ? (
                             <p className="py-6 text-center text-sm text-muted-foreground">
-                                No transactions found for this payee.
+                                No transactions found.
                             </p>
                         ) : (
-                            <div className="space-y-2">
+                            <>
                                 {payeeTransactions.map((txn) => (
-                                    <div
+                                    <TransactionCard
                                         key={txn.id}
-                                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                                    >
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="truncate font-medium">
-                                                    {txn.description ||
-                                                        'No description'}
-                                                </span>
-                                                <Badge
-                                                    variant="outline"
-                                                    className="shrink-0 text-xs"
-                                                >
-                                                    {txn.transaction_type}
-                                                </Badge>
-                                            </div>
-                                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                                <span>
-                                                    {txn.transaction_date?.slice(
-                                                        0,
-                                                        10,
-                                                    )}
-                                                </span>
-                                                {txn.account && (
-                                                    <>
-                                                        <span>-</span>
-                                                        <span>
-                                                            {txn.account.name}
-                                                        </span>
-                                                    </>
-                                                )}
-                                                {txn.category && (
-                                                    <>
-                                                        <span>-</span>
-                                                        <span>
-                                                            {txn.category.name}
-                                                        </span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <span
-                                            className={cn(
-                                                'ml-3 shrink-0 font-mono text-sm font-medium',
-                                                txn.transaction_type ===
-                                                    'income'
-                                                    ? 'text-green-600 dark:text-green-400'
-                                                    : txn.transaction_type ===
-                                                        'expense'
-                                                      ? 'text-red-600 dark:text-red-400'
-                                                      : '',
-                                            )}
-                                        >
-                                            {formatAmount(txn.amount)}
-                                        </span>
-                                    </div>
+                                        transaction={txn}
+                                    />
                                 ))}
                                 <div className="pt-2 text-center">
                                     <Button
@@ -828,11 +769,11 @@ export default function PayeesIndex() {
                                         </Link>
                                     </Button>
                                 </div>
-                            </div>
+                            </>
                         )}
                     </div>
-                </SheetContent>
-            </Sheet>
+                </DialogContent>
+            </Dialog>
 
             {/* Delete confirmation dialog */}
             <Dialog

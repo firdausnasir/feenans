@@ -1,5 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
-import { PiggyBank } from 'lucide-react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { ExternalLink, PiggyBank } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
@@ -33,6 +33,7 @@ import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
+import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { BreadcrumbItem, BudgetStat, Category } from '@/types';
 
 type FormState = {
@@ -407,6 +408,34 @@ export default function BudgetsIndex() {
                                         >
                                             Delete
                                         </Button>
+                                        {budget.category_id !== null && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                asChild
+                                            >
+                                                <Link
+                                                    href={transactionsIndex.url(
+                                                        ledger.id,
+                                                        {
+                                                            query: {
+                                                                'category_ids[]':
+                                                                    budget.category_id,
+                                                                date_from:
+                                                                    budget.period_start,
+                                                                date_to:
+                                                                    budget.period_end,
+                                                                'transaction_types[]':
+                                                                    'expense',
+                                                            },
+                                                        },
+                                                    )}
+                                                >
+                                                    <ExternalLink className="size-3.5" />
+                                                    View transactions
+                                                </Link>
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -454,8 +483,7 @@ export default function BudgetsIndex() {
                                         onValueChange={(val) =>
                                             setForm((f) => ({
                                                 ...f,
-                                                category_id:
-                                                    val ?? '__none__',
+                                                category_id: val ?? '__none__',
                                             }))
                                         }
                                         placeholder="Overall budget"
