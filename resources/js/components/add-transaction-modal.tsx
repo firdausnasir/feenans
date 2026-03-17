@@ -427,30 +427,37 @@ export function AddTransactionModal({
 
                                 <div className="grid gap-2">
                                     <Label htmlFor="amount">Amount</Label>
-                                    <Input
-                                        id="amount"
-                                        name="amount"
-                                        ref={amountInputRef}
-                                        type="number"
-                                        inputMode="decimal"
-                                        step="0.01"
-                                        min="0.01"
-                                        autoFocus
-                                        required
-                                        value={amount}
-                                        onChange={(event) => {
-                                            const value = event.target.value;
+                                    <div className="relative">
+                                        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                                            {ledger.currency_code}
+                                        </span>
+                                        <Input
+                                            id="amount"
+                                            name="amount"
+                                            ref={amountInputRef}
+                                            type="number"
+                                            inputMode="decimal"
+                                            step="0.01"
+                                            min="0.01"
+                                            autoFocus
+                                            required
+                                            className="pl-14"
+                                            value={amount}
+                                            onChange={(event) => {
+                                                const value =
+                                                    event.target.value;
 
-                                            if (
-                                                value !== '' &&
-                                                Number(value) < 0
-                                            ) {
-                                                return;
-                                            }
+                                                if (
+                                                    value !== '' &&
+                                                    Number(value) < 0
+                                                ) {
+                                                    return;
+                                                }
 
-                                            setAmount(value);
-                                        }}
-                                    />
+                                                setAmount(value);
+                                            }}
+                                        />
+                                    </div>
                                     <InputError message={errors.amount} />
                                 </div>
 

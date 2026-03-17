@@ -57,17 +57,24 @@ type DeleteAction = 'uncategorize' | 'reassign';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function colorDot(color: string | null) {
-    if (!color) {
+function colorDot(color: string | null, parentColor?: string | null) {
+    const displayColor = color ?? parentColor;
+
+    if (!displayColor) {
         return (
             <span className="inline-block h-3 w-3 rounded-full border border-border bg-muted" />
         );
     }
 
+    const isInherited = !color && parentColor;
+
     return (
         <span
             className="inline-block h-3 w-3 rounded-full border border-border"
-            style={{ backgroundColor: color }}
+            style={{
+                backgroundColor: displayColor,
+                opacity: isInherited ? 0.45 : 1,
+            }}
         />
     );
 }
@@ -871,7 +878,7 @@ function CategoryList({
                                     key={child.id}
                                     className="group ml-8 flex items-center gap-3 rounded-lg px-3 py-1.5 hover:bg-muted/50"
                                 >
-                                    {colorDot(child.color)}
+                                    {colorDot(child.color, cat.color)}
 
                                     {child.icon && (
                                         <span className="text-base leading-none">

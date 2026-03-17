@@ -1,4 +1,5 @@
 import { Head, router } from '@inertiajs/react';
+import { PiggyBank } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
@@ -14,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -262,7 +264,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Budgets — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <Heading
                         title="Budgets"
@@ -274,15 +276,15 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                 </div>
 
                 {budgets.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center text-muted-foreground">
-                        <p className="text-lg font-medium">No budgets yet</p>
-                        <p className="text-sm">
-                            Create a budget to track your spending limits.
-                        </p>
-                        <Button onClick={handleCreate}>
-                            Create your first budget
-                        </Button>
-                    </div>
+                    <EmptyState
+                        icon={<PiggyBank className="size-6" />}
+                        title="No budgets yet"
+                        description="Set monthly spending limits for your categories and track how you're doing."
+                        action={{
+                            label: 'Create your first budget',
+                            onClick: handleCreate,
+                        }}
+                    />
                 ) : (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {budgets.map((budget) => (
@@ -291,7 +293,13 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                     <div className="flex items-center justify-between">
                                         <CardTitle className="inline-flex items-center gap-1.5 text-base">
                                             {budget.category_color && (
-                                                <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: budget.category_color }} />
+                                                <span
+                                                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                                    style={{
+                                                        backgroundColor:
+                                                            budget.category_color,
+                                                    }}
+                                                />
                                             )}
                                             {budget.category_name}
                                         </CardTitle>
@@ -386,7 +394,11 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                             : c.name,
                                         color: c.color,
                                     }))}
-                                    value={form.category_id === '__none__' ? null : form.category_id}
+                                    value={
+                                        form.category_id === '__none__'
+                                            ? null
+                                            : form.category_id
+                                    }
                                     onValueChange={(val) =>
                                         setForm((f) => ({
                                             ...f,

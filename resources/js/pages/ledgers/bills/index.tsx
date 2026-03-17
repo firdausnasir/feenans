@@ -41,7 +41,13 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
-import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
+import {
+    formatAbsAmount,
+    formatAmount,
+    formatDate,
+    parseDate,
+} from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     create,
@@ -85,6 +91,41 @@ function recurrenceDescription(
     return plural.replace('{n}', String(interval));
 }
 
+function getDueStatus(
+    nextDueDate: string,
+): 'overdue' | 'due-soon' | 'upcoming' {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = parseDate(nextDueDate);
+    const diffDays = Math.floor(
+        (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffDays < 0) {
+        return 'overdue';
+    }
+
+    if (diffDays <= 3) {
+        return 'due-soon';
+    }
+
+    return 'upcoming';
+}
+
+type DueStatus = ReturnType<typeof getDueStatus>;
+
+const dueStatusStyles: Record<DueStatus, string> = {
+    overdue: 'border-l-2 border-l-red-500',
+    'due-soon': 'border-l-2 border-l-amber-500',
+    upcoming: '',
+};
+
+const dueDateStyles: Record<DueStatus, string> = {
+    overdue: 'text-red-500 font-medium',
+    'due-soon': 'text-amber-500',
+    upcoming: 'text-muted-foreground',
+};
+
 function BillRow({
     bill,
     ledgerId,
@@ -101,11 +142,18 @@ function BillRow({
     const [expanded, setExpanded] = useState(false);
     const transactions = bill.transactions ?? [];
     const hasTransactions = transactions.length > 0;
+    const dueStatus = bill.is_active
+        ? getDueStatus(bill.next_due_date)
+        : 'upcoming';
 
     return (
         <>
             <TableRow
-                className={hasTransactions ? 'cursor-pointer' : undefined}
+                className={cn(
+                    'group',
+                    hasTransactions ? 'cursor-pointer' : undefined,
+                    bill.is_active ? dueStatusStyles[dueStatus] : '',
+                )}
                 onClick={() => {
                     if (hasTransactions) {
                         setExpanded((prev) => !prev);
@@ -150,7 +198,7 @@ function BillRow({
                         bill.recurrence_interval,
                     )}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className={dueDateStyles[dueStatus]}>
                     {formatDate(bill.next_due_date)}
                 </TableCell>
                 <TableCell className="hidden lg:table-cell">
@@ -198,7 +246,7 @@ function BillRow({
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-auto px-1.5 py-0.5"
+                                    className="h-auto px-1.5 py-0.5 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
                                 >
                                     <MoreHorizontal className="size-4" />
                                 </Button>

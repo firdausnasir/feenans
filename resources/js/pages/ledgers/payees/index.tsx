@@ -39,10 +39,29 @@ import type { BreadcrumbItem, Ledger, Payee, Transaction } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 
+type DuplicateGroup = {
+    key: string;
+    payees: PayeeWithCount[];
+};
+
 type MergeState = {
     source: PayeeWithCount;
     target: PayeeWithCount;
 };
+
+function getDuplicateGroups(payees: PayeeWithCount[]): DuplicateGroup[] {
+    const grouped = new Map<string, PayeeWithCount[]>();
+
+    for (const p of payees) {
+        const key = p.name.toLowerCase().trim();
+        const existing = grouped.get(key) ?? [];
+        grouped.set(key, [...existing, p]);
+    }
+
+    return [...grouped.entries()]
+        .filter(([, items]) => items.length > 1)
+        .map(([key, items]) => ({ key, payees: items }));
+}
 
 export default function PayeesIndex({
     ledger,
@@ -309,6 +328,95 @@ export default function PayeesIndex({
 
     const hasPayees = payees.length > 0 || filters.search;
 
+    const duplicateGroups = useMemo(() => getDuplicateGroups(payees), [payees]);
+    const duplicateCount = duplicateGroups.reduce(
+        (sum, g) => sum + g.payees.length,
+        0,
+    );
+
+    // Duplicate merge dialog state
+    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+    const [resolvedKeys, setResolvedKeys] = useState<Set<string>>(new Set());
+    const [groupTargets, setGroupTargets] = useState<Record<string, number>>(
+        {},
+    );
+    const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
+
+    const pendingGroups = duplicateGroups.filter(
+        (g) => !resolvedKeys.has(g.key),
+    );
+
+    function openDuplicateDialog() {
+        setResolvedKeys(new Set());
+
+        const targets: Record<string, number> = {};
+
+        for (const g of duplicateGroups) {
+            const best = [...g.payees].sort(
+                (a, b) => b.transactions_count - a.transactions_count,
+            )[0];
+            targets[g.key] = best.id;
+        }
+
+        setGroupTargets(targets);
+        setShowDuplicateDialog(true);
+    }
+
+    function handleMergeGroup(group: DuplicateGroup) {
+        const targetId = groupTargets[group.key];
+
+        if (!targetId) {
+            return;
+        }
+
+        const sources = group.payees.filter((p) => p.id !== targetId);
+
+        if (sources.length === 0) {
+            return;
+        }
+
+        setMergingGroupKey(group.key);
+
+        let completed = 0;
+
+        for (const source of sources) {
+            router.post(
+                merge.url(ledger.id),
+                { source_id: source.id, target_id: targetId },
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        completed++;
+
+                        if (completed === sources.length) {
+                            const targetName =
+                                group.payees.find((p) => p.id === targetId)
+                                    ?.name ?? '';
+                            toast.success(
+                                `Merged ${sources.length} payee${sources.length > 1 ? 's' : ''} into "${targetName}"`,
+                            );
+                            setResolvedKeys((prev) => {
+                                const next = new Set(prev);
+                                next.add(group.key);
+
+                                if (next.size >= duplicateGroups.length) {
+                                    setShowDuplicateDialog(false);
+                                }
+
+                                return next;
+                            });
+                            setMergingGroupKey(null);
+                        }
+                    },
+                    onError: () => {
+                        toast.error('Failed to merge payees.');
+                        setMergingGroupKey(null);
+                    },
+                },
+            );
+        }
+    }
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} payees`} />
@@ -381,6 +489,26 @@ export default function PayeesIndex({
                             onChange={(e) => handleSearch(e.target.value)}
                             className="pl-9"
                         />
+                    </div>
+                )}
+
+                {/* Duplicate detection banner */}
+                {duplicateGroups.length > 0 && !selectionMode && (
+                    <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2.5">
+                        <p className="flex-1 text-sm text-blue-400">
+                            We found {duplicateGroups.length} group
+                            {duplicateGroups.length > 1 ? 's' : ''} of potential
+                            duplicate payees ({duplicateCount} total).
+                        </p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                            onClick={openDuplicateDialog}
+                        >
+                            Review &amp; Merge
+                        </Button>
                     </div>
                 )}
 
@@ -814,6 +942,161 @@ export default function PayeesIndex({
                             {isMerging ? 'Merging...' : 'Merge'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Duplicate merge workflow dialog */}
+            <Dialog
+                open={showDuplicateDialog}
+                onOpenChange={(open) => {
+                    if (!open && !mergingGroupKey) {
+                        setShowDuplicateDialog(false);
+                    }
+                }}
+            >
+                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Merge duplicate payees</DialogTitle>
+                        <DialogDescription>
+                            {pendingGroups.length === 0
+                                ? 'All duplicates have been merged!'
+                                : `${pendingGroups.length} group${pendingGroups.length > 1 ? 's' : ''} remaining. Select the payee to keep for each group.`}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {pendingGroups.length === 0 ? (
+                        <div className="py-4 text-center">
+                            <Button
+                                onClick={() => setShowDuplicateDialog(false)}
+                            >
+                                Done
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-6 py-2">
+                            {pendingGroups.map((group) => {
+                                const targetId = groupTargets[group.key];
+                                const isMerging = mergingGroupKey === group.key;
+                                const isPair = group.payees.length === 2;
+
+                                return (
+                                    <div
+                                        key={group.key}
+                                        className="rounded-lg border p-4"
+                                    >
+                                        <p className="mb-3 text-sm font-medium">
+                                            &ldquo;{group.key}&rdquo;
+                                            <span className="ml-1 text-xs text-muted-foreground">
+                                                ({group.payees.length} payees)
+                                            </span>
+                                        </p>
+
+                                        <div className="space-y-2">
+                                            {group.payees.map((p) => (
+                                                <label
+                                                    key={p.id}
+                                                    className={cn(
+                                                        'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
+                                                        targetId === p.id
+                                                            ? 'border-primary bg-primary/5'
+                                                            : 'border-border hover:bg-muted/50',
+                                                    )}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name={`target-${group.key}`}
+                                                        value={p.id}
+                                                        checked={
+                                                            targetId === p.id
+                                                        }
+                                                        onChange={() =>
+                                                            setGroupTargets(
+                                                                (prev) => ({
+                                                                    ...prev,
+                                                                    [group.key]:
+                                                                        p.id,
+                                                                }),
+                                                            )
+                                                        }
+                                                        className="accent-primary"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <span className="text-sm font-medium">
+                                                            {p.name}
+                                                        </span>
+                                                        <span className="ml-2 text-xs text-muted-foreground">
+                                                            {
+                                                                p.transactions_count
+                                                            }{' '}
+                                                            transaction
+                                                            {p.transactions_count !==
+                                                            1
+                                                                ? 's'
+                                                                : ''}
+                                                        </span>
+                                                    </div>
+                                                    {targetId === p.id && (
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className="text-xs"
+                                                        >
+                                                            Keep
+                                                        </Badge>
+                                                    )}
+                                                </label>
+                                            ))}
+                                        </div>
+
+                                        {isPair && (
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const other =
+                                                            group.payees.find(
+                                                                (p) =>
+                                                                    p.id !==
+                                                                    targetId,
+                                                            );
+
+                                                        if (other) {
+                                                            setGroupTargets(
+                                                                (prev) => ({
+                                                                    ...prev,
+                                                                    [group.key]:
+                                                                        other.id,
+                                                                }),
+                                                            );
+                                                        }
+                                                    }}
+                                                    disabled={isMerging}
+                                                >
+                                                    Swap direction
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 flex justify-end">
+                                            <Button
+                                                size="sm"
+                                                onClick={() =>
+                                                    handleMergeGroup(group)
+                                                }
+                                                disabled={
+                                                    !targetId || isMerging
+                                                }
+                                            >
+                                                {isMerging
+                                                    ? 'Merging...'
+                                                    : 'Merge this group'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </AppLayout>

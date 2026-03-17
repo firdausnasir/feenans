@@ -46,7 +46,7 @@ class Transaction extends Model
         return [
             'transaction_type' => TransactionType::class,
             'amount' => 'decimal:2',
-            'transaction_date' => 'date',
+            'transaction_date' => 'date:Y-m-d',
             'is_sample' => 'boolean',
         ];
     }

@@ -15,7 +15,10 @@ export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
     return (
         <>
             {groups.map((group) => (
-                <SidebarGroup key={group.label} className="px-2 py-0">
+                <SidebarGroup
+                    key={group.label}
+                    className="mt-4 px-2 py-0 first:mt-0"
+                >
                     <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                     <SidebarMenu>
                         {group.items.map((item) => (

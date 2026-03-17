@@ -1,4 +1,5 @@
 import { Head, router } from '@inertiajs/react';
+import { Check } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
@@ -457,7 +458,7 @@ export default function ImportIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Import Transactions — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex items-center justify-between">
                     <Heading
                         title="Import Transactions"
@@ -491,20 +492,29 @@ export default function ImportIndex({
                             key={num}
                             className="flex items-center gap-1 sm:gap-2"
                         >
-                            <div
-                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
-                                    step === num
-                                        ? 'bg-primary text-primary-foreground'
-                                        : step > num
-                                          ? 'bg-primary/20 text-primary'
-                                          : 'bg-muted text-muted-foreground'
-                                }`}
-                            >
-                                {num}
+                            <div className="relative">
+                                {step === num && (
+                                    <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
+                                )}
+                                <div
+                                    className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
+                                        step === num
+                                            ? 'bg-primary text-primary-foreground'
+                                            : step > num
+                                              ? 'bg-emerald-500 text-white'
+                                              : 'bg-muted text-muted-foreground'
+                                    }`}
+                                >
+                                    {step > num ? (
+                                        <Check className="size-4" />
+                                    ) : (
+                                        num
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <span
-                                    className={`text-sm ${step === num ? 'font-medium' : 'text-muted-foreground'}`}
+                                    className={`text-sm ${step === num ? 'font-medium' : step > num ? 'font-medium text-emerald-500' : 'text-muted-foreground'}`}
                                 >
                                     {label}
                                 </span>
@@ -515,7 +525,13 @@ export default function ImportIndex({
                                 </p>
                             </div>
                             {idx < 2 && (
-                                <div className="mx-1 h-px w-4 bg-border sm:mx-2 sm:w-8" />
+                                <div
+                                    className={`mx-1 h-px w-4 sm:mx-2 sm:w-8 ${
+                                        step > idx + 1
+                                            ? 'bg-emerald-500'
+                                            : 'border-t border-dashed border-border bg-transparent'
+                                    }`}
+                                />
                             )}
                         </div>
                     ))}

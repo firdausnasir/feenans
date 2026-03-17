@@ -1,8 +1,10 @@
 import { Head } from '@inertiajs/react';
+import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import type { BreadcrumbItem, Ledger } from '@/types';
@@ -243,9 +245,11 @@ export default function ActivityIndex({
 
                 <div className="grid gap-3">
                     {activity.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No activity yet.
-                        </p>
+                        <EmptyState
+                            icon={<ClipboardList className="size-6" />}
+                            title="No activity yet"
+                            description="Changes to your workspace will appear here."
+                        />
                     ) : (
                         activity.map((entry) => (
                             <ActivityEntry key={entry.id} entry={entry} />

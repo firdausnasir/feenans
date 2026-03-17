@@ -22,6 +22,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
@@ -1827,6 +1828,7 @@ export default function ReportsIndex({
     const [compareEnabled, setCompareEnabled] = useState(
         comparison !== null || dateRange.compare_start !== null,
     );
+    const [isExporting, setIsExporting] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -1849,12 +1851,26 @@ export default function ReportsIndex({
                             ledgerId={ledger.id}
                             currentView="income-expense"
                         />
-                        <Button variant="outline" size="sm" asChild>
-                            <a
-                                href={`/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`}
-                            >
-                                Export PDF
-                            </a>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isExporting}
+                            onClick={() => {
+                                setIsExporting(true);
+
+                                const link = document.createElement('a');
+                                link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
+                                link.click();
+
+                                setTimeout(() => {
+                                    setIsExporting(false);
+                                    toast.success(
+                                        'Report exported successfully.',
+                                    );
+                                }, 2000);
+                            }}
+                        >
+                            {isExporting ? 'Exporting...' : 'Export PDF'}
                         </Button>
                     </div>
                 </div>

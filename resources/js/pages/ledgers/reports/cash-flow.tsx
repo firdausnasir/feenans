@@ -134,6 +134,7 @@ function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
 }
 
 function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
+
     if (bills.length === 0) {
         return (
             <EmptyState

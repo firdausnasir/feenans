@@ -245,7 +245,7 @@ export default function Welcome({
                                     {canRegister && (
                                         <Button asChild>
                                             <Link href={register.url()}>
-                                                Get Started
+                                                Start Tracking for Free
                                             </Link>
                                         </Button>
                                     )}
@@ -449,7 +449,7 @@ export default function Welcome({
                                     {canRegister && (
                                         <Button asChild size="lg">
                                             <Link href={register.url()}>
-                                                Get Started for Free
+                                                Start Tracking for Free
                                                 <ArrowRight className="ml-2 size-4" />
                                             </Link>
                                         </Button>

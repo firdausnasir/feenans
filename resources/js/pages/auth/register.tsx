@@ -208,6 +208,11 @@ export default function Register() {
                         {processing && <Spinner />}
                         Create account
                     </Button>
+
+                    <p className="text-center text-xs text-muted-foreground">
+                        You'll be taken to your dashboard to set up your first
+                        ledger.
+                    </p>
                 </div>
 
                 <div className="text-center text-sm text-muted-foreground">

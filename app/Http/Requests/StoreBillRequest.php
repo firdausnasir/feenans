@@ -40,7 +40,7 @@ class StoreBillRequest extends FormRequest
             : 'exists:payees,id';
 
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'min:2', 'max:255'],
             'transaction_type' => ['required', 'string', Rule::in([TransactionType::Expense->value, TransactionType::Income->value])],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'account_id' => ['required', 'integer', $accountRule],

@@ -17,9 +17,7 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
-        return array_merge($this->profileRules($this->user()->id), [
-            'timezone' => ['nullable', 'string', 'timezone:all'],
-        ]);
+        return $this->profileRules($this->user()->id);
     }
 
     /**

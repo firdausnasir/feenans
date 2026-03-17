@@ -84,7 +84,13 @@ import type {
     Transaction,
 } from '@/types';
 
-type Summary = { income: number; expense: number; net: number };
+type Summary = {
+    income: number;
+    expense: number;
+    net: number;
+    prev_income: number;
+    prev_expense: number;
+};
 type AccountGroup = {
     type: AccountType;
     accounts: (Account & { balance: number })[];
@@ -130,6 +136,7 @@ export default function LedgerDashboard({
     topBudgets,
     uncategorizedCount,
     netWorth,
+    netWorthTrend,
 }: {
     ledger: Ledger;
     summary: Summary;
@@ -147,6 +154,7 @@ export default function LedgerDashboard({
     topBudgets: BudgetStat[];
     uncategorizedCount: number;
     netWorth: { assets: number; liabilities: number; net: number };
+    netWorthTrend: { month: string; net: number }[];
 }) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: dashboard.url(ledger.id) },
@@ -202,13 +210,14 @@ export default function LedgerDashboard({
             storeSampleData.url(ledger.id),
             {},
             {
-                preserveScroll: true,
                 onSuccess: () => {
-                    setIsLoadingSampleData(false);
                     toast.success('Sample data loaded successfully.');
+                    window.location.reload();
+                },
+                onFinish: () => {
+                    setIsLoadingSampleData(false);
                 },
                 onError: (errors) => {
-                    setIsLoadingSampleData(false);
                     const msg =
                         errors.message ??
                         Object.values(errors)[0] ??
@@ -312,34 +321,83 @@ export default function LedgerDashboard({
                 <Link href={accountsIndex.url(ledger.id)} className="block">
                     <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-primary/5">
                         <CardContent className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                                <Landmark className="size-5 text-primary" />
-                                <span className="text-sm font-medium text-muted-foreground">
-                                    Net Worth
-                                </span>
-                            </div>
-                            <p
-                                className={`mt-2 text-2xl font-bold sm:text-3xl ${
-                                    netWorth.net >= 0
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-red-600 dark:text-red-400'
-                                }`}
-                            >
-                                {formatAmount(netWorth.net)}
-                            </p>
-                            <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>
-                                    Assets:{' '}
-                                    <span className="font-medium text-foreground">
-                                        {formatAmount(netWorth.assets)}
-                                    </span>
-                                </span>
-                                <span>
-                                    Liabilities:{' '}
-                                    <span className="font-medium text-red-600 dark:text-red-400">
-                                        {formatAmount(netWorth.liabilities)}
-                                    </span>
-                                </span>
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Landmark className="size-5 text-primary" />
+                                        <span className="text-sm font-medium text-muted-foreground">
+                                            Net Worth
+                                        </span>
+                                    </div>
+                                    <p
+                                        className={`mt-2 text-2xl font-bold sm:text-3xl ${
+                                            netWorth.net >= 0
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-600 dark:text-red-400'
+                                        }`}
+                                    >
+                                        {formatAmount(netWorth.net)}
+                                    </p>
+                                    <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                                        <span>
+                                            Assets:{' '}
+                                            <span className="font-medium text-foreground">
+                                                {formatAmount(netWorth.assets)}
+                                            </span>
+                                        </span>
+                                        <span>
+                                            Liabilities:{' '}
+                                            <span className="font-medium text-red-600 dark:text-red-400">
+                                                {formatAmount(
+                                                    netWorth.liabilities,
+                                                )}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                                {netWorthTrend.length >= 2 && (
+                                    <div className="hidden h-16 w-32 sm:block">
+                                        <AreaChart
+                                            width={128}
+                                            height={64}
+                                            data={netWorthTrend}
+                                            margin={{
+                                                top: 4,
+                                                right: 0,
+                                                left: 0,
+                                                bottom: 0,
+                                            }}
+                                        >
+                                            <defs>
+                                                <linearGradient
+                                                    id="nwGrad"
+                                                    x1="0"
+                                                    y1="0"
+                                                    x2="0"
+                                                    y2="1"
+                                                >
+                                                    <stop
+                                                        offset="5%"
+                                                        stopColor="var(--color-primary)"
+                                                        stopOpacity={0.3}
+                                                    />
+                                                    <stop
+                                                        offset="95%"
+                                                        stopColor="var(--color-primary)"
+                                                        stopOpacity={0}
+                                                    />
+                                                </linearGradient>
+                                            </defs>
+                                            <Area
+                                                type="monotone"
+                                                dataKey="net"
+                                                stroke="var(--color-primary)"
+                                                strokeWidth={1.5}
+                                                fill="url(#nwGrad)"
+                                            />
+                                        </AreaChart>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -362,9 +420,10 @@ export default function LedgerDashboard({
                                 label="Income"
                                 value={summary.income}
                                 icon={
-                                    <TrendingUp className="size-4 text-green-600 dark:text-green-400" />
+                                    <TrendingUp className="size-4 text-gray-700 dark:text-gray-300" />
                                 }
-                                colorClass="text-green-600 dark:text-green-400"
+                                colorClass="text-gray-700 dark:text-gray-300"
+                                previousValue={summary.prev_income}
                             />
                         </Link>
                         <Link
@@ -381,9 +440,11 @@ export default function LedgerDashboard({
                                 label="Expense"
                                 value={summary.expense}
                                 icon={
-                                    <TrendingDown className="size-4 text-red-600 dark:text-red-400" />
+                                    <TrendingDown className="size-4 text-gray-700 dark:text-gray-300" />
                                 }
-                                colorClass="text-red-600 dark:text-red-400"
+                                colorClass="text-gray-700 dark:text-gray-300"
+                                previousValue={summary.prev_expense}
+                                invertTrendColor
                             />
                         </Link>
                         <Link
@@ -394,14 +455,11 @@ export default function LedgerDashboard({
                                 label="Net"
                                 value={summary.net}
                                 icon={
-                                    <Wallet
-                                        className={`size-4 ${summary.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                                    />
+                                    <Wallet className="size-4 text-gray-700 dark:text-gray-300" />
                                 }
-                                colorClass={
-                                    summary.net >= 0
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-red-600 dark:text-red-400'
+                                colorClass="text-gray-700 dark:text-gray-300"
+                                previousValue={
+                                    summary.prev_income - summary.prev_expense
                                 }
                             />
                         </Link>
@@ -1069,17 +1127,46 @@ export default function LedgerDashboard({
     );
 }
 
+function trendInfo(current: number, previous: number, invertColor = false) {
+    if (previous === 0) {
+        return null;
+    }
+
+    const pctChange = Math.round(((current - previous) / previous) * 100);
+
+    if (pctChange === 0) {
+        return null;
+    }
+
+    const isUp = pctChange > 0;
+    const isPositive = invertColor ? !isUp : isUp;
+
+    return {
+        label: `${isUp ? '\u2191' : '\u2193'} ${Math.abs(pctChange)}% vs last period`,
+        colorClass: isPositive ? 'text-emerald-500' : 'text-red-400',
+    };
+}
+
 function SummaryCard({
     label,
     value,
     icon,
     colorClass,
+    previousValue,
+    invertTrendColor,
 }: {
     label: string;
     value: number;
     icon: React.ReactNode;
     colorClass: string;
+    previousValue?: number;
+    invertTrendColor?: boolean;
 }) {
+    const trend =
+        previousValue !== undefined
+            ? trendInfo(value, previousValue, invertTrendColor)
+            : null;
+
     return (
         <Card className="cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:bg-muted/30">
             <CardContent className="px-4 py-2.5">
@@ -1094,6 +1181,11 @@ function SummaryCard({
                 >
                     {formatAmount(value)}
                 </p>
+                {trend && (
+                    <p className={`mt-0.5 text-xs ${trend.colorClass}`}>
+                        {trend.label}
+                    </p>
+                )}
             </CardContent>
         </Card>
     );

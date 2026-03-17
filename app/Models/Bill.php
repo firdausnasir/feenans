@@ -58,8 +58,8 @@ class Bill extends Model
     {
         return [
             'amount' => 'decimal:2',
-            'next_due_date' => 'date',
-            'end_date' => 'date',
+            'next_due_date' => 'date:Y-m-d',
+            'end_date' => 'date:Y-m-d',
             'auto_create' => 'boolean',
             'is_active' => 'boolean',
             'is_sample' => 'boolean',

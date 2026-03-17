@@ -42,6 +42,17 @@ class DashboardController extends Controller
             ->where('transaction_type', TransactionType::Expense->value)
             ->sum('amount'));
 
+        // Previous period comparison for trend indicators
+        ['start' => $prevStart, 'end' => $prevEnd] = $ledger->cycleBounds($referenceDate->copy()->subMonth());
+        $prevCycleTransactions = $ledger->transactions()
+            ->whereBetween('transaction_date', [$prevStart, $prevEnd]);
+        $prevIncome = (float) (clone $prevCycleTransactions)
+            ->where('transaction_type', TransactionType::Income->value)
+            ->sum('amount');
+        $prevExpense = abs((float) (clone $prevCycleTransactions)
+            ->where('transaction_type', TransactionType::Expense->value)
+            ->sum('amount'));
+
         $flatAccounts = $ledger->accounts()
             ->visible()
             ->with('accountType')
@@ -151,12 +162,42 @@ class DashboardController extends Controller
             ->where('transaction_type', '!=', TransactionType::Transfer)
             ->count();
 
+        // Net worth sparkline — last 6 month-end snapshots (2 queries, DB-agnostic)
+        $totalInitial = $flatAccounts->sum(fn ($a) => (float) $a->initial_balance);
+        $accountIds = $flatAccounts->pluck('id');
+        $cutoffs = collect(range(5, 0))->map(fn ($m) => now()->subMonths($m)->endOfMonth());
+
+        $priorSum = (float) $ledger->transactions()
+            ->where('transaction_date', '<', $cutoffs->first()->copy()->startOfMonth())
+            ->whereIn('account_id', $accountIds)
+            ->sum('amount');
+
+        $periodTxns = $ledger->transactions()
+            ->whereBetween('transaction_date', [$cutoffs->first()->copy()->startOfMonth(), $cutoffs->last()])
+            ->whereIn('account_id', $accountIds)
+            ->select('transaction_date', 'amount')
+            ->get()
+            ->groupBy(fn ($t) => $t->transaction_date->format('Y-m'));
+
+        $running = $priorSum;
+        $netWorthTrend = $cutoffs->map(function ($cutoff) use ($periodTxns, &$running, $totalInitial) {
+            $key = $cutoff->format('Y-m');
+            $running += (float) ($periodTxns[$key] ?? collect())->sum('amount');
+
+            return [
+                'month' => $cutoff->format('M'),
+                'net' => round($totalInitial + $running, 2),
+            ];
+        })->values()->all();
+
         return Inertia::render('ledgers/dashboard', [
             'ledger' => $ledger,
             'summary' => [
                 'income' => $income,
                 'expense' => $expense,
                 'net' => $income - $expense,
+                'prev_income' => round($prevIncome, 2),
+                'prev_expense' => round($prevExpense, 2),
             ],
             'accounts' => $accounts,
             'flatAccounts' => $flatAccounts->values(),
@@ -179,6 +220,7 @@ class DashboardController extends Controller
                 'liabilities' => round($totalLiabilities, 2),
                 'net' => round($totalAssets + $totalLiabilities, 2),
             ],
+            'netWorthTrend' => $netWorthTrend,
         ]);
     }
 }

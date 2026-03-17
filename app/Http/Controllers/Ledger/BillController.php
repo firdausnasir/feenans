@@ -25,6 +25,7 @@ class BillController extends Controller
         return Inertia::render('ledgers/bills/index', [
             'ledger' => $ledger,
             'bills' => $ledger->bills()
+                ->orderBy('next_due_date')
                 ->with([
                     'account',
                     'category',

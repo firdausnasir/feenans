@@ -1,11 +1,15 @@
 import { Link } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 
+type EmptyStateAction =
+    | { label: string; href: string; onClick?: never }
+    | { label: string; onClick: () => void; href?: never };
+
 type EmptyStateProps = {
     icon: React.ReactNode;
     title: string;
     description: string;
-    action?: { label: string; href: string };
+    action?: EmptyStateAction;
 };
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
@@ -20,11 +24,15 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
                     {description}
                 </p>
             </div>
-            {action && (
+            {action && ('href' in action ? (
                 <Button asChild size="sm">
                     <Link href={action.href}>{action.label}</Link>
                 </Button>
-            )}
+            ) : (
+                <Button size="sm" onClick={action.onClick}>
+                    {action.label}
+                </Button>
+            ))}
         </div>
     );
 }

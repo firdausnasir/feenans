@@ -398,9 +398,15 @@ export default function AccountShow({
                     </CardHeader>
                     <CardContent>
                         {transactions.data.length === 0 ? (
-                            <p className="py-4 text-sm text-muted-foreground">
-                                No transactions yet.
-                            </p>
+                            <div className="flex flex-col items-center gap-2 py-8 text-center">
+                                <p className="text-sm font-medium">
+                                    No transactions yet
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    Transactions for this account will appear
+                                    here.
+                                </p>
+                            </div>
                         ) : (
                             <ul className="divide-y divide-border">
                                 {transactions.data.map((t) => {

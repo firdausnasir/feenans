@@ -180,6 +180,12 @@ export default function AccountsIndex({
         setDragTypeId(null);
     }
 
+    function getAccountBalance(account: Account): number {
+        return parseFloat(
+            String(account.current_balance ?? account.initial_balance ?? '0'),
+        );
+    }
+
     function renderAccountCard(
         account: Account,
         color: string,
@@ -187,9 +193,7 @@ export default function AccountsIndex({
         typeId: number,
         typeAccounts: Account[],
     ) {
-        const balance = parseFloat(
-            String(account.current_balance ?? account.initial_balance ?? '0'),
-        );
+        const balance = getAccountBalance(account);
         const isNegative = balance < 0;
         const isDragOver = dragOverId === account.id;
 
@@ -325,7 +329,7 @@ export default function AccountsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} accounts`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
                     <Heading
                         title="Accounts"
@@ -447,6 +451,23 @@ export default function AccountsIndex({
                                     ),
                                 )}
                             </div>
+
+                            {typeAccounts.length > 1 && (
+                                <div className="mt-3 flex items-center justify-end gap-2 px-1">
+                                    <span className="text-sm font-medium text-muted-foreground">
+                                        Total {type.name}:
+                                    </span>
+                                    <span className="text-sm font-semibold tabular-nums">
+                                        {formatAmount(
+                                            typeAccounts.reduce(
+                                                (sum, a) =>
+                                                    sum + getAccountBalance(a),
+                                                0,
+                                            ),
+                                        )}
+                                    </span>
+                                </div>
+                            )}
                         </section>
                     );
                 })}

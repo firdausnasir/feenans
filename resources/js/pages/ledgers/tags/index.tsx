@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Hash, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
@@ -14,6 +14,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -147,16 +148,15 @@ export default function TagsIndex({ ledger, tags }: Props) {
                 </div>
 
                 {tags.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center text-muted-foreground">
-                        <p className="text-lg font-medium">No tags yet</p>
-                        <p className="text-sm">
-                            Create tags to organize and filter your
-                            transactions.
-                        </p>
-                        <Button onClick={handleCreate}>
-                            Create your first tag
-                        </Button>
-                    </div>
+                    <EmptyState
+                        icon={<Hash className="size-6" />}
+                        title="No tags yet"
+                        description="Create tags to organize and filter your transactions."
+                        action={{
+                            label: 'Create your first tag',
+                            onClick: handleCreate,
+                        }}
+                    />
                 ) : (
                     <Card>
                         <CardContent className="p-0">
@@ -231,18 +231,13 @@ export default function TagsIndex({ ledger, tags }: Props) {
                                             </TableCell>
                                             <TableCell>
                                                 {tag.color ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <span
-                                                            className="inline-block size-4 rounded-full border"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    tag.color,
-                                                            }}
-                                                        />
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {tag.color}
-                                                        </span>
-                                                    </div>
+                                                    <span
+                                                        className="inline-block size-4 rounded-full border"
+                                                        style={{
+                                                            backgroundColor:
+                                                                tag.color,
+                                                        }}
+                                                    />
                                                 ) : (
                                                     <span className="text-xs text-muted-foreground">
                                                         None

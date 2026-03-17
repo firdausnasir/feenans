@@ -369,13 +369,14 @@ export default function SettingsIndex({
         setIsRemovingSampleData(true);
 
         router.delete(destroySampleData.url(ledger.id), {
-            preserveScroll: true,
             onSuccess: () => {
-                setIsRemovingSampleData(false);
                 toast.success('Sample data removed.');
+                window.location.reload();
+            },
+            onFinish: () => {
+                setIsRemovingSampleData(false);
             },
             onError: (errors) => {
-                setIsRemovingSampleData(false);
                 const msg =
                     errors.message ??
                     Object.values(errors)[0] ??
@@ -456,10 +457,10 @@ export default function SettingsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} workspace settings`} />
 
-            <div className="flex h-full flex-1 flex-col gap-8 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
-                    title="Settings"
-                    description="Configure your workspace settings."
+                    title="Workspace Settings"
+                    description="Ledger configuration, account types, API access, and data management."
                 />
 
                 {/* ── General ────────────────────────────────────────────── */}
@@ -990,20 +991,22 @@ export default function SettingsIndex({
                     </h2>
                     <Separator />
 
-                    <div className="rounded-lg border border-destructive/30 p-4">
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
                         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <p className="text-sm font-medium">
+                                <p className="text-sm font-medium text-destructive">
                                     Delete this workspace
                                 </p>
-                                <p className="text-xs text-muted-foreground">
-                                    This will permanently delete all accounts,
-                                    transactions, categories, and other data.
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Permanently deletes all accounts,
+                                    transactions, categories, budgets, and other
+                                    data. This action cannot be undone.
                                 </p>
                             </div>
                             <Button
-                                variant="destructive"
+                                variant="outline"
                                 size="sm"
+                                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => {
                                     setDeleteConfirmName('');
                                     setShowDeleteDialog(true);

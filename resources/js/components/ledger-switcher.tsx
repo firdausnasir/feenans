@@ -24,6 +24,42 @@ export function LedgerSwitcher() {
         availableLedgers: LedgerSummary[];
     };
 
+    const isSingleLedger = availableLedgers.length <= 1;
+
+    const ledgerCardContent = (
+        <>
+            <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-accent text-sidebar-accent-foreground">
+                <WalletCards className="size-4" />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">
+                    {currentLedger?.name ?? 'Choose workspace'}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
+                    {currentLedger?.currency_code ?? 'No active workspace'}
+                </span>
+            </div>
+        </>
+    );
+
+    if (isSingleLedger && currentLedger) {
+        return (
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton
+                        size="lg"
+                        className="text-sidebar-accent-foreground"
+                        asChild
+                    >
+                        <Link href={dashboard.url(currentLedger.id)}>
+                            {ledgerCardContent}
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        );
+    }
+
     return (
         <SidebarMenu>
             <SidebarMenuItem>
@@ -33,18 +69,7 @@ export function LedgerSwitcher() {
                             size="lg"
                             className="group text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent"
                         >
-                            <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-accent text-sidebar-accent-foreground">
-                                <WalletCards className="size-4" />
-                            </div>
-                            <div className="grid flex-1 text-left text-sm leading-tight">
-                                <span className="truncate font-medium">
-                                    {currentLedger?.name ?? 'Choose workspace'}
-                                </span>
-                                <span className="truncate text-xs text-muted-foreground">
-                                    {currentLedger?.currency_code ??
-                                        'No active workspace'}
-                                </span>
-                            </div>
+                            {ledgerCardContent}
                             <ChevronDown className="ml-auto size-4" />
                         </SidebarMenuButton>
                     </DropdownMenuTrigger>

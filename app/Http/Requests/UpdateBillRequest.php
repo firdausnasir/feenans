@@ -40,7 +40,7 @@ class UpdateBillRequest extends FormRequest
             : 'exists:payees,id';
 
         return [
-            'name' => ['sometimes', 'string', 'max:255'],
+            'name' => ['sometimes', 'string', 'min:2', 'max:255'],
             'transaction_type' => ['sometimes', 'string', Rule::in([TransactionType::Expense->value, TransactionType::Income->value])],
             'amount' => ['sometimes', 'numeric', 'min:0.01'],
             'account_id' => ['sometimes', 'integer', $accountRule],
