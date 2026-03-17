@@ -44,7 +44,7 @@ class TransactionController extends Controller
         $this->resolveInlinePayee($request, $ledger);
 
         if ($request->string('transaction_type')->value() === TransactionType::Transfer->value) {
-            $this->transactionService->storeTransfer($ledger, [
+            [$outgoing, $incoming] = $this->transactionService->storeTransfer($ledger, [
                 'from_account' => Account::query()->findOrFail($request->integer('account_id')),
                 'to_account' => Account::query()->findOrFail($request->integer('to_account_id')),
                 'amount' => $request->input('amount'),
@@ -52,6 +52,18 @@ class TransactionController extends Controller
                 'notes' => $request->input('notes'),
                 'transaction_date' => $request->date('transaction_date')?->toDateString() ?? now()->toDateString(),
             ]);
+
+            if ($request->filled('tag_ids')) {
+                $tagIds = $request->input('tag_ids', []);
+                $outgoing->tags()->sync($tagIds);
+                $incoming->tags()->sync($tagIds);
+            }
+
+            if ($request->hasFile('attachments')) {
+                $files = $request->file('attachments');
+                $this->storeAttachments($ledger, $outgoing, $files);
+                $this->storeAttachments($ledger, $incoming, $files);
+            }
 
             $this->celebrateFirstTransaction();
 

@@ -42,14 +42,6 @@ type SettingsResponse = {
         account_types: AccountType[];
     };
     has_sample_data: boolean;
-    api_tokens: ApiToken[];
-};
-
-type ApiToken = {
-    id: number;
-    name: string;
-    last_used_at: string | null;
-    created_at: string | null;
 };
 
 type AccountTypeEditState = {
@@ -145,12 +137,6 @@ export default function SettingsIndex() {
     const [dragOverId, setDragOverId] = useState<number | null>(null);
     const isReorderingRef = useRef(false);
 
-    // API token state
-    const [tokenName, setTokenName] = useState('');
-    const [isCreatingToken, setIsCreatingToken] = useState(false);
-    const [revealedToken, setRevealedToken] = useState<string | null>(null);
-    const [deletingTokenId, setDeletingTokenId] = useState<number | null>(null);
-
     // Danger zone state
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteConfirmName, setDeleteConfirmName] = useState('');
@@ -167,7 +153,6 @@ export default function SettingsIndex() {
         currencyCode ?? settings?.ledger.currency_code ?? 'MYR';
     const accountTypes = settings?.ledger.account_types ?? [];
     const hasSampleData = settings?.has_sample_data ?? false;
-    const apiTokens = settings?.api_tokens ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -301,16 +286,13 @@ export default function SettingsIndex() {
         }
 
         try {
-            await api.put(
-                `${base}/account-types/${editState.accountTypeId}`,
-                {
-                    body: {
-                        name: editState.name,
-                        color: editState.color,
-                        is_credit: editState.is_credit,
-                    },
+            await api.put(`${base}/account-types/${editState.accountTypeId}`, {
+                body: {
+                    name: editState.name,
+                    color: editState.color,
+                    is_credit: editState.is_credit,
                 },
-            );
+            });
             setEditState(null);
             toast.success('Account type updated.');
             refetch();
@@ -388,8 +370,7 @@ export default function SettingsIndex() {
 
             if (err instanceof ApiError) {
                 const body = err.body as Record<string, string> | null;
-                const msg =
-                    body?.message ?? 'Cannot delete this account type.';
+                const msg = body?.message ?? 'Cannot delete this account type.';
                 toast.error(msg);
             } else {
                 toast.error('Cannot delete this account type.');
@@ -409,61 +390,13 @@ export default function SettingsIndex() {
         } catch (err) {
             if (err instanceof ApiError) {
                 const body = err.body as Record<string, string> | null;
-                const msg =
-                    body?.message ?? 'Failed to remove sample data.';
+                const msg = body?.message ?? 'Failed to remove sample data.';
                 toast.error(msg);
             } else {
                 toast.error('Failed to remove sample data.');
             }
         } finally {
             setIsRemovingSampleData(false);
-        }
-    }
-
-    // ── API token handlers ────────────────────────────────────────────────────
-
-    async function handleCreateToken() {
-        if (!tokenName.trim()) {
-            return;
-        }
-
-        setIsCreatingToken(true);
-
-        try {
-            const result = await api.post<{ token: string }>(
-                '/api-tokens',
-                { body: { name: tokenName.trim() } },
-            );
-            setIsCreatingToken(false);
-            setTokenName('');
-            setRevealedToken(result.token);
-            toast.success('API token created.');
-            refetch();
-        } catch (err) {
-            setIsCreatingToken(false);
-
-            if (err instanceof ApiError && err.isValidationError) {
-                const msg =
-                    err.validationErrors.name?.[0] ??
-                    'Failed to create API token.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to create API token.');
-            }
-        }
-    }
-
-    async function handleRevokeToken(tokenId: number) {
-        setDeletingTokenId(tokenId);
-
-        try {
-            await api.delete(`/api-tokens/${tokenId}`);
-            setDeletingTokenId(null);
-            toast.success('API token revoked.');
-            refetch();
-        } catch {
-            setDeletingTokenId(null);
-            toast.error('Failed to revoke API token.');
         }
     }
 
@@ -497,7 +430,7 @@ export default function SettingsIndex() {
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <Heading
                     title="Workspace Settings"
-                    description="Ledger configuration, account types, API access, and data management."
+                    description="Ledger configuration, account types, and data management."
                 />
 
                 {loading ? (
@@ -574,9 +507,7 @@ export default function SettingsIndex() {
 
                                 <div>
                                     <Button
-                                        onClick={() =>
-                                            void handleSaveGeneral()
-                                        }
+                                        onClick={() => void handleSaveGeneral()}
                                         disabled={
                                             isSavingGeneral ||
                                             !effectiveName.trim()
@@ -809,9 +740,7 @@ export default function SettingsIndex() {
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') {
                                                     void handleAddAccountType();
-                                                } else if (
-                                                    e.key === 'Escape'
-                                                ) {
+                                                } else if (e.key === 'Escape') {
                                                     setShowAddForm(false);
                                                 }
                                             }}
@@ -947,156 +876,6 @@ export default function SettingsIndex() {
                                         </Button>
                                     </a>
                                 </div>
-                            </div>
-                        </section>
-
-                        {/* ── API Tokens ──────────────────────────────────────────── */}
-                        <section className="space-y-4">
-                            <h2 className="text-base font-semibold">
-                                API Tokens
-                            </h2>
-                            <Separator />
-
-                            <p className="text-sm text-muted-foreground">
-                                API tokens allow external applications to access
-                                your data via the REST API. Treat tokens like
-                                passwords &mdash; keep them secret.
-                            </p>
-
-                            {revealedToken && (
-                                <div className="rounded-lg border border-green-500/30 bg-green-50 p-4 dark:bg-green-950/20">
-                                    <p className="mb-2 text-sm font-medium text-green-800 dark:text-green-200">
-                                        Your new API token (copy it now &mdash;
-                                        it won&apos;t be shown again):
-                                    </p>
-                                    <code className="block rounded bg-green-100 px-3 py-2 text-sm break-all dark:bg-green-900/40">
-                                        {revealedToken}
-                                    </code>
-                                    <div className="mt-2 flex gap-2">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(
-                                                    revealedToken,
-                                                );
-                                                toast.success(
-                                                    'Token copied to clipboard.',
-                                                );
-                                            }}
-                                        >
-                                            Copy
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() =>
-                                                setRevealedToken(null)
-                                            }
-                                        >
-                                            Dismiss
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="max-w-md space-y-3">
-                                <div className="flex items-end gap-2">
-                                    <div className="flex-1 space-y-1.5">
-                                        <Label htmlFor="token-name">
-                                            Token name
-                                        </Label>
-                                        <Input
-                                            id="token-name"
-                                            value={tokenName}
-                                            onChange={(e) =>
-                                                setTokenName(e.target.value)
-                                            }
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    void handleCreateToken();
-                                                }
-                                            }}
-                                            placeholder="e.g. My App"
-                                        />
-                                    </div>
-                                    <Button
-                                        onClick={() =>
-                                            void handleCreateToken()
-                                        }
-                                        disabled={
-                                            isCreatingToken ||
-                                            !tokenName.trim()
-                                        }
-                                    >
-                                        {isCreatingToken
-                                            ? 'Creating...'
-                                            : 'Create Token'}
-                                    </Button>
-                                </div>
-
-                                {apiTokens.length > 0 && (
-                                    <div className="rounded-lg border">
-                                        {apiTokens.map((token, idx) => (
-                                            <div
-                                                key={token.id}
-                                                className={`flex items-center justify-between px-4 py-3 ${
-                                                    idx > 0 ? 'border-t' : ''
-                                                }`}
-                                            >
-                                                <div>
-                                                    <p className="text-sm font-medium">
-                                                        {token.name}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Created{' '}
-                                                        {token.created_at
-                                                            ? new Date(
-                                                                  token.created_at,
-                                                              ).toLocaleDateString()
-                                                            : 'unknown'}
-                                                        {token.last_used_at && (
-                                                            <>
-                                                                {' '}
-                                                                &middot; Last
-                                                                used{' '}
-                                                                {new Date(
-                                                                    token.last_used_at,
-                                                                ).toLocaleDateString()}
-                                                            </>
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-destructive hover:text-destructive"
-                                                    disabled={
-                                                        deletingTokenId ===
-                                                        token.id
-                                                    }
-                                                    onClick={() =>
-                                                        void handleRevokeToken(
-                                                            token.id,
-                                                        )
-                                                    }
-                                                >
-                                                    {deletingTokenId ===
-                                                    token.id
-                                                        ? 'Revoking...'
-                                                        : 'Revoke'}
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {apiTokens.length === 0 && (
-                                    <p className="text-sm text-muted-foreground">
-                                        No API tokens yet. Create one to get
-                                        started.
-                                    </p>
-                                )}
                             </div>
                         </section>
 

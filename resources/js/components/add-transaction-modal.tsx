@@ -1,4 +1,4 @@
-import type { Page } from '@inertiajs/core';
+import type { FormDataConvertible, Page } from '@inertiajs/core';
 import { Form, Link } from '@inertiajs/react';
 import confetti from 'canvas-confetti';
 import { CreditCard, Loader2, Paperclip, PlusCircle, X } from 'lucide-react';
@@ -428,15 +428,19 @@ export function AddTransactionModal({
         }, 0);
     }
 
-    function syncFileInput(files: File[]) {
-        if (!fileInputRef.current) {
-            return;
-        }
+    const transformWithFiles = useCallback(
+        (data: Record<string, FormDataConvertible>) => {
+            if (pendingFiles.length > 0) {
+                return {
+                    ...data,
+                    attachments: pendingFiles as unknown as FormDataConvertible,
+                };
+            }
 
-        const dataTransfer = new DataTransfer();
-        files.forEach((file) => dataTransfer.items.add(file));
-        fileInputRef.current.files = dataTransfer.files;
-    }
+            return data;
+        },
+        [pendingFiles],
+    );
 
     function handleSuccess(page: Page) {
         const flash = page.props.flash as {
@@ -526,6 +530,7 @@ export function AddTransactionModal({
                         action={TransactionController.store.url(ledger.id)}
                         method="post"
                         className="space-y-6"
+                        transform={transformWithFiles}
                         onSuccess={handleSuccess}
                         onError={(errors) => {
                             const firstError = Object.values(errors)[0];
@@ -1079,7 +1084,6 @@ export function AddTransactionModal({
                                     <input
                                         ref={fileInputRef}
                                         type="file"
-                                        name="attachments[]"
                                         multiple
                                         accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                                         className="hidden"
@@ -1087,12 +1091,10 @@ export function AddTransactionModal({
                                             const newFiles = Array.from(
                                                 e.target.files ?? [],
                                             );
-                                            const updated = [
-                                                ...pendingFiles,
+                                            setPendingFiles((prev) => [
+                                                ...prev,
                                                 ...newFiles,
-                                            ];
-                                            setPendingFiles(updated);
-                                            syncFileInput(updated);
+                                            ]);
                                         }}
                                     />
                                     <Button
@@ -1138,17 +1140,16 @@ export function AddTransactionModal({
                                                         size="sm"
                                                         className="ml-2 size-6 shrink-0 p-0"
                                                         onClick={() => {
-                                                            const updated =
-                                                                pendingFiles.filter(
-                                                                    (_, i) =>
-                                                                        i !==
-                                                                        index,
-                                                                );
                                                             setPendingFiles(
-                                                                updated,
-                                                            );
-                                                            syncFileInput(
-                                                                updated,
+                                                                (prev) =>
+                                                                    prev.filter(
+                                                                        (
+                                                                            _,
+                                                                            i,
+                                                                        ) =>
+                                                                            i !==
+                                                                            index,
+                                                                    ),
                                                             );
                                                         }}
                                                     >

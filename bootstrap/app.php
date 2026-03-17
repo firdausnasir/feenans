@@ -4,13 +4,11 @@ use App\Http\Middleware\EnsureHasWorkspace;
 use App\Http\Middleware\EnsureOnboardingComplete;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -20,17 +18,6 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
-        then: function () {
-            RateLimiter::for('api', function (Request $request) {
-                // SPA requests use session auth (same-origin with cookie) — no rate limit
-                if ($request->hasSession() && $request->session()->has('_token')) {
-                    return Limit::none();
-                }
-
-                // External API token requests get standard rate limit
-                return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
-            });
-        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
