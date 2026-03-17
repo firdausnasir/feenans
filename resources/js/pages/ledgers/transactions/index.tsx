@@ -1392,10 +1392,6 @@ export default function TransactionsIndex({
                         </Button>
                         <AddTransactionModal
                             ledger={ledger}
-                            accounts={accounts}
-                            categories={flatCategories}
-                            payees={payees}
-                            tags={tags}
                         />
                     </div>
                 </div>
@@ -2306,10 +2302,6 @@ export default function TransactionsIndex({
             {/* Duplicate transaction modal */}
             <AddTransactionModal
                 ledger={ledger}
-                accounts={accounts}
-                categories={flatCategories}
-                payees={payees}
-                tags={tags}
                 externalOpen={showDuplicateModal}
                 onExternalOpenChange={(open) => {
                     setShowDuplicateModal(open);

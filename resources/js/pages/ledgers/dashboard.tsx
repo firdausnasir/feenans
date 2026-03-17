@@ -79,8 +79,6 @@ import type {
     BudgetStat,
     Category,
     Ledger,
-    Payee,
-    Tag,
     Transaction,
 } from '@/types';
 
@@ -127,8 +125,6 @@ export default function LedgerDashboard({
     upcomingBills,
     recentTransactions,
     categories,
-    payees,
-    tags,
     dailyExpenseTrend,
     cycleDates,
     cycleOffset,
@@ -145,8 +141,6 @@ export default function LedgerDashboard({
     upcomingBills: UpcomingBills;
     recentTransactions: Transaction[];
     categories: Category[];
-    payees: Payee[];
-    tags: Tag[];
     dailyExpenseTrend: DailyTrend[];
     cycleDates: CycleDates;
     cycleOffset: number;
@@ -247,10 +241,6 @@ export default function LedgerDashboard({
                     <div className="w-full sm:w-auto">
                         <AddTransactionModal
                             ledger={ledger}
-                            accounts={flatAccounts}
-                            categories={categories}
-                            payees={payees}
-                            tags={tags}
                         />
                     </div>
                 </div>

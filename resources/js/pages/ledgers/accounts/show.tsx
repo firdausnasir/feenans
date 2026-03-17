@@ -10,6 +10,7 @@ import {
     YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import { AddTransactionModal } from '@/components/add-transaction-modal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -30,6 +31,7 @@ import {
     index as accountsIndex,
     show as accountShow,
 } from '@/routes/ledgers/accounts';
+import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type {
     Account,
     BreadcrumbItem,
@@ -128,6 +130,18 @@ type StatementInfo = {
     payment_due_date: string;
 };
 
+function statementAmountColor(value: number): string {
+    if (value === 0) {
+return 'text-foreground';
+}
+
+    if (value > 0) {
+return 'text-green-600';
+}
+
+    return 'text-red-500';
+}
+
 export default function AccountShow({
     ledger,
     account,
@@ -154,7 +168,6 @@ export default function AccountShow({
         },
     ];
 
-    const isNegativeBalance = balance < 0;
     const initialBalance = parseFloat(account.initial_balance);
 
     function handleDelete() {
@@ -164,6 +177,14 @@ export default function AccountShow({
             },
         });
         setShowDeleteDialog(false);
+    }
+
+    function viewAllTransactionsUrl(): string {
+        const base = transactionsIndex.url(ledger.id);
+        const params = new URLSearchParams();
+        params.append('account_ids[]', String(account.id));
+
+        return `${base}?${params.toString()}`;
     }
 
     return (
@@ -196,6 +217,10 @@ export default function AccountShow({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
+                        <AddTransactionModal
+                            ledger={ledger}
+                            defaultAccountId={account.id}
+                        />
                         <Button variant="outline" size="sm" asChild>
                             <a
                                 href={`/ledgers/${ledger.id}/accounts/${account.id}/export`}
@@ -263,12 +288,14 @@ export default function AccountShow({
                             </p>
                             <p
                                 className={`mt-1 text-2xl font-semibold tabular-nums ${
-                                    isNegativeBalance
-                                        ? 'text-red-500'
-                                        : 'text-foreground'
+                                    balance > 0
+                                        ? 'text-green-600'
+                                        : balance < 0
+                                          ? 'text-red-500'
+                                          : 'text-foreground'
                                 }`}
                             >
-                                {formatAmount(balance)}
+                                {formatAbsAmount(balance)}
                             </p>
                         </CardContent>
                     </Card>
@@ -319,8 +346,10 @@ export default function AccountShow({
                                     </p>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-xl font-semibold text-red-500 tabular-nums">
-                                        {formatAmount(
+                                    <p
+                                        className={`text-xl font-semibold tabular-nums ${statementAmountColor(-statementInfo.statement_balance)}`}
+                                    >
+                                        {formatAbsAmount(
                                             statementInfo.statement_balance,
                                         )}
                                     </p>
@@ -349,8 +378,10 @@ export default function AccountShow({
                                         {formatDate(statementInfo.current_end)}
                                     </p>
                                 </div>
-                                <p className="text-lg font-semibold tabular-nums">
-                                    {formatAmount(
+                                <p
+                                    className={`text-lg font-semibold tabular-nums ${statementAmountColor(-statementInfo.current_spending)}`}
+                                >
+                                    {formatAbsAmount(
                                         statementInfo.current_spending,
                                     )}
                                 </p>
@@ -363,8 +394,10 @@ export default function AccountShow({
                                 <p className="text-xs tracking-wide text-muted-foreground uppercase">
                                     Total outstanding
                                 </p>
-                                <p className="text-lg font-bold text-red-500 tabular-nums">
-                                    {formatAmount(statementInfo.outstanding)}
+                                <p
+                                    className={`text-lg font-bold tabular-nums ${statementAmountColor(-statementInfo.outstanding)}`}
+                                >
+                                    {formatAbsAmount(statementInfo.outstanding)}
                                 </p>
                             </div>
                         </CardContent>
@@ -391,7 +424,9 @@ export default function AccountShow({
                 {/* Transaction list */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-sm">Transactions</CardTitle>
+                        <CardTitle className="text-sm">
+                            Recent transactions
+                        </CardTitle>
                         <span className="text-xs text-muted-foreground">
                             {transactions.total} total
                         </span>
@@ -408,101 +443,77 @@ export default function AccountShow({
                                 </p>
                             </div>
                         ) : (
-                            <ul className="divide-y divide-border">
-                                {transactions.data.map((t) => {
-                                    const amount = parseFloat(t.amount);
-                                    const isExpense = amount < 0;
+                            <>
+                                <ul className="divide-y divide-border">
+                                    {transactions.data.map((t) => {
+                                        const amount = parseFloat(t.amount);
+                                        const isExpense = amount < 0;
 
-                                    return (
-                                        <li
-                                            key={t.id}
-                                            className="flex items-center justify-between gap-4 py-3"
-                                        >
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-medium">
-                                                    {t.description ??
-                                                        t.payee?.name ??
-                                                        'No description'}
-                                                </p>
-                                                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <span>
-                                                        {formatDate(
-                                                            t.transaction_date,
+                                        return (
+                                            <li
+                                                key={t.id}
+                                                className="flex items-center justify-between gap-4 py-3"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-medium">
+                                                        {t.description ??
+                                                            t.payee?.name ??
+                                                            'No description'}
+                                                    </p>
+                                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                                        <span>
+                                                            {formatDate(
+                                                                t.transaction_date,
+                                                            )}
+                                                        </span>
+                                                        {t.category && (
+                                                            <>
+                                                                <span>
+                                                                    ·
+                                                                </span>
+                                                                <span>
+                                                                    {
+                                                                        t
+                                                                            .category
+                                                                            .name
+                                                                    }
+                                                                </span>
+                                                            </>
                                                         )}
-                                                    </span>
-                                                    {t.category && (
-                                                        <>
-                                                            <span>·</span>
-                                                            <span>
-                                                                {
-                                                                    t.category
-                                                                        .name
-                                                                }
-                                                            </span>
-                                                        </>
-                                                    )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <p
-                                                className={`shrink-0 text-sm font-semibold tabular-nums ${
-                                                    isExpense
-                                                        ? 'text-red-500'
-                                                        : 'text-green-600'
-                                                }`}
-                                            >
-                                                {isExpense ? '-' : '+'}
-                                                {formatAbsAmount(amount)}
-                                            </p>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        )}
+                                                <p
+                                                    className={`shrink-0 text-sm font-semibold tabular-nums ${
+                                                        isExpense
+                                                            ? 'text-red-500'
+                                                            : 'text-green-600'
+                                                    }`}
+                                                >
+                                                    {isExpense ? '-' : '+'}
+                                                    {formatAbsAmount(amount)}
+                                                </p>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
 
-                        {/* Pagination */}
-                        {transactions.last_page > 1 && (
-                            <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                                <span className="text-xs text-muted-foreground">
-                                    Page {transactions.current_page} of{' '}
-                                    {transactions.last_page}
-                                </span>
-                                <div className="flex gap-2">
-                                    {transactions.prev_page_url && (
+                                {transactions.total > transactions.data.length && (
+                                    <div className="mt-4 flex justify-center border-t border-border pt-3">
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             asChild
                                         >
                                             <Link
-                                                href={
-                                                    transactions.prev_page_url
-                                                }
-                                                preserveState
-                                                preserveScroll
+                                                href={viewAllTransactionsUrl()}
                                             >
-                                                Previous
+                                                View all {transactions.total}{' '}
+                                                transactions
                                             </Link>
                                         </Button>
-                                    )}
-                                    {transactions.next_page_url && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            asChild
-                                        >
-                                            <Link
-                                                href={
-                                                    transactions.next_page_url
-                                                }
-                                                preserveState
-                                                preserveScroll
-                                            >
-                                                Next
-                                            </Link>
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </CardContent>
                 </Card>

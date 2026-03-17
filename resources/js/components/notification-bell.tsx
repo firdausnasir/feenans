@@ -8,6 +8,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import { api } from '@/lib/api-client';
 
 type NotificationData = {
     type?: string;
@@ -113,15 +114,12 @@ export function NotificationBell() {
             return;
         }
 
-        fetch('/notifications', {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-        })
-            .then((response) => response.json())
-            .then((payload) => {
-                setNotifications(payload.data ?? []);
-                setTotalCount((payload.meta as NotificationMeta)?.total ?? 0);
-            });
+        api.get<{ data: NotificationItem[]; meta: NotificationMeta }>(
+            '/notifications',
+        ).then((payload) => {
+            setNotifications(payload.data ?? []);
+            setTotalCount(payload.meta?.total ?? 0);
+        });
     }, [open]);
 
     function markAllRead() {
@@ -131,19 +129,7 @@ export function NotificationBell() {
     }
 
     function markOneRead(id: string) {
-        fetch(`/notifications/${id}/read`, {
-            method: 'PATCH',
-            headers: {
-                Accept: 'application/json',
-                'X-XSRF-TOKEN': decodeURIComponent(
-                    document.cookie
-                        .split('; ')
-                        .find((row) => row.startsWith('XSRF-TOKEN='))
-                        ?.split('=')[1] ?? '',
-                ),
-            },
-            credentials: 'same-origin',
-        }).then(() => {
+        api.patch(`/notifications/${id}/read`).then(() => {
             setNotifications((prev) => prev.filter((n) => n.id !== id));
             setTotalCount((prev) => Math.max(0, prev - 1));
             router.reload({ only: ['unread_notifications_count'] });

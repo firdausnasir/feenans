@@ -1,8 +1,8 @@
 import type { Page } from '@inertiajs/core';
 import { Form, Link } from '@inertiajs/react';
 import confetti from 'canvas-confetti';
-import { CreditCard, Paperclip, PlusCircle, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { CreditCard, Loader2, Paperclip, PlusCircle, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
 import InputError from '@/components/input-error';
@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { create as accountsCreate } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
@@ -47,21 +48,96 @@ export type DuplicateData = {
     tag_ids: number[];
 };
 
+type ModalData = {
+    accounts: Account[];
+    categories: Category[];
+    payees: Payee[];
+    tags: Tag[];
+};
+
+function flattenCategories(
+    categories: (Category & { children?: Category[] })[],
+): Category[] {
+    const result: Category[] = [];
+
+    for (const cat of categories) {
+        const { children, ...parent } = cat;
+        result.push(parent);
+
+        if (children) {
+            for (const child of children) {
+                result.push(child);
+            }
+        }
+    }
+
+    return result;
+}
+
+function useModalData(ledgerId: number, open: boolean) {
+    const [data, setData] = useState<ModalData | null>(null);
+    const [loading, setLoading] = useState(false);
+    const cachedRef = useRef<ModalData | null>(null);
+
+    const fetchData = useCallback(async () => {
+        if (cachedRef.current) {
+            setData(cachedRef.current);
+
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const base = `/api/v1/ledgers/${ledgerId}`;
+
+            const [accounts, categories, payees, tags] = await Promise.all([
+                api.get<{ data: Account[] }>(`${base}/accounts`),
+                api.get<{ data: (Category & { children?: Category[] })[] }>(
+                    `${base}/categories`,
+                ),
+                api.get<{ data: Payee[] }>(`${base}/payees`),
+                api.get<{ data: Tag[] }>(`${base}/tags`),
+            ]);
+
+            const result: ModalData = {
+                accounts: accounts.data ?? [],
+                categories: flattenCategories(categories.data ?? []),
+                payees: payees.data ?? [],
+                tags: tags.data ?? [],
+            };
+
+            cachedRef.current = result;
+            setData(result);
+        } catch {
+            toast.error('Failed to load transaction form data');
+        } finally {
+            setLoading(false);
+        }
+    }, [ledgerId]);
+
+    const invalidateCache = useCallback(() => {
+        cachedRef.current = null;
+    }, []);
+
+    useEffect(() => {
+        if (open) {
+            fetchData();
+        }
+    }, [open, fetchData]);
+
+    return { data, loading, invalidateCache };
+}
+
 export function AddTransactionModal({
     ledger,
-    accounts,
-    categories,
-    payees: initialPayees,
-    tags,
+    defaultAccountId,
     externalOpen,
     onExternalOpenChange,
     initialData,
 }: {
     ledger: Ledger;
-    accounts: Account[];
-    categories: Category[];
-    payees: Payee[];
-    tags: Tag[];
+    defaultAccountId?: number;
     externalOpen?: boolean;
     onExternalOpenChange?: (open: boolean) => void;
     initialData?: DuplicateData | null;
@@ -78,15 +154,28 @@ export function AddTransactionModal({
         }
     }
 
+    const {
+        data: modalData,
+        loading,
+        invalidateCache,
+    } = useModalData(ledger.id, open);
+    const accounts = useMemo(() => modalData?.accounts ?? [], [modalData]);
+    const categories = useMemo(() => modalData?.categories ?? [], [modalData]);
+    const payees = modalData?.payees ?? [];
+    const tags = modalData?.tags ?? [];
+
+    const resolveDefaultAccountId = useCallback((): string => {
+        if (defaultAccountId) {
+            return String(defaultAccountId);
+        }
+
+        return accounts.length > 0 ? String(accounts[0].id) : '';
+    }, [defaultAccountId, accounts]);
+
     const [mode, setMode] = useState<TransactionMode>('expense');
-    const [accountId, setAccountId] = useState<string>(
-        accounts.length > 0 ? String(accounts[0].id) : '',
-    );
-    const [toAccountId, setToAccountId] = useState<string>(
-        accounts.length > 1 ? String(accounts[1].id) : '',
-    );
+    const [accountId, setAccountId] = useState<string>('');
+    const [toAccountId, setToAccountId] = useState<string>('');
     const [categoryId, setCategoryId] = useState<string>('');
-    const [payees] = useState<Payee[]>(initialPayees);
     const [selectedPayeeId, setSelectedPayeeId] = useState<string>('');
     const [newPayeeNameForSubmit, setNewPayeeNameForSubmit] = useState('');
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
@@ -112,6 +201,20 @@ export function AddTransactionModal({
     const [transactionDate, setTransactionDate] = useState(
         new Date().toISOString().slice(0, 10),
     );
+    const [formResetKey, setFormResetKey] = useState(0);
+
+    // Set default account when data loads
+    const [prevModalData, setPrevModalData] = useState<ModalData | null>(null);
+
+    if (modalData && open && modalData !== prevModalData && !initialData) {
+        setPrevModalData(modalData);
+        setAccountId(resolveDefaultAccountId());
+        setToAccountId(accounts.length > 1 ? String(accounts[1].id) : '');
+    }
+
+    if (!open && prevModalData) {
+        setPrevModalData(null);
+    }
 
     const [prevInitialData, setPrevInitialData] = useState(initialData);
 
@@ -244,7 +347,7 @@ export function AddTransactionModal({
 
     function resetForm() {
         setMode('expense');
-        setAccountId(accounts.length > 0 ? String(accounts[0].id) : '');
+        setAccountId(resolveDefaultAccountId());
         setToAccountId(accounts.length > 1 ? String(accounts[1].id) : '');
         setCategoryId('');
         setSelectedPayeeId('');
@@ -279,6 +382,42 @@ export function AddTransactionModal({
         setTransactionDate(new Date().toISOString().slice(0, 10));
     }
 
+    function resetForRapidEntry() {
+        setAmount('');
+        setCategoryId('');
+        setSelectedPayeeId('');
+        setNewPayeeNameForSubmit('');
+        setIsSplitTransaction(false);
+        setSplitRows([
+            {
+                id: 1,
+                amount: '',
+                category_id: '',
+                payee_id: '',
+                description: '',
+            },
+            {
+                id: 2,
+                amount: '',
+                category_id: '',
+                payee_id: '',
+                description: '',
+            },
+        ]);
+        splitRowId.current = 3;
+        setPendingFiles([]);
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+
+        setFormResetKey((prev) => prev + 1);
+
+        setTimeout(() => {
+            amountInputRef.current?.focus();
+        }, 0);
+    }
+
     function syncFileInput(files: File[]) {
         if (!fileInputRef.current) {
             return;
@@ -308,8 +447,15 @@ export function AddTransactionModal({
             toast.success('Transaction saved');
         }
 
-        setOpen(false);
-        resetForm();
+        // Invalidate cache so new payees are picked up on next open
+        invalidateCache();
+
+        if (rapidEntry) {
+            resetForRapidEntry();
+        } else {
+            setOpen(false);
+            resetForm();
+        }
     }
 
     return (
@@ -336,7 +482,14 @@ export function AddTransactionModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                {accounts.length === 0 ? (
+                {loading ? (
+                    <div className="flex flex-col items-center gap-3 py-12">
+                        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                            Loading...
+                        </p>
+                    </div>
+                ) : accounts.length === 0 ? (
                     <div className="flex flex-col items-center gap-4 py-8 text-center">
                         <CreditCard className="size-12 text-muted-foreground" />
                         <div>
@@ -881,7 +1034,7 @@ export function AddTransactionModal({
                                         Description
                                     </Label>
                                     <Input
-                                        key={`desc-${duplicateDate ?? 'default'}`}
+                                        key={`desc-${duplicateDate ?? 'default'}-${formResetKey}`}
                                         id="description"
                                         name="description"
                                         defaultValue={
@@ -895,7 +1048,7 @@ export function AddTransactionModal({
                                 <div className="grid gap-2">
                                     <Label htmlFor="notes">Notes</Label>
                                     <Input
-                                        key={`notes-${duplicateDate ?? 'default'}`}
+                                        key={`notes-${duplicateDate ?? 'default'}-${formResetKey}`}
                                         id="notes"
                                         name="notes"
                                         defaultValue={initialData?.notes ?? ''}

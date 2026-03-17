@@ -192,6 +192,7 @@ export default function AccountsIndex({
         typeName: string,
         typeId: number,
         typeAccounts: Account[],
+        isCredit: boolean,
     ) {
         const balance = getAccountBalance(account);
         const isNegative = balance < 0;
@@ -284,7 +285,9 @@ export default function AccountsIndex({
                                 className={`mt-3 text-xl font-semibold tabular-nums ${
                                     isNegative
                                         ? 'text-red-600 dark:text-red-400'
-                                        : 'text-foreground'
+                                        : isCredit && balance > 0
+                                          ? 'text-green-600'
+                                          : 'text-foreground'
                                 }`}
                             >
                                 {isNegative ? (
@@ -448,6 +451,7 @@ export default function AccountsIndex({
                                         type.name,
                                         type.id,
                                         typeAccounts,
+                                        type.is_credit,
                                     ),
                                 )}
                             </div>
@@ -485,6 +489,7 @@ export default function AccountsIndex({
                                     'Other',
                                     0,
                                     ungrouped,
+                                    false,
                                 ),
                             )}
                         </div>
