@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { ChevronDown, Loader2, Receipt, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Receipt, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
@@ -24,6 +24,14 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useApiQuery } from '@/hooks/use-api-query';
@@ -1090,6 +1098,19 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
         () => window.location.search.length > 0,
     );
 
+    // Track whether we are on a mobile-sized viewport (below md breakpoint)
+    const [isMobile, setIsMobile] = useState(
+        () => !window.matchMedia('(min-width: 768px)').matches,
+    );
+
+    useEffect(() => {
+        const mql = window.matchMedia('(min-width: 768px)');
+        const handler = (e: MediaQueryListEvent) => setIsMobile(!e.matches);
+        mql.addEventListener('change', handler);
+
+        return () => mql.removeEventListener('change', handler);
+    }, []);
+
     // Sync URL when applied filters or page change
     useEffect(() => {
         updateUrlParams(appliedFilters, page);
@@ -1404,6 +1425,162 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
 
     const activeFilterCount = activeFilterLabels.length;
 
+    const filtersChanged =
+        JSON.stringify(localFilters) !== JSON.stringify(appliedFilters);
+
+    type FilterChip = {
+        key: string;
+        label: string;
+        onRemove: () => void;
+    };
+
+    const filterChips: FilterChip[] = (() => {
+        const chips: FilterChip[] = [];
+
+        if (localFilters.date_from || localFilters.date_to) {
+            const from = localFilters.date_from
+                ? formatDate(localFilters.date_from)
+                : 'Start';
+            const to = localFilters.date_to
+                ? formatDate(localFilters.date_to)
+                : 'Now';
+            chips.push({
+                key: 'date_range',
+                label: `${from} – ${to}`,
+                onRemove: () =>
+                    setLocalFilters((prev) => ({
+                        ...prev,
+                        date_from: '',
+                        date_to: '',
+                    })),
+            });
+        }
+
+        if (localFilters.search) {
+            chips.push({
+                key: 'search',
+                label: `"${localFilters.search}"`,
+                onRemove: () =>
+                    setLocalFilters((prev) => ({
+                        ...prev,
+                        search: null,
+                    })),
+            });
+        }
+
+        for (const id of localFilters.account_ids) {
+            const account = accounts.find((a) => String(a.id) === id);
+
+            if (account) {
+                chips.push({
+                    key: `account_${id}`,
+                    label: account.name,
+                    onRemove: () =>
+                        setLocalFilters((prev) => ({
+                            ...prev,
+                            account_ids: prev.account_ids.filter(
+                                (aid) => aid !== id,
+                            ),
+                        })),
+                });
+            }
+        }
+
+        const allCats = categories.flatMap((p) => [p, ...(p.children ?? [])]);
+
+        for (const id of localFilters.category_ids) {
+            const cat = allCats.find((c) => String(c.id) === id);
+
+            if (cat) {
+                chips.push({
+                    key: `category_${id}`,
+                    label: cat.name,
+                    onRemove: () =>
+                        setLocalFilters((prev) => ({
+                            ...prev,
+                            category_ids: prev.category_ids.filter(
+                                (cid) => cid !== id,
+                            ),
+                        })),
+                });
+            }
+        }
+
+        for (const type of localFilters.transaction_types) {
+            chips.push({
+                key: `type_${type}`,
+                label: type.charAt(0).toUpperCase() + type.slice(1),
+                onRemove: () =>
+                    setLocalFilters((prev) => ({
+                        ...prev,
+                        transaction_types: prev.transaction_types.filter(
+                            (t) => t !== type,
+                        ),
+                    })),
+            });
+        }
+
+        for (const id of localFilters.payee_ids) {
+            const payee = payees.find((p) => String(p.id) === id);
+
+            if (payee) {
+                chips.push({
+                    key: `payee_${id}`,
+                    label: payee.name,
+                    onRemove: () =>
+                        setLocalFilters((prev) => ({
+                            ...prev,
+                            payee_ids: prev.payee_ids.filter(
+                                (pid) => pid !== id,
+                            ),
+                        })),
+                });
+            }
+        }
+
+        for (const id of localFilters.tag_ids) {
+            const tag = tags.find((t) => String(t.id) === id);
+
+            if (tag) {
+                chips.push({
+                    key: `tag_${id}`,
+                    label: tag.name,
+                    onRemove: () =>
+                        setLocalFilters((prev) => ({
+                            ...prev,
+                            tag_ids: prev.tag_ids.filter((tid) => tid !== id),
+                        })),
+                });
+            }
+        }
+
+        if (localFilters.uncategorized === '1') {
+            chips.push({
+                key: 'uncategorized',
+                label: 'Uncategorized',
+                onRemove: () =>
+                    setLocalFilters((prev) => ({
+                        ...prev,
+                        uncategorized: null,
+                    })),
+            });
+        }
+
+        if (localFilters.bill_id) {
+            chips.push({
+                key: 'bill',
+                label: 'Recurring',
+                onRemove: () =>
+                    setLocalFilters((prev) => ({
+                        ...prev,
+                        bill_id: null,
+                    })),
+            });
+        }
+
+        return chips;
+    })();
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transactions`} />
@@ -1463,64 +1640,99 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                 </div>
 
                 {/* Filters bar */}
-                <Card
-                    className={filtersOpen ? '' : 'cursor-pointer'}
-                    onClick={() => {
-                        if (!filtersOpen) {
-                            setFiltersOpen(true);
-                        }
-                    }}
-                >
-                    <CardContent className="px-4 py-2">
-                        <div className="flex flex-col gap-3">
-                            {/* Mobile filter toggle */}
-                            <button
-                                type="button"
-                                className="flex items-center justify-between"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setFiltersOpen(!filtersOpen);
-                                }}
-                            >
-                                <div className="flex min-w-0 items-center gap-1.5">
-                                    <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
-                                    {activeFilterCount === 0 ? (
-                                        <span className="text-sm text-muted-foreground">
-                                            No filters applied
-                                        </span>
-                                    ) : (
-                                        <div className="flex flex-wrap items-center gap-1">
-                                            {activeFilterLabels.map((label) => (
-                                                <Badge
-                                                    key={label}
-                                                    variant="secondary"
-                                                    className="text-xs font-normal"
-                                                >
-                                                    {label}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <ChevronDown
-                                    className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
-                                />
-                            </button>
-
-                            <div
-                                className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'}`}
-                            >
-                                <div className="mb-3">
+                <Card>
+                    <CardContent className="px-4 py-3">
+                        <div className="flex flex-col gap-2">
+                            {/* Top row: search + filter toggle */}
+                            <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                                     <Input
-                                        placeholder="Search description or notes..."
+                                        placeholder="Search transactions..."
                                         value={localFilters.search ?? ''}
                                         onChange={(e) =>
                                             handleSearchChange(
                                                 e.target.value || null,
                                             )
                                         }
+                                        className="pl-9"
                                     />
                                 </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 gap-1.5"
+                                    onClick={() => setFiltersOpen(!filtersOpen)}
+                                >
+                                    <SlidersHorizontal className="size-4" />
+                                    <span className="hidden sm:inline">
+                                        Filters
+                                    </span>
+                                    {activeFilterCount > 0 && (
+                                        <Badge
+                                            variant="secondary"
+                                            className="ml-0.5 size-5 rounded-full p-0 text-[10px]"
+                                        >
+                                            {activeFilterCount}
+                                        </Badge>
+                                    )}
+                                </Button>
+                            </div>
+
+                            {/* Filter chips row */}
+                            {filterChips.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+                                        {filterChips.map((chip) => (
+                                            <Badge
+                                                key={chip.key}
+                                                variant="secondary"
+                                                className="shrink-0 gap-1 pr-1 text-xs font-normal"
+                                            >
+                                                <span className="max-w-[120px] truncate">
+                                                    {chip.label}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={chip.onRemove}
+                                                    className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
+                                                >
+                                                    <X className="size-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={handleResetFilters}
+                                    >
+                                        Clear all
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Unsaved changes indicator */}
+                            {filtersChanged && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                                        Filters changed
+                                    </span>
+                                    <Button
+                                        size="sm"
+                                        variant="default"
+                                        className="h-6 px-2 text-xs"
+                                        onClick={handleApplyFilters}
+                                    >
+                                        Apply
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Desktop filter panel (inline) */}
+                            <div
+                                className={`flex-col gap-3 ${filtersOpen && !isMobile ? 'flex' : 'hidden'}`}
+                            >
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                                     <div className="grid gap-1">
                                         <Label className="text-xs">From</Label>
@@ -1714,6 +1926,207 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Mobile filter panel (bottom sheet) */}
+                <Sheet
+                    open={filtersOpen && isMobile}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setFiltersOpen(false);
+                        }
+                    }}
+                >
+                    <SheetContent
+                        side="bottom"
+                        className="max-h-[85vh] overflow-y-auto"
+                    >
+                        <SheetHeader>
+                            <SheetTitle>Filters</SheetTitle>
+                            <SheetDescription>
+                                Narrow down your transactions
+                            </SheetDescription>
+                        </SheetHeader>
+                        <div className="flex flex-col gap-3 px-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">From</Label>
+                                    <DatePicker
+                                        value={localFilters.date_from}
+                                        onChange={(date) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                date_from: date,
+                                            }))
+                                        }
+                                        placeholder="From date"
+                                    />
+                                </div>
+
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">To</Label>
+                                    <DatePicker
+                                        value={localFilters.date_to}
+                                        onChange={(date) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                date_to: date,
+                                            }))
+                                        }
+                                        placeholder="To date"
+                                    />
+                                </div>
+
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">Account</Label>
+                                    <SearchableSelect
+                                        multiple
+                                        options={accounts.map((a) => ({
+                                            value: String(a.id),
+                                            label: a.name,
+                                            color: a.color,
+                                        }))}
+                                        value={localFilters.account_ids}
+                                        onValueChange={(value) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                account_ids: value,
+                                            }))
+                                        }
+                                        placeholder="All accounts"
+                                        searchPlaceholder="Search accounts..."
+                                        emptyMessage="No accounts found."
+                                    />
+                                </div>
+
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">Category</Label>
+                                    <SearchableSelect
+                                        multiple
+                                        options={flatCategories.map((c) => ({
+                                            value: String(c.id),
+                                            label: c.name,
+                                            color: c.color,
+                                            group: c.parent_id
+                                                ? categories.find(
+                                                      (p) =>
+                                                          p.id === c.parent_id,
+                                                  )?.name
+                                                : undefined,
+                                        }))}
+                                        value={localFilters.category_ids}
+                                        onValueChange={(value) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                category_ids: value,
+                                            }))
+                                        }
+                                        placeholder="All categories"
+                                        searchPlaceholder="Search categories..."
+                                        emptyMessage="No categories found."
+                                    />
+                                </div>
+
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">Type</Label>
+                                    <SearchableSelect
+                                        multiple
+                                        options={[
+                                            {
+                                                value: 'expense',
+                                                label: 'Expense',
+                                            },
+                                            {
+                                                value: 'income',
+                                                label: 'Income',
+                                            },
+                                            {
+                                                value: 'transfer',
+                                                label: 'Transfer',
+                                            },
+                                        ]}
+                                        value={localFilters.transaction_types}
+                                        onValueChange={(value) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                transaction_types: value,
+                                            }))
+                                        }
+                                        placeholder="All types"
+                                        searchPlaceholder="Search types..."
+                                        emptyMessage="No types found."
+                                    />
+                                </div>
+
+                                <div className="grid gap-1">
+                                    <Label className="text-xs">Payee</Label>
+                                    <SearchableSelect
+                                        multiple
+                                        options={payees.map((p) => ({
+                                            value: String(p.id),
+                                            label: p.name,
+                                        }))}
+                                        value={localFilters.payee_ids}
+                                        onValueChange={(value) =>
+                                            setLocalFilters((prev) => ({
+                                                ...prev,
+                                                payee_ids: value,
+                                            }))
+                                        }
+                                        placeholder="All payees"
+                                        searchPlaceholder="Search payees..."
+                                        emptyMessage="No payees found."
+                                    />
+                                </div>
+
+                                {tags.length > 0 && (
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">Tag</Label>
+                                        <SearchableSelect
+                                            multiple
+                                            options={tags.map((t) => ({
+                                                value: String(t.id),
+                                                label: t.name,
+                                            }))}
+                                            value={localFilters.tag_ids}
+                                            onValueChange={(value) =>
+                                                setLocalFilters((prev) => ({
+                                                    ...prev,
+                                                    tag_ids: value,
+                                                }))
+                                            }
+                                            placeholder="All tags"
+                                            searchPlaceholder="Search tags..."
+                                            emptyMessage="No tags found."
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <SheetFooter>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        handleApplyFilters();
+                                        setFiltersOpen(false);
+                                    }}
+                                >
+                                    Apply filters
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        handleResetFilters();
+                                        setFiltersOpen(false);
+                                    }}
+                                >
+                                    Reset
+                                </Button>
+                            </div>
+                        </SheetFooter>
+                    </SheetContent>
+                </Sheet>
 
                 {/* Bulk actions bar */}
                 {selectedIds.length > 0 && (
