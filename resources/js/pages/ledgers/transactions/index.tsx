@@ -7,7 +7,7 @@ import {
     Receipt,
     SlidersHorizontal,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
@@ -50,12 +50,6 @@ import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
-import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    exportMethod as exportTransactions,
-    index as transactionsIndex,
-} from '@/routes/ledgers/transactions';
-import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
     Attachment,
@@ -68,6 +62,12 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import {
+    exportMethod as exportTransactions,
+    index as transactionsIndex,
+} from '@/routes/ledgers/transactions';
+import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 
 type Filters = {
     search: string | null;
@@ -1014,22 +1014,28 @@ function TransactionTableSkeleton() {
 export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
     const base = `/api/v1/ledgers/${ledger.id}`;
 
-    // Filter state initialized from URL
+    // Local (draft) filter state for the UI - changes here do NOT trigger API calls
     const [localFilters, setLocalFilters] =
         useState<Filters>(parseFiltersFromUrl);
+
+    // Applied filter state - only updated when user clicks "Apply filters"
+    // Initialized from URL so filters are applied on page load
+    const [appliedFilters, setAppliedFilters] =
+        useState<Filters>(parseFiltersFromUrl);
+
     const [page, setPage] = useState(() => {
         const p = new URLSearchParams(window.location.search).get('page');
 
         return p ? parseInt(p, 10) : 1;
     });
 
-    // Build API params from filter state
+    // Build API params from APPLIED filters (not local draft)
     const filterParams = useMemo(
-        () => buildFilterParams(localFilters, page),
-        [localFilters, page],
+        () => buildFilterParams(appliedFilters, page),
+        [appliedFilters, page],
     );
 
-    // Fetch transactions via API
+    // Fetch transactions via API using applied filters only
     const {
         data: txResult,
         loading: txLoading,
@@ -1087,35 +1093,18 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
     const [duplicateTransaction, setDuplicateTransaction] =
         useState<DuplicateData | null>(null);
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-    const [filtersOpen, setFiltersOpen] = useState(false);
-
-    // Sync URL when filters or page change
-    useEffect(() => {
-        updateUrlParams(localFilters, page);
-    }, [localFilters, page]);
-
-    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
-        null,
+    const [filtersOpen, setFiltersOpen] = useState(
+        () => window.location.search.length > 0,
     );
-    // Debounced search - only triggers refetch after typing stops
+
+    // Sync URL when applied filters or page change
+    useEffect(() => {
+        updateUrlParams(appliedFilters, page);
+    }, [appliedFilters, page]);
+
+    // Update local search filter without triggering API calls
     const handleSearchChange = useCallback((value: string | null) => {
         setLocalFilters((prev) => ({ ...prev, search: value }));
-
-        if (searchDebounceRef.current) {
-            clearTimeout(searchDebounceRef.current);
-        }
-
-        searchDebounceRef.current = setTimeout(() => {
-            setPage(1);
-        }, 300);
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            if (searchDebounceRef.current) {
-                clearTimeout(searchDebounceRef.current);
-            }
-        };
     }, []);
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -1157,31 +1146,32 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                 `${base}/transactions/select-all`,
                 {
                     body: {
-                        date_from: localFilters.date_from || undefined,
-                        date_to: localFilters.date_to || undefined,
+                        date_from: appliedFilters.date_from || undefined,
+                        date_to: appliedFilters.date_to || undefined,
                         account_ids:
-                            localFilters.account_ids.length > 0
-                                ? localFilters.account_ids
+                            appliedFilters.account_ids.length > 0
+                                ? appliedFilters.account_ids
                                 : undefined,
                         category_ids:
-                            localFilters.category_ids.length > 0
-                                ? localFilters.category_ids
+                            appliedFilters.category_ids.length > 0
+                                ? appliedFilters.category_ids
                                 : undefined,
                         transaction_types:
-                            localFilters.transaction_types.length > 0
-                                ? localFilters.transaction_types
+                            appliedFilters.transaction_types.length > 0
+                                ? appliedFilters.transaction_types
                                 : undefined,
                         payee_ids:
-                            localFilters.payee_ids.length > 0
-                                ? localFilters.payee_ids
+                            appliedFilters.payee_ids.length > 0
+                                ? appliedFilters.payee_ids
                                 : undefined,
                         tag_ids:
-                            localFilters.tag_ids.length > 0
-                                ? localFilters.tag_ids
+                            appliedFilters.tag_ids.length > 0
+                                ? appliedFilters.tag_ids
                                 : undefined,
-                        search: localFilters.search || undefined,
-                        bill_id: localFilters.bill_id || undefined,
-                        uncategorized: localFilters.uncategorized || undefined,
+                        search: appliedFilters.search || undefined,
+                        bill_id: appliedFilters.bill_id || undefined,
+                        uncategorized:
+                            appliedFilters.uncategorized || undefined,
                     },
                 },
             );
@@ -1201,11 +1191,12 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
     }
 
     function handleApplyFilters() {
+        setAppliedFilters(localFilters);
         setPage(1);
     }
 
     function handleResetFilters() {
-        setLocalFilters({
+        const emptyFilters: Filters = {
             search: null,
             date_from: '',
             date_to: '',
@@ -1216,7 +1207,9 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
             tag_ids: [],
             bill_id: null,
             uncategorized: null,
-        });
+        };
+        setLocalFilters(emptyFilters);
+        setAppliedFilters(emptyFilters);
         setPage(1);
     }
 
@@ -1317,9 +1310,9 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
         ...(parent.children ?? []),
     ]);
 
-    const isAccountFiltered = localFilters.account_ids.length === 1;
+    const isAccountFiltered = appliedFilters.account_ids.length === 1;
     const filteredAccount = isAccountFiltered
-        ? accounts.find((a) => String(a.id) === localFilters.account_ids[0])
+        ? accounts.find((a) => String(a.id) === appliedFilters.account_ids[0])
         : null;
 
     // Compute running balances when a single account is filtered
@@ -1353,21 +1346,21 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
     const activeFilterLabels = (() => {
         const labels: string[] = [];
 
-        if (localFilters.date_from || localFilters.date_to) {
-            const from = localFilters.date_from
-                ? formatDate(localFilters.date_from)
+        if (appliedFilters.date_from || appliedFilters.date_to) {
+            const from = appliedFilters.date_from
+                ? formatDate(appliedFilters.date_from)
                 : 'Start';
-            const to = localFilters.date_to
-                ? formatDate(localFilters.date_to)
+            const to = appliedFilters.date_to
+                ? formatDate(appliedFilters.date_to)
                 : 'Now';
             labels.push(`${from} – ${to}`);
         }
 
-        if (localFilters.search) {
-            labels.push(`"${localFilters.search}"`);
+        if (appliedFilters.search) {
+            labels.push(`"${appliedFilters.search}"`);
         }
 
-        for (const id of localFilters.account_ids) {
+        for (const id of appliedFilters.account_ids) {
             const account = accounts.find((a) => String(a.id) === id);
 
             if (account) {
@@ -1377,7 +1370,7 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
 
         const allCats = categories.flatMap((p) => [p, ...(p.children ?? [])]);
 
-        for (const id of localFilters.category_ids) {
+        for (const id of appliedFilters.category_ids) {
             const cat = allCats.find((c) => String(c.id) === id);
 
             if (cat) {
@@ -1385,11 +1378,11 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
             }
         }
 
-        for (const type of localFilters.transaction_types) {
+        for (const type of appliedFilters.transaction_types) {
             labels.push(type.charAt(0).toUpperCase() + type.slice(1));
         }
 
-        for (const id of localFilters.payee_ids) {
+        for (const id of appliedFilters.payee_ids) {
             const payee = payees.find((p) => String(p.id) === id);
 
             if (payee) {
@@ -1397,7 +1390,7 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
             }
         }
 
-        for (const id of localFilters.tag_ids) {
+        for (const id of appliedFilters.tag_ids) {
             const tag = tags.find((t) => String(t.id) === id);
 
             if (tag) {
@@ -1405,11 +1398,11 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
             }
         }
 
-        if (localFilters.uncategorized === '1') {
+        if (appliedFilters.uncategorized === '1') {
             labels.push('Uncategorized');
         }
 
-        if (localFilters.bill_id) {
+        if (appliedFilters.bill_id) {
             labels.push('Recurring');
         }
 
@@ -1444,7 +1437,7 @@ export default function TransactionsIndex({ ledger }: { ledger: Ledger }) {
                                         const params = new URLSearchParams();
 
                                         for (const [key, val] of Object.entries(
-                                            localFilters,
+                                            appliedFilters,
                                         )) {
                                             if (Array.isArray(val)) {
                                                 for (const v of val) {

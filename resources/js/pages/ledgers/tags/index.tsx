@@ -29,9 +29,9 @@ import {
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
+import type { BreadcrumbItem, Tag } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as tagsIndex } from '@/routes/ledgers/tags';
-import type { BreadcrumbItem, Tag } from '@/types';
 
 type TagWithCount = Tag & { transactions_count: number };
 

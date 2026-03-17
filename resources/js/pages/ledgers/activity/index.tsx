@@ -15,8 +15,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import type { BreadcrumbItem, Pagination } from '@/types';
+import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 
 type ActivityItem = {
     id: number;
