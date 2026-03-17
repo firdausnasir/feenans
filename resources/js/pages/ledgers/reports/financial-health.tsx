@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { BarChart3, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import {
     Area,
@@ -17,6 +17,8 @@ import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -24,7 +26,7 @@ import {
     index as reportsIndex,
     financialHealth as financialHealthRoute,
 } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,14 @@ type CurrentSnapshot = {
     debt_to_asset_ratio: number;
 };
 
+type FinancialHealthResponse = {
+    data: {
+        net_worth_history: NetWorthEntry[];
+        savings_rate_history: SavingsRateEntry[];
+        current_snapshot: CurrentSnapshot;
+    };
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatMonthLabel(month: string): string {
@@ -58,6 +68,46 @@ function formatMonthLabel(month: string): string {
     const shortMonth = date.toLocaleDateString('en-MY', { month: 'short' });
 
     return `${shortMonth} ${String(year).slice(2)}`;
+}
+
+// ─── Skeleton Components ─────────────────────────────────────────────────────
+
+function FinancialHealthSkeleton() {
+    return (
+        <div className="space-y-6">
+            {/* Snapshot cards skeleton */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-3 w-28 rounded" />
+                            <Skeleton className="h-8 w-32 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            {/* Net worth chart skeleton */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Net worth over time</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[280px] w-full rounded" />
+                </CardContent>
+            </Card>
+
+            {/* Savings rate chart skeleton */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Monthly savings rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[280px] w-full rounded" />
+                </CardContent>
+            </Card>
+        </div>
+    );
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -286,17 +336,25 @@ function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function FinancialHealthPage({
-    ledger,
-    netWorthHistory,
-    savingsRateHistory,
-    currentSnapshot,
-}: {
-    ledger: Ledger;
-    netWorthHistory: NetWorthEntry[];
-    savingsRateHistory: SavingsRateEntry[];
-    currentSnapshot: CurrentSnapshot;
-}) {
+export default function FinancialHealthPage() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const { data: result, loading } = useApiQuery<FinancialHealthResponse>(
+        `${base}/reports/financial-health`,
+    );
+
+    const health = result?.data;
+    const netWorthHistory = health?.net_worth_history ?? [];
+    const savingsRateHistory = health?.savings_rate_history ?? [];
+    const currentSnapshot = health?.current_snapshot ?? {
+        assets: 0,
+        liabilities: 0,
+        net_worth: 0,
+        debt_to_asset_ratio: 0,
+    };
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Reports', href: reportsIndex.url(ledger.id) },
@@ -332,28 +390,34 @@ export default function FinancialHealthPage({
                     </div>
                 </div>
 
-                {/* Current snapshot cards */}
-                <SnapshotCards snapshot={currentSnapshot} />
+                {loading ? (
+                    <FinancialHealthSkeleton />
+                ) : (
+                    <>
+                        {/* Current snapshot cards */}
+                        <SnapshotCards snapshot={currentSnapshot} />
 
-                {/* Net worth history */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Net worth over time</CardTitle>
-                    </CardHeader>
-                    <CardContent className="min-w-0 overflow-hidden">
-                        <NetWorthChart data={netWorthHistory} />
-                    </CardContent>
-                </Card>
+                        {/* Net worth history */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Net worth over time</CardTitle>
+                            </CardHeader>
+                            <CardContent className="min-w-0 overflow-hidden">
+                                <NetWorthChart data={netWorthHistory} />
+                            </CardContent>
+                        </Card>
 
-                {/* Savings rate */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Monthly savings rate</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <SavingsRateChart data={savingsRateHistory} />
-                    </CardContent>
-                </Card>
+                        {/* Savings rate */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Monthly savings rate</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <SavingsRateChart data={savingsRateHistory} />
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
             </div>
         </AppLayout>
     );

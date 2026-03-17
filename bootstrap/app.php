@@ -22,6 +22,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             RateLimiter::for('api', function (Request $request) {
+                // SPA requests use session auth (same-origin with cookie) — no rate limit
+                if ($request->hasSession() && $request->session()->has('_token')) {
+                    return Limit::none();
+                }
+
+                // External API token requests get standard rate limit
                 return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
             });
         },

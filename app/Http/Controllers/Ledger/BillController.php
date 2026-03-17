@@ -22,35 +22,14 @@ class BillController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/bills/index', [
-            'ledger' => $ledger,
-            'bills' => $ledger->bills()
-                ->orderBy('next_due_date')
-                ->with([
-                    'account',
-                    'category',
-                    'payee',
-                    'transactions' => fn ($query) => $query
-                        ->with('account')
-                        ->latest('transaction_date')
-                        ->latest('id')
-                        ->limit(10),
-                ])
-                ->get(),
-            'accounts' => $ledger->accounts()->with('accountType')->orderBy('name')->get(),
-        ]);
+        return Inertia::render('ledgers/bills/index');
     }
 
     public function create(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/bills/create', [
-            'ledger' => $ledger,
-            'accounts' => $ledger->accounts()->visible()->with('accountType')->orderBy('name')->get(),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
-            'payees' => $ledger->payees()->orderBy('name')->get(),
-        ]);
+        return Inertia::render('ledgers/bills/create');
     }
 
     public function store(StoreBillRequest $request, Ledger $ledger): RedirectResponse
@@ -67,15 +46,7 @@ class BillController extends Controller
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/bills/edit', [
-            'ledger' => $ledger,
-            'bill' => $bill,
-            'accounts' => $ledger->accounts()
-                ->where(fn ($q) => $q->visible()->orWhere('id', $bill->account_id))
-                ->with('accountType')
-                ->orderBy('name')
-                ->get(),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
-            'payees' => $ledger->payees()->orderBy('name')->get(),
+            'billId' => $bill->id,
         ]);
     }
 

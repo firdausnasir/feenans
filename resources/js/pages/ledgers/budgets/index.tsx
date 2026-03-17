@@ -1,4 +1,4 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { PiggyBank } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -26,22 +26,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    destroy as destroyBudget,
-    index as budgetsIndex,
-    store as storeBudget,
-    update as updateBudget,
-} from '@/routes/ledgers/budgets';
-import type { BreadcrumbItem, BudgetStat, Category, Ledger } from '@/types';
-
-type Props = {
-    ledger: Ledger;
-    budgets: BudgetStat[];
-    categories: Category[];
-};
+import { index as budgetsIndex } from '@/routes/ledgers/budgets';
+import type { BreadcrumbItem, BudgetStat, Category } from '@/types';
 
 type FormState = {
     category_id: string;
@@ -153,7 +145,56 @@ const statusLabel: Record<string, string> = {
     over: 'Over budget',
 };
 
-export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
+function BudgetsLoadingSkeleton() {
+    return (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i}>
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                            <Skeleton className="h-5 w-32" />
+                            <Skeleton className="h-5 w-16 rounded-full" />
+                        </div>
+                        <Skeleton className="mt-1 h-3 w-40" />
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3">
+                        <Skeleton className="h-2 w-full" />
+                        <div className="flex justify-between">
+                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-4 w-20" />
+                        </div>
+                        <Skeleton className="h-4 w-28" />
+                        <div className="flex gap-2">
+                            <Skeleton className="h-8 w-14" />
+                            <Skeleton className="h-8 w-16" />
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
+export default function BudgetsIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const {
+        data: budgetsResult,
+        loading: budgetsLoading,
+        refetch,
+    } = useApiQuery<{ data: BudgetStat[] }>(`${base}/budgets`, {
+        params: { with_stats: true },
+    });
+    const { data: categoriesResult, loading: categoriesLoading } = useApiQuery<{
+        data: Category[];
+    }>(`${base}/categories`);
+
+    const budgets = budgetsResult?.data ?? [];
+    const categories = categoriesResult?.data ?? [];
+    const loading = budgetsLoading || categoriesLoading;
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Budgets', href: budgetsIndex.url(ledger.id) },
@@ -161,17 +202,21 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
 
     const [showCreate, setShowCreate] = useState(false);
     const [editBudget, setEditBudget] = useState<BudgetStat | null>(null);
+    const [submitting, setSubmitting] = useState(false);
     const [form, setForm] = useState<FormState>(
         makeEmptyForm(ledger.cycle_start_day),
     );
+    const [errors, setErrors] = useState<Record<string, string[]>>({});
 
     const handleCreate = () => {
         setForm(makeEmptyForm(ledger.cycle_start_day));
+        setErrors({});
         setShowCreate(true);
     };
 
     const handleEdit = (budget: BudgetStat) => {
         setEditBudget(budget);
+        setErrors({});
         setForm({
             category_id:
                 budget.category_id !== null
@@ -186,7 +231,13 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
         });
     };
 
-    const handleSubmit = () => {
+    const closeDialog = () => {
+        setShowCreate(false);
+        setEditBudget(null);
+        setErrors({});
+    };
+
+    const handleSubmit = async () => {
         const payload = {
             category_id:
                 form.category_id && form.category_id !== '__none__'
@@ -199,61 +250,58 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
             rollover: form.rollover,
         };
 
-        if (editBudget) {
-            router.put(
-                updateBudget.url({ ledger: ledger.id, budget: editBudget.id }),
-                payload,
-                {
-                    onSuccess: () => {
-                        setEditBudget(null);
-                        toast.success('Budget updated');
-                    },
-                    onError: (errors) => {
-                        const firstError = Object.values(errors)[0];
+        setSubmitting(true);
+        setErrors({});
 
-                        if (firstError) {
-                            toast.error(String(firstError));
-                        }
-                    },
-                },
-            );
-        } else {
-            router.post(storeBudget.url(ledger.id), payload, {
-                onSuccess: () => {
-                    setShowCreate(false);
-                    toast.success('Budget created');
-                },
-                onError: (errors) => {
-                    const firstError = Object.values(errors)[0];
+        try {
+            if (editBudget) {
+                await api.put(`${base}/budgets/${editBudget.id}`, {
+                    body: payload,
+                });
+                toast.success('Budget updated');
+            } else {
+                await api.post(`${base}/budgets`, { body: payload });
+                toast.success('Budget created');
+            }
 
-                    if (firstError) {
-                        toast.error(String(firstError));
-                    }
-                },
-            });
+            closeDialog();
+            refetch();
+        } catch (e) {
+            if (e instanceof ApiError && e.isValidationError) {
+                setErrors(e.validationErrors);
+                const firstError = Object.values(e.validationErrors)[0];
+
+                if (firstError?.[0]) {
+                    toast.error(String(firstError[0]));
+                }
+            } else {
+                toast.error(
+                    editBudget
+                        ? 'Failed to update budget'
+                        : 'Failed to create budget',
+                );
+            }
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    const handleDelete = (budget: BudgetStat) => {
+    const handleDelete = async (budget: BudgetStat) => {
         if (!confirm(`Delete budget for "${budget.category_name}"?`)) {
             return;
         }
 
-        router.delete(
-            destroyBudget.url({ ledger: ledger.id, budget: budget.id }),
-            {
-                onSuccess: () => {
-                    toast.success('Budget deleted');
-                },
-                onError: (errors) => {
-                    const firstError = Object.values(errors)[0];
-
-                    if (firstError) {
-                        toast.error(String(firstError));
-                    }
-                },
-            },
-        );
+        try {
+            await api.delete(`${base}/budgets/${budget.id}`);
+            toast.success('Budget deleted');
+            refetch();
+        } catch (e) {
+            const message =
+                e instanceof ApiError
+                    ? 'Failed to delete budget'
+                    : 'An unexpected error occurred';
+            toast.error(message);
+        }
     };
 
     const flatCategories = categories.flatMap((c) =>
@@ -275,7 +323,9 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                     </Button>
                 </div>
 
-                {budgets.length === 0 ? (
+                {loading ? (
+                    <BudgetsLoadingSkeleton />
+                ) : budgets.length === 0 ? (
                     <EmptyState
                         icon={<PiggyBank className="size-6" />}
                         title="No budgets yet"
@@ -369,8 +419,7 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                     open={showCreate || editBudget !== null}
                     onOpenChange={(open) => {
                         if (!open) {
-                            setShowCreate(false);
-                            setEditBudget(null);
+                            closeDialog();
                         }
                     }}
                 >
@@ -386,29 +435,39 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                 <Label htmlFor="category_id">
                                     Category (leave empty for overall)
                                 </Label>
-                                <SearchableSelect
-                                    options={flatCategories.map((c) => ({
-                                        value: String(c.id),
-                                        label: c.parent_id
-                                            ? `  \u21B3 ${c.name}`
-                                            : c.name,
-                                        color: c.color,
-                                    }))}
-                                    value={
-                                        form.category_id === '__none__'
-                                            ? null
-                                            : form.category_id
-                                    }
-                                    onValueChange={(val) =>
-                                        setForm((f) => ({
-                                            ...f,
-                                            category_id: val ?? '__none__',
-                                        }))
-                                    }
-                                    placeholder="Overall budget"
-                                    searchPlaceholder="Search categories..."
-                                    allOption="Overall budget"
-                                />
+                                {categoriesLoading ? (
+                                    <Skeleton className="h-9 w-full" />
+                                ) : (
+                                    <SearchableSelect
+                                        options={flatCategories.map((c) => ({
+                                            value: String(c.id),
+                                            label: c.parent_id
+                                                ? `  \u21B3 ${c.name}`
+                                                : c.name,
+                                            color: c.color,
+                                        }))}
+                                        value={
+                                            form.category_id === '__none__'
+                                                ? null
+                                                : form.category_id
+                                        }
+                                        onValueChange={(val) =>
+                                            setForm((f) => ({
+                                                ...f,
+                                                category_id:
+                                                    val ?? '__none__',
+                                            }))
+                                        }
+                                        placeholder="Overall budget"
+                                        searchPlaceholder="Search categories..."
+                                        allOption="Overall budget"
+                                    />
+                                )}
+                                {errors.category_id && (
+                                    <p className="text-xs text-destructive">
+                                        {errors.category_id[0]}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid gap-2">
@@ -428,6 +487,11 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                     }
                                     placeholder="e.g. 500"
                                 />
+                                {errors.amount && (
+                                    <p className="text-xs text-destructive">
+                                        {errors.amount[0]}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid gap-2">
@@ -469,6 +533,11 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                         ).end,
                                     )}
                                 </p>
+                                {errors.period && (
+                                    <p className="text-xs text-destructive">
+                                        {errors.period[0]}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid gap-2">
@@ -484,6 +553,11 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                                     }
                                     placeholder="Pick a start date"
                                 />
+                                {errors.start_date && (
+                                    <p className="text-xs text-destructive">
+                                        {errors.start_date[0]}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-3">
@@ -504,20 +578,22 @@ export default function BudgetsIndex({ ledger, budgets, categories }: Props) {
                         </div>
 
                         <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    setShowCreate(false);
-                                    setEditBudget(null);
-                                }}
-                            >
+                            <Button variant="outline" onClick={closeDialog}>
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleSubmit}
-                                disabled={!form.amount || !form.start_date}
+                                disabled={
+                                    !form.amount ||
+                                    !form.start_date ||
+                                    submitting
+                                }
                             >
-                                {editBudget ? 'Save changes' : 'Create budget'}
+                                {submitting
+                                    ? 'Saving...'
+                                    : editBudget
+                                      ? 'Save changes'
+                                      : 'Create budget'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

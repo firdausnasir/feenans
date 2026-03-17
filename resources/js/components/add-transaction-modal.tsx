@@ -135,18 +135,28 @@ export function AddTransactionModal({
     externalOpen,
     onExternalOpenChange,
     initialData,
+    onTransactionAdded,
+    onModalClosed,
 }: {
     ledger: Ledger;
     defaultAccountId?: number;
     externalOpen?: boolean;
     onExternalOpenChange?: (open: boolean) => void;
     initialData?: DuplicateData | null;
+    onTransactionAdded?: () => void;
+    onModalClosed?: () => void;
 }) {
     const isControlled = externalOpen !== undefined;
     const [internalOpen, setInternalOpen] = useState(false);
     const open = isControlled ? externalOpen : internalOpen;
+    const hadSavesRef = useRef(false);
 
     function setOpen(value: boolean) {
+        if (!value && hadSavesRef.current) {
+            hadSavesRef.current = false;
+            onModalClosed?.();
+        }
+
         if (isControlled) {
             onExternalOpenChange?.(value);
         } else {
@@ -449,6 +459,12 @@ export function AddTransactionModal({
 
         // Invalidate cache so new payees are picked up on next open
         invalidateCache();
+
+        // Track that a save occurred (for onModalClosed callback)
+        hadSavesRef.current = true;
+
+        // Notify parent to refetch data
+        onTransactionAdded?.();
 
         if (rapidEntry) {
             resetForRapidEntry();

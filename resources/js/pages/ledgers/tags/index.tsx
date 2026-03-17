@@ -1,4 +1,4 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { Hash, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -25,22 +26,14 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    destroy as destroyTag,
-    index as tagsIndex,
-    store as storeTag,
-    update as updateTag,
-} from '@/routes/ledgers/tags';
-import type { BreadcrumbItem, Ledger, Tag } from '@/types';
+import { index as tagsIndex } from '@/routes/ledgers/tags';
+import type { BreadcrumbItem, Tag } from '@/types';
 
 type TagWithCount = Tag & { transactions_count: number };
-
-type Props = {
-    ledger: Ledger;
-    tags: TagWithCount[];
-};
 
 type FormState = {
     name: string;
@@ -62,7 +55,40 @@ const PRESET_COLORS = [
     '#64748b',
 ];
 
-export default function TagsIndex({ ledger, tags }: Props) {
+function TagsLoadingSkeleton() {
+    return (
+        <Card>
+            <CardContent className="p-0">
+                <div className="space-y-4 p-6">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-4">
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-4 w-4 rounded-full" />
+                            <Skeleton className="h-4 w-12" />
+                            <Skeleton className="ml-auto h-4 w-16" />
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+export default function TagsIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const {
+        data: tagsResult,
+        loading,
+        refetch,
+    } = useApiQuery<{ data: TagWithCount[] }>(`${base}/tags`, {
+        params: { with_counts: true },
+    });
+
+    const tags = tagsResult?.data ?? [];
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Tags', href: tagsIndex.url(ledger.id) },
@@ -72,6 +98,7 @@ export default function TagsIndex({ ledger, tags }: Props) {
     const [editTag, setEditTag] = useState<TagWithCount | null>(null);
     const [form, setForm] = useState<FormState>(emptyForm());
     const [deleteTag, setDeleteTag] = useState<TagWithCount | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     function handleCreate() {
         setForm(emptyForm());
@@ -85,50 +112,56 @@ export default function TagsIndex({ ledger, tags }: Props) {
         setShowDialog(true);
     }
 
-    function handleSubmit() {
-        if (editTag) {
-            router.put(
-                updateTag.url({ ledger: ledger.id, tag: editTag.id }),
-                { name: form.name, color: form.color || null },
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        setShowDialog(false);
-                        setEditTag(null);
-                        toast.success('Tag updated');
-                    },
-                },
-            );
-        } else {
-            router.post(
-                storeTag.url(ledger.id),
-                { name: form.name, color: form.color || null },
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        setShowDialog(false);
-                        toast.success('Tag created');
-                    },
-                },
-            );
+    async function handleSubmit() {
+        setSubmitting(true);
+
+        try {
+            if (editTag) {
+                await api.patch(`${base}/tags/${editTag.id}`, {
+                    body: { name: form.name, color: form.color || null },
+                });
+                setShowDialog(false);
+                setEditTag(null);
+                toast.success('Tag updated');
+            } else {
+                await api.post(`${base}/tags`, {
+                    body: { name: form.name, color: form.color || null },
+                });
+                setShowDialog(false);
+                toast.success('Tag created');
+            }
+
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const message = errors.name?.[0] ?? 'Failed to save tag.';
+                toast.error(message);
+            } else {
+                toast.error('An unexpected error occurred');
+            }
+        } finally {
+            setSubmitting(false);
         }
     }
 
-    function handleDelete() {
+    async function handleDelete() {
         if (!deleteTag) {
             return;
         }
 
-        router.delete(
-            destroyTag.url({ ledger: ledger.id, tag: deleteTag.id }),
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setDeleteTag(null);
-                    toast.success('Tag deleted');
-                },
-            },
-        );
+        try {
+            await api.delete(`${base}/tags/${deleteTag.id}`);
+            setDeleteTag(null);
+            toast.success('Tag deleted');
+            refetch();
+        } catch (err) {
+            const message =
+                err instanceof ApiError
+                    ? 'Failed to delete tag'
+                    : 'An unexpected error occurred';
+            toast.error(message);
+        }
     }
 
     return (
@@ -147,7 +180,9 @@ export default function TagsIndex({ ledger, tags }: Props) {
                     </Button>
                 </div>
 
-                {tags.length === 0 ? (
+                {loading ? (
+                    <TagsLoadingSkeleton />
+                ) : tags.length === 0 ? (
                     <EmptyState
                         icon={<Hash className="size-6" />}
                         title="No tags yet"
@@ -359,7 +394,7 @@ export default function TagsIndex({ ledger, tags }: Props) {
                         </Button>
                         <Button
                             onClick={handleSubmit}
-                            disabled={!form.name.trim()}
+                            disabled={!form.name.trim() || submitting}
                         >
                             {editTag ? 'Save changes' : 'Create tag'}
                         </Button>

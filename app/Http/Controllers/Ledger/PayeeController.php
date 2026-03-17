@@ -19,19 +19,7 @@ class PayeeController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        $query = $ledger->payees()->withCount('transactions')->orderBy('name');
-
-        if ($request->filled('search')) {
-            $query->where('name', 'like', '%'.$request->get('search').'%');
-        }
-
-        return Inertia::render('ledgers/payees/index', [
-            'ledger' => $ledger,
-            'payees' => $query->get(),
-            'filters' => [
-                'search' => $request->get('search', ''),
-            ],
-        ]);
+        return Inertia::render('ledgers/payees/index');
     }
 
     public function store(Request $request, Ledger $ledger): RedirectResponse

@@ -1,4 +1,5 @@
 import { Head, router } from '@inertiajs/react';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -16,14 +17,14 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
-    destroy,
     edit as transactionEdit,
     index as transactionsIndex,
-    update,
 } from '@/routes/ledgers/transactions';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
@@ -89,7 +90,7 @@ function transactionCategoryOptions(
         }));
 }
 
-export default function TransactionEdit({
+function TransactionEditForm({
     ledger,
     transaction,
     accounts,
@@ -104,6 +105,8 @@ export default function TransactionEdit({
     payees: Payee[];
     tags: Tag[];
 }) {
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
@@ -274,71 +277,81 @@ export default function TransactionEdit({
         setSplits((current) => current.filter((split) => split.id !== id));
     }
 
-    function handleSubmit(event: React.FormEvent) {
+    async function handleSubmit(event: React.FormEvent) {
         event.preventDefault();
         setProcessing(true);
 
-        router.put(
-            update.url({ ledger: ledger.id, transaction: transaction.id }),
-            {
-                transaction_type: form.transaction_type,
-                transaction_date: form.transaction_date,
-                account_id: form.account_id,
-                ...(form.transaction_type === 'transfer'
-                    ? { to_account_id: form.to_account_id }
-                    : {
-                          category_id: form.category_id || null,
-                          payee_id: form.payee_id || null,
-                          new_payee_name: form.new_payee_name || null,
-                          splits: isSplitTransaction
-                              ? splits.map((split) => ({
-                                    amount: split.amount || null,
-                                    category_id: split.category_id || null,
-                                    payee_id: split.payee_id || null,
-                                    description: split.description || null,
-                                }))
-                              : null,
-                      }),
-                amount: form.amount,
-                description: form.description || null,
-                notes: form.notes || null,
-                tag_ids: form.tag_ids,
-            },
-            {
-                onSuccess: () => {
-                    toast.success('Transaction updated');
+        try {
+            await api.put(
+                `${base}/transactions/${transaction.id}`,
+                {
+                    body: {
+                        transaction_type: form.transaction_type,
+                        transaction_date: form.transaction_date,
+                        account_id: form.account_id,
+                        ...(form.transaction_type === 'transfer'
+                            ? { to_account_id: form.to_account_id }
+                            : {
+                                  category_id: form.category_id || null,
+                                  payee_id: form.payee_id || null,
+                                  new_payee_name: form.new_payee_name || null,
+                                  splits: isSplitTransaction
+                                      ? splits.map((split) => ({
+                                            amount: split.amount || null,
+                                            category_id:
+                                                split.category_id || null,
+                                            payee_id: split.payee_id || null,
+                                            description:
+                                                split.description || null,
+                                        }))
+                                      : null,
+                              }),
+                        amount: form.amount,
+                        description: form.description || null,
+                        notes: form.notes || null,
+                        tag_ids: form.tag_ids,
+                    },
                 },
-                onError: (errors) => {
-                    const firstError = Object.values(errors)[0];
+            );
+            toast.success('Transaction updated');
+            router.visit(transactionsIndex.url(ledger.id));
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const firstError = Object.values(err.validationErrors)[0];
 
-                    if (firstError) {
-                        toast.error(String(firstError));
-                    }
-                },
-                onFinish: () => setProcessing(false),
-            },
-        );
+                if (firstError?.[0]) {
+                    toast.error(firstError[0]);
+                }
+            } else {
+                toast.error('Failed to update transaction');
+            }
+        } finally {
+            setProcessing(false);
+        }
     }
 
-    function handleDelete() {
+    async function handleDelete() {
         setDeleting(true);
 
-        router.delete(
-            destroy.url({ ledger: ledger.id, transaction: transaction.id }),
-            {
-                onSuccess: () => {
-                    toast.success('Transaction deleted');
-                },
-                onError: (errors) => {
-                    const firstError = Object.values(errors)[0];
+        try {
+            await api.delete(
+                `${base}/transactions/${transaction.id}`,
+            );
+            toast.success('Transaction deleted');
+            router.visit(transactionsIndex.url(ledger.id));
+        } catch (err) {
+            if (err instanceof ApiError) {
+                const firstError = Object.values(err.validationErrors)[0];
 
-                    if (firstError) {
-                        toast.error(String(firstError));
-                    }
-                },
-                onFinish: () => setDeleting(false),
-            },
-        );
+                if (firstError?.[0]) {
+                    toast.error(firstError[0]);
+                } else {
+                    toast.error('Failed to delete transaction');
+                }
+            }
+        } finally {
+            setDeleting(false);
+        }
     }
 
     return (
@@ -1018,5 +1031,97 @@ export default function TransactionEdit({
                 </form>
             </div>
         </AppLayout>
+    );
+}
+
+export default function TransactionEditPage({
+    ledger,
+    transaction_id,
+}: {
+    ledger: Ledger;
+    transaction_id: number;
+}) {
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const { data: txData, loading: txLoading } = useApiQuery<{
+        data: Transaction;
+    }>(`${base}/transactions/${transaction_id}`);
+    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
+        data: Account[];
+    }>(`${base}/accounts`);
+    const { data: categoriesResult, loading: categoriesLoading } = useApiQuery<{
+        data: Category[];
+    }>(`${base}/categories`);
+    const { data: payeesResult, loading: payeesLoading } = useApiQuery<{
+        data: Payee[];
+    }>(`${base}/payees`);
+    const { data: tagsResult, loading: tagsLoading } = useApiQuery<{
+        data: Tag[];
+    }>(`${base}/tags`);
+
+    const isLoading =
+        txLoading ||
+        accountsLoading ||
+        categoriesLoading ||
+        payeesLoading ||
+        tagsLoading;
+
+    if (isLoading || !txData) {
+        return (
+            <AppLayout
+                breadcrumbs={[
+                    {
+                        title: ledger.name,
+                        href: ledgerDashboard.url(ledger.id),
+                    },
+                    {
+                        title: 'Transactions',
+                        href: transactionsIndex.url(ledger.id),
+                    },
+                    { title: 'Edit Transaction', href: '#' },
+                ]}
+            >
+                <Head title="Edit Transaction" />
+                <div className="flex h-full flex-1 items-center justify-center p-8">
+                    <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                            Loading transaction...
+                        </p>
+                    </div>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    const transaction = txData.data;
+    const accounts = accountsResult?.data ?? [];
+    const categories = categoriesResult?.data ?? [];
+    const payees = payeesResult?.data ?? [];
+    const tags = tagsResult?.data ?? [];
+
+    // Flatten categories (they come with children nested)
+    const flatCategories = categories.flatMap((parent) => {
+        const { children, ...rest } = parent as Category & {
+            children?: Category[];
+        };
+        const result = [rest as Category];
+
+        if (children) {
+            result.push(...children);
+        }
+
+        return result;
+    });
+
+    return (
+        <TransactionEditForm
+            ledger={ledger}
+            transaction={transaction}
+            accounts={accounts}
+            categories={flatCategories}
+            payees={payees}
+            tags={tags}
+        />
     );
 }

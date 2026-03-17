@@ -14,7 +14,6 @@ test('settings page renders for ledger owner', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/settings/index')
-        ->has('ledger')
     );
 });
 

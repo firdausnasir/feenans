@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { BarChart3, Calendar } from 'lucide-react';
 import {
     Bar,
@@ -16,6 +16,7 @@ import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -24,6 +25,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -31,7 +33,7 @@ import {
     index as reportsIndex,
     cashFlow as cashFlowRoute,
 } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,12 +53,64 @@ type UpcomingBill = {
     account_name: string | null;
 };
 
+type CashFlowResponse = {
+    data: {
+        daily_cash_flow: DailyCashFlowEntry[];
+        upcoming_bills: UpcomingBill[];
+        period_label: string;
+    };
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDayLabel(dateStr: string): string {
     const date = new Date(dateStr + 'T00:00:00');
 
     return date.toLocaleDateString('en-MY', { month: 'short', day: 'numeric' });
+}
+
+// ─── Skeleton Components ─────────────────────────────────────────────────────
+
+function CashFlowSkeleton() {
+    return (
+        <div className="space-y-6">
+            {/* Summary cards skeleton */}
+            <div className="grid gap-4 sm:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-3 w-24 rounded" />
+                            <Skeleton className="h-8 w-32 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            {/* Chart skeleton */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Daily cash flow</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[300px] w-full rounded" />
+                </CardContent>
+            </Card>
+
+            {/* Bills skeleton */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Upcoming recurring transactions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <Skeleton key={i} className="h-8 w-full rounded" />
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -222,27 +276,30 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function CashFlowPage({
-    ledger,
-    dailyCashFlow,
-    upcomingBills,
-    periodLabel,
-}: {
-    ledger: Ledger;
-    dailyCashFlow: DailyCashFlowEntry[];
-    upcomingBills: UpcomingBill[];
-    periodLabel: string;
-}) {
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Reports', href: reportsIndex.url(ledger.id) },
-        { title: 'Cash Flow', href: cashFlowRoute.url(ledger.id) },
-    ];
+export default function CashFlowPage() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const { data: result, loading } = useApiQuery<CashFlowResponse>(
+        `${base}/reports/cash-flow`,
+    );
+
+    const cashFlow = result?.data;
+    const dailyCashFlow = cashFlow?.daily_cash_flow ?? [];
+    const upcomingBills = cashFlow?.upcoming_bills ?? [];
+    const periodLabel = cashFlow?.period_label ?? 'current period';
 
     // Quick summary stats
     const totalIncome = dailyCashFlow.reduce((sum, d) => sum + d.income, 0);
     const totalExpense = dailyCashFlow.reduce((sum, d) => sum + d.expense, 0);
     const netFlow = totalIncome - totalExpense;
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
+        { title: 'Reports', href: reportsIndex.url(ledger.id) },
+        { title: 'Cash Flow', href: cashFlowRoute.url(ledger.id) },
+    ];
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -270,66 +327,74 @@ export default function CashFlowPage({
                     </div>
                 </div>
 
-                {/* Summary cards */}
-                <div className="grid gap-4 sm:grid-cols-3">
-                    <Card>
-                        <CardContent className="pt-6">
-                            <p className="text-xs font-medium text-muted-foreground uppercase">
-                                Total inflow
-                            </p>
-                            <p className="mt-2 text-2xl font-semibold text-green-600 tabular-nums dark:text-green-400">
-                                {formatAbsAmount(totalIncome)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <p className="text-xs font-medium text-muted-foreground uppercase">
-                                Total outflow
-                            </p>
-                            <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
-                                {formatAbsAmount(totalExpense)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <p className="text-xs font-medium text-muted-foreground uppercase">
-                                Net cash flow
-                            </p>
-                            <p
-                                className={`mt-2 text-2xl font-semibold tabular-nums ${
-                                    netFlow >= 0
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-red-500'
-                                }`}
-                            >
-                                {netFlow < 0 ? '-' : '+'}
-                                {formatAbsAmount(Math.abs(netFlow))}
-                            </p>
-                        </CardContent>
-                    </Card>
-                </div>
+                {loading ? (
+                    <CashFlowSkeleton />
+                ) : (
+                    <>
+                        {/* Summary cards */}
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Total inflow
+                                    </p>
+                                    <p className="mt-2 text-2xl font-semibold text-green-600 tabular-nums dark:text-green-400">
+                                        {formatAbsAmount(totalIncome)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Total outflow
+                                    </p>
+                                    <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
+                                        {formatAbsAmount(totalExpense)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Net cash flow
+                                    </p>
+                                    <p
+                                        className={`mt-2 text-2xl font-semibold tabular-nums ${
+                                            netFlow >= 0
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-500'
+                                        }`}
+                                    >
+                                        {netFlow < 0 ? '-' : '+'}
+                                        {formatAbsAmount(Math.abs(netFlow))}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
 
-                {/* Daily cash flow chart */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Daily cash flow</CardTitle>
-                    </CardHeader>
-                    <CardContent className="min-w-0 overflow-hidden">
-                        <DailyCashFlowChart data={dailyCashFlow} />
-                    </CardContent>
-                </Card>
+                        {/* Daily cash flow chart */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Daily cash flow</CardTitle>
+                            </CardHeader>
+                            <CardContent className="min-w-0 overflow-hidden">
+                                <DailyCashFlowChart data={dailyCashFlow} />
+                            </CardContent>
+                        </Card>
 
-                {/* Upcoming bills */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Upcoming recurring transactions</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <UpcomingBillsSection bills={upcomingBills} />
-                    </CardContent>
-                </Card>
+                        {/* Upcoming bills */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>
+                                    Upcoming recurring transactions
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <UpcomingBillsSection bills={upcomingBills} />
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
             </div>
         </AppLayout>
     );

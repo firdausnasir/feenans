@@ -6,7 +6,6 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
-use Inertia\Testing\AssertableInertia as Assert;
 
 test('search filters transactions by description', function () {
     $user = User::factory()->create();
@@ -36,18 +35,14 @@ test('search filters transactions by description', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'coffee',
         ]));
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/transactions/index')
-        ->has('transactions.data', 1)
-        ->where('transactions.data.0.description', 'Morning coffee at cafe')
-        ->where('filters.search', 'coffee')
-        ->etc()
-    );
+    $response->assertSuccessful();
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.description', 'Morning coffee at cafe');
 });
 
 test('search filters transactions by notes', function () {
@@ -79,18 +74,14 @@ test('search filters transactions by notes', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'Birthday',
         ]));
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/transactions/index')
-        ->has('transactions.data', 1)
-        ->where('transactions.data.0.description', 'Store purchase')
-        ->where('filters.search', 'Birthday')
-        ->etc()
-    );
+    $response->assertSuccessful();
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.description', 'Store purchase');
 });
 
 test('search returns all transactions when search is empty', function () {
@@ -109,16 +100,13 @@ test('search returns all transactions when search is empty', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', $ledger));
+        ->getJson(route('api.v1.ledgers.transactions.index', $ledger));
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/transactions/index')
-        ->has('transactions.data', 3)
-        ->etc()
-    );
+    $response->assertSuccessful();
+    $response->assertJsonCount(3, 'data');
 });
 
-test('search persists in URL via filters prop', function () {
+test('transaction index page renders without data props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
 
@@ -129,9 +117,9 @@ test('search persists in URL via filters prop', function () {
             'search' => 'test query',
         ]));
 
-    $response->assertInertia(fn (Assert $page) => $page
+    $response->assertSuccessful();
+    $response->assertInertia(fn ($page) => $page
         ->component('ledgers/transactions/index')
-        ->where('filters.search', 'test query')
-        ->etc()
+        ->has('ledger')
     );
 });

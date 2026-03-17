@@ -21,11 +21,7 @@ class BudgetController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/budgets/index', [
-            'ledger' => $ledger,
-            'budgets' => $this->budgetService->getBudgetsWithStats($ledger),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(['id', 'name']),
-        ]);
+        return Inertia::render('ledgers/budgets/index');
     }
 
     public function store(StoreBudgetRequest $request, Ledger $ledger): RedirectResponse

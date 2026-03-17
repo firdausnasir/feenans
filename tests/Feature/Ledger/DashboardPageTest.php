@@ -10,38 +10,33 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('dashboard page loads successfully', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $this->ledger = Ledger::factory()->for($this->user)->create(['cycle_start_day' => 1]);
+    $this->accountType = AccountType::factory()->for($this->ledger)->create();
+    $this->account = Account::factory()->for($this->ledger)->for($this->accountType)->create();
+    $this->category = Category::factory()->for($this->ledger)->create();
+    $this->token = $this->user->createToken('test');
+});
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
+test('dashboard page loads successfully', function () {
+    $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger))
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/dashboard')
-            ->has('ledger')
-            ->has('summary')
-            ->has('accounts')
-            ->has('upcomingBills')
-            ->has('recentTransactions')
         );
 });
 
 test('summary income and expense calculated correctly for current cycle', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
     $now = CarbonImmutable::now();
-    ['start' => $start] = $ledger->cycleBounds($now);
+    ['start' => $start, 'end' => $end] = $this->ledger->cycleBounds($now);
 
     // In-cycle income
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '100.00',
@@ -50,40 +45,34 @@ test('summary income and expense calculated correctly for current cycle', functi
 
     // In-cycle expense
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'expense',
             'amount' => '-40.00',
             'transaction_date' => $start->addDays(2)->toDateString(),
         ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('ledgers/dashboard')
-            ->where('summary.income', fn ($value) => $value == 100)
-            ->where('summary.expense', fn ($value) => $value == 40)
-            ->where('summary.net', fn ($value) => $value == 60)
-        );
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/summary?date_from={$start->toDateString()}&date_to={$end->toDateString()}")
+        ->assertSuccessful()
+        ->assertJson([
+            'income' => 100.0,
+            'expense' => 40.0,
+            'net' => 60.0,
+        ]);
 });
 
 test('summary excludes transactions outside current cycle', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
     $now = CarbonImmutable::now();
-    ['start' => $start] = $ledger->cycleBounds($now);
+    ['start' => $start, 'end' => $end] = $this->ledger->cycleBounds($now);
 
     // In-cycle income
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '200.00',
@@ -92,31 +81,36 @@ test('summary excludes transactions outside current cycle', function () {
 
     // Out-of-cycle transaction (previous cycle)
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '999.00',
             'transaction_date' => $start->subMonths(2)->toDateString(),
         ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('summary.income', fn ($value) => $value == 200)
-            ->where('summary.expense', fn ($value) => $value == 0)
-            ->where('summary.net', fn ($value) => $value == 200)
-        );
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/summary?date_from={$start->toDateString()}&date_to={$end->toDateString()}")
+        ->assertSuccessful()
+        ->assertJson([
+            'income' => 200.0,
+            'expense' => 0.0,
+            'net' => 200.0,
+        ]);
 });
 
 test('accounts grouped by type with correct balances', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    $typeA = AccountType::factory()->for($ledger)->create(['name' => 'Checking']);
-    $typeB = AccountType::factory()->for($ledger)->create(['name' => 'Credit']);
+    $token = $user->createToken('test');
+
+    $typeA = AccountType::factory()->for($ledger)->create(['name' => 'Checking', 'position' => 1]);
+    $typeB = AccountType::factory()->for($ledger)->create(['name' => 'Credit', 'position' => 2]);
+
     $accountA = Account::factory()->for($ledger)->for($typeA)->create(['initial_balance' => '100.00', 'name' => 'Account A']);
     $accountB = Account::factory()->for($ledger)->for($typeB)->create(['initial_balance' => '0.00', 'name' => 'Account B']);
+
     $category = Category::factory()->for($ledger)->create();
 
     // Add a transaction to account A
@@ -126,78 +120,64 @@ test('accounts grouped by type with correct balances', function () {
         ->for($category)
         ->create(['amount' => '50.00']);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('ledgers/dashboard')
-            ->has('accounts', 2)
-            ->where('accounts.0.type.name', 'Checking')
-            ->where('accounts.0.accounts.0.name', 'Account A')
-            ->where('accounts.0.accounts.0.balance', fn ($value) => $value == 150)
-            ->where('accounts.1.type.name', 'Credit')
-            ->where('accounts.1.accounts.0.name', 'Account B')
-            ->where('accounts.1.accounts.0.balance', fn ($value) => $value == 0)
-        );
+    $response = $this->withHeader('Authorization', "Bearer {$token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$ledger->id}/accounts?grouped=true")
+        ->assertSuccessful();
+
+    $data = $response->json('data');
+
+    expect($data)->toHaveCount(2);
+    expect($data[0]['type']['name'])->toBe('Checking');
+    expect($data[0]['accounts'][0]['name'])->toBe('Account A');
+    expect((float) $data[0]['accounts'][0]['current_balance'])->toBe(150.0);
+    expect($data[1]['type']['name'])->toBe('Credit');
+    expect($data[1]['accounts'][0]['name'])->toBe('Account B');
+    expect((float) $data[1]['accounts'][0]['current_balance'])->toBe(0.0);
 });
 
 test('upcoming bills are returned', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-
-    Bill::factory()->for($ledger)->for($account)->create([
+    Bill::factory()->for($this->ledger)->for($this->account)->create([
         'next_due_date' => CarbonImmutable::today()->addDays(3)->toDateString(),
         'is_active' => true,
     ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->has('upcomingBills')
-            ->has('upcomingBills.upcoming', 1)
-            ->has('upcomingBills.due', 0)
-            ->has('upcomingBills.missed', 0)
-        );
+    $response = $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/bills?upcoming=true")
+        ->assertSuccessful();
+
+    $json = $response->json();
+    expect($json)->toHaveKey('upcoming');
+    expect($json)->toHaveKey('due');
+    expect($json)->toHaveKey('missed');
+    expect($json['upcoming'])->toHaveCount(1);
+    expect($json['due'])->toHaveCount(0);
+    expect($json['missed'])->toHaveCount(0);
 });
 
-test('recent transactions limited to 10 ordered by date then id descending', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
+test('recent transactions endpoint returns paginated results', function () {
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->count(15)
         ->create(['transaction_date' => CarbonImmutable::today()->toDateString()]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->has('recentTransactions', 10)
-        );
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions?per_page=10")
+        ->assertSuccessful()
+        ->assertJsonCount(10, 'data');
 });
 
-test('cycle navigation scopes all widgets to the selected cycle', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
+test('cycle navigation scopes summary to the selected cycle', function () {
     $now = CarbonImmutable::now();
-    ['start' => $currentStart] = $ledger->cycleBounds($now);
-    ['start' => $prevStart, 'end' => $prevEnd] = $ledger->cycleBounds($now->subMonthNoOverflow());
+    ['start' => $currentStart] = $this->ledger->cycleBounds($now);
+    ['start' => $prevStart, 'end' => $prevEnd] = $this->ledger->cycleBounds($now->subMonthNoOverflow());
 
     // Current-cycle transaction
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '500.00',
@@ -207,9 +187,9 @@ test('cycle navigation scopes all widgets to the selected cycle', function () {
 
     // Previous-cycle transactions
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '200.00',
@@ -218,9 +198,9 @@ test('cycle navigation scopes all widgets to the selected cycle', function () {
         ]);
 
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'expense',
             'amount' => '-75.00',
@@ -228,70 +208,57 @@ test('cycle navigation scopes all widgets to the selected cycle', function () {
             'description' => 'Previous cycle expense',
         ]);
 
-    // Navigate to the previous cycle
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', ['ledger' => $ledger, 'cycle_offset' => -1]))
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('ledgers/dashboard')
-            // Summary should reflect previous cycle only
-            ->where('summary.income', fn ($value) => $value == 200)
-            ->where('summary.expense', fn ($value) => $value == 75)
-            ->where('summary.net', fn ($value) => $value == 125)
-            // Recent transactions should be from previous cycle only
-            ->has('recentTransactions', 2)
-            ->where('recentTransactions.0.description', 'Previous cycle expense')
-            ->where('recentTransactions.1.description', 'Previous cycle income')
-            // Cycle dates should match previous cycle
-            ->where('cycleDates.start', $prevStart->format('Y-m-d'))
-            ->where('cycleDates.end', $prevEnd->format('Y-m-d'))
-            ->where('cycleOffset', -1)
-            // Top categories should be scoped to the previous cycle
-            ->has('topCategories', 1)
-            ->where('topCategories.0.total', fn ($value) => $value == 75)
-            // Daily trend should only contain previous cycle data
-            ->where('dailyExpenseTrend', fn ($trend) => collect($trend)->every(
-                fn ($day) => $day['date'] >= $prevStart->format('Y-m-d')
-                    && $day['date'] <= $prevEnd->format('Y-m-d')
-            ))
-        );
+    // Verify summary scoped to previous cycle
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/summary?date_from={$prevStart->toDateString()}&date_to={$prevEnd->toDateString()}")
+        ->assertSuccessful()
+        ->assertJson([
+            'income' => 200.0,
+            'expense' => 75.0,
+            'net' => 125.0,
+        ]);
+
+    // Verify cycle dates for offset -1
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/cycle?offset=-1")
+        ->assertSuccessful()
+        ->assertJson([
+            'cycle_start' => $prevStart->toDateString(),
+            'cycle_end' => $prevEnd->toDateString(),
+            'offset' => -1,
+        ]);
+
+    // Verify top spending scoped to previous cycle
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/categories/top-spending?date_from={$prevStart->toDateString()}&date_to={$prevEnd->toDateString()}")
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'total' => 75.0,
+        ]);
 });
 
-test('account balances are not affected by cycle navigation', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create([
-        'initial_balance' => '1000.00',
-    ]);
-    $category = Category::factory()->for($ledger)->create();
+test('account balances are not affected by cycle scope', function () {
+    $this->account->update(['initial_balance' => '1000.00']);
 
     $now = CarbonImmutable::now();
-    ['start' => $currentStart] = $ledger->cycleBounds($now);
+    ['start' => $currentStart] = $this->ledger->cycleBounds($now);
 
     Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
+        ->for($this->ledger)
+        ->for($this->account)
+        ->for($this->category)
         ->create([
             'transaction_type' => 'income',
             'amount' => '250.00',
             'transaction_date' => $currentStart->addDays(1)->toDateString(),
         ]);
 
-    // Fetch current cycle balance
-    $currentCycleBalance = null;
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(function (Assert $page) use (&$currentCycleBalance) {
-            $page->component('ledgers/dashboard');
-            $currentCycleBalance = $page->toArray()['props']['accounts'][0]['accounts'][0]['balance'];
-        });
+    // Fetch accounts — balance should always include all transactions
+    $response = $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/accounts?grouped=true")
+        ->assertSuccessful();
 
-    // Fetch previous cycle — balance should be the same
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', ['ledger' => $ledger, 'cycle_offset' => -1]))
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('ledgers/dashboard')
-            ->where('accounts.0.accounts.0.balance', fn ($value) => $value == $currentCycleBalance)
-        );
+    $balance = (float) $response->json('data.0.accounts.0.current_balance');
+
+    expect($balance)->toBe(1250.0);
 });

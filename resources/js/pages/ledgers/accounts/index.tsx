@@ -1,47 +1,78 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { AlertTriangle, CreditCard, Eye, EyeOff } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { toggleVisibility } from '@/actions/App/Http/Controllers/Ledger/AccountController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api } from '@/lib/api-client';
 import { formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     show as accountShow,
     index as accountsIndex,
     create,
-    reorder as reorderRoute,
 } from '@/routes/ledgers/accounts';
-import type { Account, AccountType, BreadcrumbItem, Ledger } from '@/types';
+import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
-export default function AccountsIndex({
-    ledger,
-    accounts,
-    accountTypes,
-    netWorth,
-    showHidden,
-}: {
-    ledger: Ledger;
+type AccountGroup = {
+    type: Pick<AccountType, 'id' | 'name' | 'color' | 'is_credit'>;
     accounts: Account[];
-    accountTypes: AccountType[];
-    netWorth: { assets: number; liabilities: number; net: number };
-    showHidden: boolean;
-}) {
+    total_balance?: string;
+};
+
+type NetWorthData = {
+    assets: number;
+    liabilities: number;
+    net: number;
+    trend: Array<{ month: string; net: number }>;
+};
+
+export default function AccountsIndex() {
+    const { currentLedger: ledger } = usePage().props;
+
+    const base = `/api/v1/ledgers/${ledger!.id}`;
+
+    const [showHidden, setShowHidden] = useState(false);
+
+    const {
+        data: groupsResponse,
+        loading: groupsLoading,
+        refetch: refetchGroups,
+    } = useApiQuery<{ data: AccountGroup[] }>(`${base}/accounts`, {
+        params: {
+            grouped: true,
+            show_hidden: showHidden,
+            with_type_totals: true,
+        },
+        deps: [showHidden],
+    });
+
+    const { data: netWorthResponse, loading: netWorthLoading } = useApiQuery<{
+        data: NetWorthData;
+    }>(`${base}/net-worth`);
+
+    const accountGroups = groupsResponse?.data ?? [];
+    const netWorth = netWorthResponse?.data ?? null;
+
+    // Flatten all accounts for empty-state check
+    const allAccounts = accountGroups.flatMap((g) => g.accounts);
+
     const breadcrumbs: BreadcrumbItem[] = [
-        { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Accounts', href: accountsIndex.url(ledger.id) },
+        { title: ledger!.name, href: ledgerDashboard.url(ledger!.id) },
+        { title: 'Accounts', href: accountsIndex.url(ledger!.id) },
     ];
 
     // Drag state
@@ -50,48 +81,22 @@ export default function AccountsIndex({
     const [dragTypeId, setDragTypeId] = useState<number | null>(null);
     const isReorderingRef = useRef(false);
 
-    // Group accounts by account type, preserving accountTypes order
-    const grouped = accountTypes
-        .map((type) => ({
-            type,
-            accounts: accounts.filter((a) => a.account_type_id === type.id),
-        }))
-        .filter((group) => group.accounts.length > 0);
-
-    // Accounts with no matching type (safety net)
-    const ungrouped = accounts.filter(
-        (a) => !accountTypes.find((t) => t.id === a.account_type_id),
-    );
-
-    function handleToggleShowHidden(checked: boolean) {
-        router.get(
-            accountsIndex.url(ledger.id),
-            checked ? { show_hidden: 1 } : {},
-            { preserveState: true, preserveScroll: true },
-        );
-    }
-
     function handleToggleVisibility(e: React.MouseEvent, account: Account) {
         e.preventDefault();
         e.stopPropagation();
 
-        router.patch(
-            toggleVisibility.url({
-                ledger: ledger.id,
-                account: account.id,
-            }),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success(
-                        account.is_hidden
-                            ? `${account.name} is now visible`
-                            : `${account.name} is now hidden`,
-                    );
-                },
-            },
-        );
+        api.patch(`${base}/accounts/${account.id}/toggle-visibility`)
+            .then(() => {
+                toast.success(
+                    account.is_hidden
+                        ? `${account.name} is now visible`
+                        : `${account.name} is now hidden`,
+                );
+                refetchGroups();
+            })
+            .catch(() => {
+                toast.error('Failed to toggle visibility');
+            });
     }
 
     // ── Account drag & drop ──────────────────────────────────────────────
@@ -158,20 +163,15 @@ export default function AccountsIndex({
 
         isReorderingRef.current = true;
 
-        router.post(
-            reorderRoute.url(ledger.id),
-            { items },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    isReorderingRef.current = false;
-                },
-                onError: () => {
-                    isReorderingRef.current = false;
-                    toast.error('Failed to reorder accounts.');
-                },
-            },
-        );
+        api.post(`${base}/accounts/reorder`, { body: { items } })
+            .then(() => {
+                isReorderingRef.current = false;
+                refetchGroups();
+            })
+            .catch(() => {
+                isReorderingRef.current = false;
+                toast.error('Failed to reorder accounts.');
+            });
     }
 
     function handleDragEnd() {
@@ -219,7 +219,7 @@ export default function AccountsIndex({
             >
                 <Link
                     href={accountShow.url({
-                        ledger: ledger.id,
+                        ledger: ledger!.id,
                         account: account.id,
                     })}
                     className="block"
@@ -330,7 +330,7 @@ export default function AccountsIndex({
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`${ledger.name} accounts`} />
+            <Head title={`${ledger!.name} accounts`} />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
@@ -345,7 +345,7 @@ export default function AccountsIndex({
                                 id="show-hidden"
                                 size="sm"
                                 checked={showHidden}
-                                onCheckedChange={handleToggleShowHidden}
+                                onCheckedChange={setShowHidden}
                             />
                             <Label
                                 htmlFor="show-hidden"
@@ -356,145 +356,164 @@ export default function AccountsIndex({
                         </div>
 
                         <Button className="flex-1 md:flex-initial" asChild>
-                            <Link href={create.url(ledger.id)}>
+                            <Link href={create.url(ledger!.id)}>
                                 New Account
                             </Link>
                         </Button>
                     </div>
                 </div>
 
+                {/* Net worth cards */}
                 <div className="grid gap-4 lg:grid-cols-3">
-                    <Card className="py-4">
-                        <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                                Total Assets
-                            </p>
-                            <p
-                                className={`mt-1 text-2xl font-semibold tabular-nums ${
-                                    netWorth.assets > 0
-                                        ? 'text-green-600'
-                                        : 'text-foreground'
-                                }`}
-                            >
-                                {formatAmount(netWorth.assets)}
-                            </p>
-                        </CardContent>
-                    </Card>
+                    {netWorthLoading || !netWorth ? (
+                        <>
+                            {[1, 2, 3].map((i) => (
+                                <Card key={i} className="py-4">
+                                    <CardContent>
+                                        <Skeleton className="mb-2 h-4 w-24" />
+                                        <Skeleton className="h-8 w-32" />
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </>
+                    ) : (
+                        <>
+                            <Card className="py-4">
+                                <CardContent>
+                                    <p className="text-sm text-muted-foreground">
+                                        Total Assets
+                                    </p>
+                                    <p
+                                        className={`mt-1 text-2xl font-semibold tabular-nums ${
+                                            netWorth.assets > 0
+                                                ? 'text-green-600'
+                                                : 'text-foreground'
+                                        }`}
+                                    >
+                                        {formatAmount(netWorth.assets)}
+                                    </p>
+                                </CardContent>
+                            </Card>
 
-                    <Card className="py-4">
-                        <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                                Total Liabilities
-                            </p>
-                            <p
-                                className={`mt-1 text-2xl font-semibold tabular-nums ${
-                                    netWorth.liabilities !== 0
-                                        ? 'text-red-500'
-                                        : 'text-foreground'
-                                }`}
-                            >
-                                {formatAmount(netWorth.liabilities)}
-                            </p>
-                        </CardContent>
-                    </Card>
+                            <Card className="py-4">
+                                <CardContent>
+                                    <p className="text-sm text-muted-foreground">
+                                        Total Liabilities
+                                    </p>
+                                    <p
+                                        className={`mt-1 text-2xl font-semibold tabular-nums ${
+                                            netWorth.liabilities !== 0
+                                                ? 'text-red-500'
+                                                : 'text-foreground'
+                                        }`}
+                                    >
+                                        {formatAmount(netWorth.liabilities)}
+                                    </p>
+                                </CardContent>
+                            </Card>
 
-                    <Card className="py-4">
-                        <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                                Net Worth
-                            </p>
-                            <p
-                                className={`mt-1 text-2xl font-semibold tabular-nums ${
-                                    netWorth.net >= 0
-                                        ? 'text-green-600'
-                                        : 'text-red-500'
-                                }`}
-                            >
-                                {formatAmount(netWorth.net)}
-                            </p>
-                        </CardContent>
-                    </Card>
+                            <Card className="py-4">
+                                <CardContent>
+                                    <p className="text-sm text-muted-foreground">
+                                        Net Worth
+                                    </p>
+                                    <p
+                                        className={`mt-1 text-2xl font-semibold tabular-nums ${
+                                            netWorth.net >= 0
+                                                ? 'text-green-600'
+                                                : 'text-red-500'
+                                        }`}
+                                    >
+                                        {formatAmount(netWorth.net)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </>
+                    )}
                 </div>
 
-                {accounts.length === 0 && (
+                {/* Loading skeleton for account groups */}
+                {groupsLoading && (
+                    <div className="space-y-6">
+                        {[1, 2].map((i) => (
+                            <section key={i}>
+                                <Skeleton className="mb-3 h-4 w-32" />
+                                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                                    {[1, 2, 3].map((j) => (
+                                        <Card key={j} className="py-4">
+                                            <CardContent>
+                                                <Skeleton className="mb-3 h-5 w-40" />
+                                                <Skeleton className="mb-3 h-7 w-28" />
+                                                <Skeleton className="h-3 w-20" />
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+                )}
+
+                {!groupsLoading && allAccounts.length === 0 && (
                     <EmptyState
                         icon={<CreditCard className="size-6" />}
                         title="No accounts yet"
                         description="Add your bank accounts and wallets to start tracking."
                         action={{
                             label: 'New account',
-                            href: create.url(ledger.id),
+                            href: create.url(ledger!.id),
                         }}
                     />
                 )}
 
-                {grouped.map(({ type, accounts: typeAccounts }) => {
-                    const color = type.color ?? '#6b7280';
+                {!groupsLoading &&
+                    accountGroups.map((group) => {
+                        const color = group.type.color ?? '#6b7280';
+                        const typeAccounts = group.accounts;
 
-                    return (
-                        <section key={type.id}>
-                            <div className="mb-3 flex items-center gap-2">
-                                <span
-                                    className="size-3 rounded-full"
-                                    style={{ backgroundColor: color }}
-                                />
-                                <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                                    {type.name}
-                                </h2>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                {typeAccounts.map((account) =>
-                                    renderAccountCard(
-                                        account,
-                                        color,
-                                        type.name,
-                                        type.id,
-                                        typeAccounts,
-                                        type.is_credit,
-                                    ),
-                                )}
-                            </div>
-
-                            {typeAccounts.length > 1 && (
-                                <div className="mt-3 flex items-center justify-end gap-2 px-1">
-                                    <span className="text-sm font-medium text-muted-foreground">
-                                        Total {type.name}:
-                                    </span>
-                                    <span className="text-sm font-semibold tabular-nums">
-                                        {formatAmount(
-                                            typeAccounts.reduce(
-                                                (sum, a) =>
-                                                    sum + getAccountBalance(a),
-                                                0,
-                                            ),
-                                        )}
-                                    </span>
+                        return (
+                            <section key={group.type.id}>
+                                <div className="mb-3 flex items-center gap-2">
+                                    <span
+                                        className="size-3 rounded-full"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                                        {group.type.name}
+                                    </h2>
                                 </div>
-                            )}
-                        </section>
-                    );
-                })}
 
-                {ungrouped.length > 0 && (
-                    <section>
-                        <h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                            Other
-                        </h2>
-                        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                            {ungrouped.map((account) =>
-                                renderAccountCard(
-                                    account,
-                                    '#6b7280',
-                                    'Other',
-                                    0,
-                                    ungrouped,
-                                    false,
-                                ),
-                            )}
-                        </div>
-                    </section>
-                )}
+                                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                                    {typeAccounts.map((account) =>
+                                        renderAccountCard(
+                                            account,
+                                            color,
+                                            group.type.name,
+                                            group.type.id,
+                                            typeAccounts,
+                                            group.type.is_credit,
+                                        ),
+                                    )}
+                                </div>
+
+                                {typeAccounts.length > 1 &&
+                                    group.total_balance !== undefined && (
+                                        <div className="mt-3 flex items-center justify-end gap-2 px-1">
+                                            <span className="text-sm font-medium text-muted-foreground">
+                                                Total {group.type.name}:
+                                            </span>
+                                            <span className="text-sm font-semibold tabular-nums">
+                                                {formatAmount(
+                                                    parseFloat(
+                                                        group.total_balance,
+                                                    ),
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
+                            </section>
+                        );
+                    })}
             </div>
         </AppLayout>
     );

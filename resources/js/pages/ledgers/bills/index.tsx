@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ChevronDown,
     ChevronRight,
@@ -27,6 +27,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -40,7 +41,9 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import {
     formatAbsAmount,
     formatAmount,
@@ -51,13 +54,11 @@ import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     create,
-    destroy,
     edit as editRoute,
     index as billsIndex,
-    toggle,
 } from '@/routes/ledgers/bills';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { Account, Bill, BreadcrumbItem, Ledger } from '@/types';
+import type { Account, Bill, BreadcrumbItem } from '@/types';
 
 const COLUMN_COUNT = 9;
 
@@ -125,6 +126,29 @@ const dueDateStyles: Record<DueStatus, string> = {
     'due-soon': 'text-amber-500',
     upcoming: 'text-muted-foreground',
 };
+
+function BillsLoadingSkeleton() {
+    return (
+        <Card>
+            <CardContent className="p-0">
+                <div className="space-y-4 p-6">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-4">
+                            <Skeleton className="h-4 w-48" />
+                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-4 w-16" />
+                            <Skeleton className="hidden h-4 w-24 md:block" />
+                            <Skeleton className="hidden h-4 w-20 md:block" />
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="hidden h-4 w-16 lg:block" />
+                            <Skeleton className="h-4 w-12" />
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
 
 function BillRow({
     bill,
@@ -358,17 +382,29 @@ function BillRow({
     );
 }
 
-export default function BillsIndex({
-    ledger,
-    bills,
-    accounts,
-}: {
-    ledger: Ledger;
-    bills: Bill[];
-    accounts: Account[];
-}) {
+export default function BillsIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const {
+        data: billsResult,
+        loading: billsLoading,
+        refetch,
+    } = useApiQuery<{ data: Bill[] }>(`${base}/bills`, {
+        params: { with_transactions: true, with_missed: true },
+    });
+    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
+        data: Account[];
+    }>(`${base}/accounts`);
+
+    const bills = billsResult?.data ?? [];
+    const accounts = accountsResult?.data ?? [];
+    const loading = billsLoading || accountsLoading;
+
     const [billToDelete, setBillToDelete] = useState<Bill | null>(null);
     const [billToPay, setBillToPay] = useState<Bill | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -378,39 +414,45 @@ export default function BillsIndex({
         },
     ];
 
-    function handleToggle(bill: Bill) {
-        router.patch(
-            toggle.url({ ledger: ledger.id, bill: bill.id }),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success(
-                        bill.is_active
-                            ? 'Recurring transaction deactivated'
-                            : 'Recurring transaction activated',
-                    );
-                },
-            },
-        );
+    async function handleToggle(bill: Bill) {
+        try {
+            await api.patch(`${base}/bills/${bill.id}/toggle`);
+            toast.success(
+                bill.is_active
+                    ? 'Recurring transaction deactivated'
+                    : 'Recurring transaction activated',
+            );
+            refetch();
+        } catch (err) {
+            const message =
+                err instanceof ApiError
+                    ? 'Failed to toggle recurring transaction'
+                    : 'An unexpected error occurred';
+            toast.error(message);
+        }
     }
 
-    function handleDelete() {
+    async function handleDelete() {
         if (!billToDelete) {
             return;
         }
 
-        router.delete(
-            destroy.url({ ledger: ledger.id, bill: billToDelete.id }),
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success('Recurring transaction deleted');
-                },
-            },
-        );
+        setDeleting(true);
 
-        setBillToDelete(null);
+        try {
+            await api.delete(`${base}/bills/${billToDelete.id}`);
+            toast.success('Recurring transaction deleted');
+            setBillToDelete(null);
+            refetch();
+        } catch (err) {
+            const message =
+                err instanceof ApiError
+                    ? 'Failed to delete recurring transaction'
+                    : 'An unexpected error occurred';
+            toast.error(message);
+        } finally {
+            setDeleting(false);
+        }
     }
 
     return (
@@ -431,7 +473,9 @@ export default function BillsIndex({
                     </Button>
                 </div>
 
-                {bills.length === 0 ? (
+                {loading ? (
+                    <BillsLoadingSkeleton />
+                ) : bills.length === 0 ? (
                     <EmptyState
                         icon={<Receipt className="size-6" />}
                         title="No recurring transactions yet"
@@ -612,6 +656,7 @@ export default function BillsIndex({
                 ledgerId={ledger.id}
                 accounts={accounts}
                 onClose={() => setBillToPay(null)}
+                onSuccess={refetch}
             />
 
             {/* Delete confirmation dialog */}
@@ -639,8 +684,12 @@ export default function BillsIndex({
                         >
                             Cancel
                         </Button>
-                        <Button variant="destructive" onClick={handleDelete}>
-                            Delete
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={deleting}
+                        >
+                            {deleting ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

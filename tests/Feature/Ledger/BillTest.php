@@ -218,7 +218,7 @@ test('bill nextDueDateAfter handles recurrence_day greater than target month len
     expect($next->toDateString())->toBe('2024-02-29'); // 2024 is a leap year
 });
 
-test('bill index returns bills for the ledger', function () {
+test('bill index renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -234,8 +234,6 @@ test('bill index returns bills for the ledger', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/index')
-        ->has('bills', 2)
-        ->has('ledger')
     );
 });
 

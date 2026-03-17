@@ -1,4 +1,4 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import {
     ArrowDown,
     ArrowUp,
@@ -37,6 +37,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -45,11 +46,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -91,15 +93,6 @@ type ParentCategory = {
 type CategoryBreakdownResponse = {
     items: CategoryBreakdownItem[];
     parents: ParentCategory[];
-};
-
-type DateRange = {
-    date_from: string;
-    date_to: string;
-    preset: string;
-    account_id: string | null;
-    compare_start: string | null;
-    compare_end: string | null;
 };
 
 type ReportAccount = { id: number; name: string };
@@ -152,6 +145,40 @@ type ComparisonData = {
     categoryDeltas: CategoryDelta[];
     trendOverlay: TrendOverlayItem[];
     summary: ComparisonSummary;
+};
+
+type SpendingReportResponse = {
+    data: {
+        monthly_trends: MonthlyTrend[];
+        category_breakdown: CategoryBreakdownResponse;
+        payee_breakdown: PayeeBreakdownItem[];
+        income_category_breakdown: CategoryBreakdownResponse;
+        income_payee_breakdown: PayeeBreakdownItem[];
+        spending_heatmap: HeatmapDay[];
+        summary: {
+            total_income: number;
+            total_expense: number;
+            net: number;
+            transaction_count: number;
+        };
+        date_range: {
+            date_from: string;
+            date_to: string;
+            preset: string;
+            account_id: string | null;
+        };
+        all_accounts: ReportAccount[];
+        comparison: ComparisonData | null;
+    };
+};
+
+type Filters = {
+    date_from: string;
+    date_to: string;
+    preset: string;
+    account_id: string | null;
+    compare_start: string | null;
+    compare_end: string | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -319,73 +346,75 @@ function getCategoryColor(color: string | null, index: number): string {
     return color ?? CHART_COLORS[index % CHART_COLORS.length];
 }
 
+// ─── Skeleton Components ─────────────────────────────────────────────────────
+
+function ChartSkeleton() {
+    return (
+        <div className="space-y-3">
+            <Skeleton className="h-[250px] w-full rounded" />
+        </div>
+    );
+}
+
+function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    return (
+        <div className="space-y-2">
+            {Array.from({ length: rows }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full rounded" />
+            ))}
+        </div>
+    );
+}
+
+function SummaryCardsSkeleton() {
+    return (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i}>
+                    <CardContent className="pt-6">
+                        <Skeleton className="mb-2 h-3 w-24 rounded" />
+                        <Skeleton className="h-8 w-32 rounded" />
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
 // ─── Components ───────────────────────────────────────────────────────────────
 
 function DateRangeSelector({
-    ledger,
-    dateRange,
+    cycleStartDay,
+    filters,
     allAccounts,
     compareEnabled,
     onCompareToggle,
+    onFiltersChange,
 }: {
-    ledger: Ledger;
-    dateRange: DateRange;
+    cycleStartDay: number;
+    filters: Filters;
     allAccounts: ReportAccount[];
     compareEnabled: boolean;
     onCompareToggle: () => void;
+    onFiltersChange: (newFilters: Partial<Filters>) => void;
 }) {
     const today = new Date();
-    const csd = ledger.cycle_start_day;
+    const csd = cycleStartDay;
 
-    const [customFrom, setCustomFrom] = useState(dateRange.date_from);
-    const [customTo, setCustomTo] = useState(dateRange.date_to);
+    const [customFrom, setCustomFrom] = useState(filters.date_from);
+    const [customTo, setCustomTo] = useState(filters.date_to);
     const [compareFrom, setCompareFrom] = useState(
-        dateRange.compare_start ?? '',
+        filters.compare_start ?? '',
     );
-    const [compareTo, setCompareTo] = useState(dateRange.compare_end ?? '');
-
-    function buildParams(
-        overrides: Record<string, string | null> = {},
-    ): Record<string, string> {
-        const params: Record<string, string> = {
-            date_from: overrides.date_from ?? dateRange.date_from,
-            date_to: overrides.date_to ?? dateRange.date_to,
-        };
-
-        const accountId =
-            'account_id' in overrides
-                ? overrides.account_id
-                : dateRange.account_id;
-
-        if (accountId) {
-            params.account_id = accountId;
-        }
-
-        // Preserve comparison dates when they exist
-        const cStart =
-            'compare_start' in overrides
-                ? overrides.compare_start
-                : dateRange.compare_start;
-        const cEnd =
-            'compare_end' in overrides
-                ? overrides.compare_end
-                : dateRange.compare_end;
-
-        if (cStart && cEnd) {
-            params.compare_start = cStart;
-            params.compare_end = cEnd;
-        }
-
-        return params;
-    }
+    const [compareTo, setCompareTo] = useState(filters.compare_end ?? '');
 
     function applyPreset(preset: Preset) {
         const range = preset.compute(today, csd);
-        router.get(
-            reportsIndex.url(ledger.id),
-            buildParams({ date_from: range.date_from, date_to: range.date_to }),
-            { preserveState: true },
-        );
+        onFiltersChange({
+            date_from: range.date_from,
+            date_to: range.date_to,
+            preset: preset.key,
+        });
     }
 
     function applyCustomRange() {
@@ -393,11 +422,11 @@ function DateRangeSelector({
             return;
         }
 
-        router.get(
-            reportsIndex.url(ledger.id),
-            buildParams({ date_from: customFrom, date_to: customTo }),
-            { preserveState: true },
-        );
+        onFiltersChange({
+            date_from: customFrom,
+            date_to: customTo,
+            preset: 'custom',
+        });
     }
 
     function applyComparison() {
@@ -405,29 +434,21 @@ function DateRangeSelector({
             return;
         }
 
-        router.get(
-            reportsIndex.url(ledger.id),
-            buildParams({
-                compare_start: compareFrom,
-                compare_end: compareTo,
-            }),
-            { preserveState: true },
-        );
+        onFiltersChange({
+            compare_start: compareFrom,
+            compare_end: compareTo,
+        });
     }
 
     function clearComparison() {
-        router.get(
-            reportsIndex.url(ledger.id),
-            buildParams({
-                compare_start: null,
-                compare_end: null,
-            }),
-            { preserveState: true },
-        );
+        onFiltersChange({
+            compare_start: null,
+            compare_end: null,
+        });
     }
 
     function handleCompareToggle() {
-        if (compareEnabled && dateRange.compare_start) {
+        if (compareEnabled && filters.compare_start) {
             clearComparison();
         }
 
@@ -436,17 +457,13 @@ function DateRangeSelector({
 
     function handleAccountChange(value: string) {
         const accountId = value === 'all' ? null : value;
-        router.get(
-            reportsIndex.url(ledger.id),
-            buildParams({ account_id: accountId }),
-            { preserveState: true },
-        );
+        onFiltersChange({ account_id: accountId });
     }
 
     /** Suggest the previous period with same duration as the current period */
     function suggestPreviousPeriod() {
-        const from = new Date(dateRange.date_from + 'T00:00:00');
-        const to = new Date(dateRange.date_to + 'T00:00:00');
+        const from = new Date(filters.date_from + 'T00:00:00');
+        const to = new Date(filters.date_to + 'T00:00:00');
         const durationMs = to.getTime() - from.getTime();
         const prevEnd = new Date(from.getTime() - 86400000); // day before current start
         const prevStart = new Date(prevEnd.getTime() - durationMs);
@@ -480,20 +497,20 @@ function DateRangeSelector({
                             <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
                             <span className="truncate text-sm font-medium">
                                 {[
-                                    `${formatDate(dateRange.date_from)} – ${formatDate(dateRange.date_to)}`,
-                                    ...(dateRange.account_id
+                                    `${formatDate(filters.date_from)} – ${formatDate(filters.date_to)}`,
+                                    ...(filters.account_id
                                         ? [
                                               allAccounts.find(
                                                   (a) =>
                                                       a.id.toString() ===
-                                                      dateRange.account_id,
+                                                      filters.account_id,
                                               )?.name ?? 'Account',
                                           ]
                                         : []),
-                                    ...(dateRange.compare_start &&
-                                    dateRange.compare_end
+                                    ...(filters.compare_start &&
+                                    filters.compare_end
                                         ? [
-                                              `vs ${formatDate(dateRange.compare_start)} – ${formatDate(dateRange.compare_end)}`,
+                                              `vs ${formatDate(filters.compare_start)} – ${formatDate(filters.compare_end)}`,
                                           ]
                                         : []),
                                 ].join(' · ')}
@@ -511,7 +528,7 @@ function DateRangeSelector({
                                     key={preset.key}
                                     size="sm"
                                     variant={
-                                        dateRange.preset === preset.key
+                                        filters.preset === preset.key
                                             ? 'default'
                                             : 'outline'
                                     }
@@ -537,7 +554,7 @@ function DateRangeSelector({
                                 <div className="grid gap-1">
                                     <Label className="text-xs">Account</Label>
                                     <Select
-                                        value={dateRange.account_id ?? 'all'}
+                                        value={filters.account_id ?? 'all'}
                                         onValueChange={handleAccountChange}
                                     >
                                         <SelectTrigger className="h-8 w-full text-xs sm:w-40">
@@ -1802,33 +1819,76 @@ function buildSummarySentence(summary: ComparisonSummary): string | null {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ReportsIndex({
-    ledger,
-    monthlyTrend,
-    categoryBreakdown,
-    payeeBreakdown,
-    incomeCategoryBreakdown,
-    incomePayeeBreakdown,
-    spendingHeatmap,
-    allAccounts,
-    comparison,
-    dateRange,
-}: {
-    ledger: Ledger;
-    monthlyTrend: MonthlyTrend[];
-    categoryBreakdown: CategoryBreakdownResponse;
-    payeeBreakdown: PayeeBreakdownItem[];
-    incomeCategoryBreakdown: CategoryBreakdownResponse;
-    incomePayeeBreakdown: PayeeBreakdownItem[];
-    spendingHeatmap: HeatmapDay[];
-    allAccounts: ReportAccount[];
-    comparison: ComparisonData | null;
-    dateRange: DateRange;
-}) {
-    const [compareEnabled, setCompareEnabled] = useState(
-        comparison !== null || dateRange.compare_start !== null,
-    );
+function computeDefaultDates(cycleStartDay: number): {
+    date_from: string;
+    date_to: string;
+} {
+    const today = new Date();
+    const { start, end } = getCycleBounds(today, cycleStartDay);
+
+    return {
+        date_from: toDateString(start),
+        date_to: toDateString(end),
+    };
+}
+
+export default function ReportsIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const defaultDates = computeDefaultDates(ledger.cycle_start_day);
+
+    const [filters, setFilters] = useState<Filters>({
+        date_from: defaultDates.date_from,
+        date_to: defaultDates.date_to,
+        preset: 'this_month',
+        account_id: null,
+        compare_start: null,
+        compare_end: null,
+    });
+
+    const [compareEnabled, setCompareEnabled] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+
+    const apiParams: Record<string, string | null | undefined> = {
+        date_from: filters.date_from || undefined,
+        date_to: filters.date_to || undefined,
+        account_id: filters.account_id || undefined,
+        compare_start: filters.compare_start || undefined,
+        compare_end: filters.compare_end || undefined,
+    };
+
+    const { data: result, loading } = useApiQuery<SpendingReportResponse>(
+        `${base}/reports/spending`,
+        { params: apiParams, deps: [filters] },
+    );
+
+    const report = result?.data ?? null;
+    const monthlyTrend = report?.monthly_trends ?? [];
+    const categoryBreakdown = report?.category_breakdown ?? {
+        items: [],
+        parents: [],
+    };
+    const payeeBreakdown = report?.payee_breakdown ?? [];
+    const incomeCategoryBreakdown = report?.income_category_breakdown ?? {
+        items: [],
+        parents: [],
+    };
+    const incomePayeeBreakdown = report?.income_payee_breakdown ?? [];
+    const spendingHeatmap = report?.spending_heatmap ?? [];
+    const allAccounts = report?.all_accounts ?? [];
+    const comparison = report?.comparison ?? null;
+    const dateRange = report?.date_range ?? {
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        preset: filters.preset,
+        account_id: filters.account_id,
+    };
+
+    const handleFiltersChange = (newFilters: Partial<Filters>) => {
+        setFilters((prev) => ({ ...prev, ...newFilters }));
+    };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -1877,100 +1937,141 @@ export default function ReportsIndex({
 
                 {/* Date range selector */}
                 <DateRangeSelector
-                    ledger={ledger}
-                    dateRange={dateRange}
+                    cycleStartDay={ledger.cycle_start_day}
+                    filters={{
+                        ...filters,
+                        preset: dateRange.preset ?? filters.preset,
+                    }}
                     allAccounts={allAccounts}
                     compareEnabled={compareEnabled}
                     onCompareToggle={() => setCompareEnabled((prev) => !prev)}
+                    onFiltersChange={handleFiltersChange}
                 />
 
-                {/* Period comparison */}
-                {compareEnabled && comparison && (
-                    <ComparisonSection comparison={comparison} />
+                {loading ? (
+                    <div className="space-y-6">
+                        <SummaryCardsSkeleton />
+                        <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Monthly trend</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <ChartSkeleton />
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Expense by category</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <TableSkeleton />
+                                </CardContent>
+                            </Card>
+                        </div>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Expense by payee</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <TableSkeleton />
+                            </CardContent>
+                        </Card>
+                    </div>
+                ) : (
+                    <>
+                        {/* Period comparison */}
+                        {compareEnabled && comparison && (
+                            <ComparisonSection comparison={comparison} />
+                        )}
+                        {compareEnabled && !comparison && (
+                            <Card>
+                                <CardContent className="flex items-center justify-center py-8">
+                                    <p className="text-sm text-muted-foreground">
+                                        Select a comparison period above and
+                                        click &quot;Compare&quot; to see
+                                        differences.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Two-column layout on large screens */}
+                        <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+                            {/* Monthly trend */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Monthly trend</CardTitle>
+                                </CardHeader>
+                                <CardContent className="min-w-0 overflow-hidden">
+                                    <MonthlyTrendChart data={monthlyTrend} />
+                                </CardContent>
+                            </Card>
+
+                            {/* Category breakdown */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Expense by category</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <CategoryBreakdownSection
+                                        data={categoryBreakdown}
+                                    />
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Payee breakdown */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Expense by payee</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <PayeeBreakdownSection
+                                    data={payeeBreakdown}
+                                />
+                            </CardContent>
+                        </Card>
+
+                        {/* Income breakdown */}
+                        <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+                            {/* Income by category */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Income by category</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <IncomeCategoryBreakdownSection
+                                        data={incomeCategoryBreakdown}
+                                    />
+                                </CardContent>
+                            </Card>
+
+                            {/* Income by payee */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Income by payee</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <PayeeBreakdownSection
+                                        data={incomePayeeBreakdown}
+                                        amountClassName="text-green-600 dark:text-green-400"
+                                    />
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Spending heatmap */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Spending heatmap</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <SpendingHeatmap data={spendingHeatmap} />
+                            </CardContent>
+                        </Card>
+                    </>
                 )}
-                {compareEnabled && !comparison && (
-                    <Card>
-                        <CardContent className="flex items-center justify-center py-8">
-                            <p className="text-sm text-muted-foreground">
-                                Select a comparison period above and click
-                                &quot;Compare&quot; to see differences.
-                            </p>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* Two-column layout on large screens */}
-                <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
-                    {/* Monthly trend */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Monthly trend</CardTitle>
-                        </CardHeader>
-                        <CardContent className="min-w-0 overflow-hidden">
-                            <MonthlyTrendChart data={monthlyTrend} />
-                        </CardContent>
-                    </Card>
-
-                    {/* Category breakdown */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Expense by category</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <CategoryBreakdownSection
-                                data={categoryBreakdown}
-                            />
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Payee breakdown */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Expense by payee</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <PayeeBreakdownSection data={payeeBreakdown} />
-                    </CardContent>
-                </Card>
-
-                {/* Income breakdown */}
-                <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
-                    {/* Income by category */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Income by category</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <IncomeCategoryBreakdownSection
-                                data={incomeCategoryBreakdown}
-                            />
-                        </CardContent>
-                    </Card>
-
-                    {/* Income by payee */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Income by payee</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <PayeeBreakdownSection
-                                data={incomePayeeBreakdown}
-                                amountClassName="text-green-600 dark:text-green-400"
-                            />
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Spending heatmap */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Spending heatmap</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <SpendingHeatmap data={spendingHeatmap} />
-                    </CardContent>
-                </Card>
             </div>
         </AppLayout>
     );

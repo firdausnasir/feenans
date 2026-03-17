@@ -101,23 +101,6 @@ class TransactionController extends Controller
 
         return Inertia::render('ledgers/transactions/index', [
             'ledger' => $ledger,
-            'transactions' => $query->paginate(25)->withQueryString(),
-            'accounts' => $ledger->accounts()->visible()->with('accountType')->orderBy('name')->get(),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
-            'payees' => $ledger->payees()->orderBy('name')->get(),
-            'tags' => $ledger->tags()->orderBy('name')->get(),
-            'filters' => [
-                'date_from' => $dateFrom ?? '',
-                'date_to' => $dateTo ?? '',
-                'account_ids' => $accountIds ?? [],
-                'category_ids' => $categoryIds ?? [],
-                'transaction_types' => $transactionTypes ?? [],
-                'payee_ids' => $payeeIds ?? [],
-                'tag_ids' => $tagIds ?? [],
-                'search' => $request->get('search'),
-                'bill_id' => $request->get('bill_id'),
-                'uncategorized' => $request->boolean('uncategorized') ? '1' : null,
-            ],
         ]);
     }
 
@@ -253,15 +236,7 @@ class TransactionController extends Controller
 
         return Inertia::render('ledgers/transactions/edit', [
             'ledger' => $ledger,
-            'transaction' => $transaction->load(['account', 'category', 'payee', 'transferPair', 'tags', 'attachments', 'splits.category', 'splits.payee']),
-            'accounts' => $ledger->accounts()
-                ->where(fn ($q) => $q->visible()->orWhere('id', $transaction->account_id))
-                ->with('accountType')
-                ->orderBy('name')
-                ->get(),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
-            'payees' => $ledger->payees()->orderBy('name')->get(),
-            'tags' => $ledger->tags()->orderBy('name')->get(),
+            'transaction_id' => $transaction->id,
         ]);
     }
 

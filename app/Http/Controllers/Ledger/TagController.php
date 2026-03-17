@@ -16,13 +16,7 @@ class TagController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/tags/index', [
-            'ledger' => $ledger,
-            'tags' => $ledger->tags()
-                ->withCount('transactions')
-                ->orderBy('name')
-                ->get(),
-        ]);
+        return Inertia::render('ledgers/tags/index');
     }
 
     public function store(Request $request, Ledger $ledger): RedirectResponse

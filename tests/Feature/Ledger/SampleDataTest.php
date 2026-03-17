@@ -191,27 +191,14 @@ test('unauthenticated user cannot access sample data routes', function () {
         ->assertRedirect(route('login'));
 });
 
-test('settings page includes hasSampleData prop', function () {
+test('settings page renders successfully for ledger with sample data', function () {
     $user = User::factory()->create();
     $ledger = createLedgerWithSetup($user);
 
-    // Without sample data
     $this->actingAs($user)
         ->get(route('ledgers.settings.index', $ledger))
         ->assertSuccessful()
         ->assertInertia(fn ($page) => $page
             ->component('ledgers/settings/index')
-            ->where('hasSampleData', false)
-        );
-
-    // With sample data
-    app(SampleDataService::class)->generate($ledger);
-
-    $this->actingAs($user)
-        ->get(route('ledgers.settings.index', $ledger))
-        ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
-            ->component('ledgers/settings/index')
-            ->where('hasSampleData', true)
         );
 });

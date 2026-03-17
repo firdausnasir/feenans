@@ -22,15 +22,7 @@ class CategoryController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/categories/index', [
-            'ledger' => $ledger,
-            'categories' => $ledger->categories()
-                ->withCount('transactions')
-                ->with(['children' => fn ($q) => $q->withCount('transactions')])
-                ->parents()
-                ->orderBy('position')
-                ->get(),
-        ]);
+        return Inertia::render('ledgers/categories/index');
     }
 
     public function create(Request $request, Ledger $ledger): Response

@@ -86,16 +86,14 @@ test('transaction index filters by account', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'account_ids' => [$accountA->id],
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->where('transactions.total', 1)
-        ->where('transactions.data.0.description', 'Account A transaction')
-    );
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.description', 'Account A transaction');
 });
 
 test('transaction index filters by search term', function () {
@@ -115,16 +113,14 @@ test('transaction index filters by search term', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'coffee',
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->where('transactions.total', 1)
-        ->where('transactions.data.0.description', 'Morning coffee')
-    );
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.description', 'Morning coffee');
 });
 
 test('transaction index filters by transaction type', function () {
@@ -146,15 +142,13 @@ test('transaction index filters by transaction type', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'transaction_types' => ['income'],
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->where('transactions.total', 1)
-    );
+    $response->assertJsonCount(1, 'data');
 });
 
 test('transaction index filters by category', function () {
@@ -174,15 +168,13 @@ test('transaction index filters by category', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'category_ids' => [$catA->id],
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->where('transactions.total', 1)
-    );
+    $response->assertJsonCount(1, 'data');
 });
 
 test('transaction index filters by payee', function () {
@@ -202,15 +194,13 @@ test('transaction index filters by payee', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'payee_ids' => [$payeeA->id],
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->where('transactions.total', 1)
-    );
+    $response->assertJsonCount(1, 'data');
 });
 
 test('transaction store is forbidden for another users ledger', function () {

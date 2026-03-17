@@ -1,13 +1,22 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import type { BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem, Pagination } from '@/types';
 
 type ActivityItem = {
     id: number;
@@ -19,6 +28,21 @@ type ActivityItem = {
     created_at: string;
     user?: { name: string } | null;
 };
+
+const ALL_FILTER = '__all__';
+
+const SUBJECT_TYPES = [
+    'Account',
+    'AccountType',
+    'Budget',
+    'Bill',
+    'Category',
+    'Payee',
+    'Tag',
+    'Transaction',
+];
+
+const ACTIONS = ['created', 'updated', 'deleted', 'restored'];
 
 function actionVariant(
     action: string,
@@ -221,13 +245,53 @@ function ActivityEntry({ entry }: { entry: ActivityItem }) {
     );
 }
 
-export default function ActivityIndex({
-    ledger,
-    activity,
-}: {
-    ledger: Ledger;
-    activity: ActivityItem[];
-}) {
+function ActivityLoadingSkeleton() {
+    return (
+        <div className="grid gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                    <CardContent className="py-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="h-5 w-16" />
+                                <Skeleton className="h-4 w-32" />
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                                <Skeleton className="h-3 w-16" />
+                                <Skeleton className="h-3 w-24" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
+export default function ActivityIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const [filterType, setFilterType] = useState<string>(ALL_FILTER);
+    const [filterAction, setFilterAction] = useState<string>(ALL_FILTER);
+    const [page, setPage] = useState(1);
+
+    const { data: activityResult, loading } = useApiQuery<
+        Pagination<ActivityItem>
+    >(`${base}/activity`, {
+        params: {
+            per_page: 50,
+            page,
+            subject_type:
+                filterType !== ALL_FILTER ? filterType : undefined,
+            action: filterAction !== ALL_FILTER ? filterAction : undefined,
+        },
+        deps: [filterType, filterAction, page],
+    });
+
+    const activity = activityResult?.data ?? [];
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Activity', href: '#' },
@@ -243,19 +307,97 @@ export default function ActivityIndex({
                     description="Recent create, update, delete, and restore events for this workspace."
                 />
 
-                <div className="grid gap-3">
-                    {activity.length === 0 ? (
-                        <EmptyState
-                            icon={<ClipboardList className="size-6" />}
-                            title="No activity yet"
-                            description="Changes to your workspace will appear here."
-                        />
-                    ) : (
-                        activity.map((entry) => (
-                            <ActivityEntry key={entry.id} entry={entry} />
-                        ))
-                    )}
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-3">
+                    <Select
+                        value={filterType}
+                        onValueChange={(val) => {
+                            setFilterType(val);
+                            setPage(1);
+                        }}
+                    >
+                        <SelectTrigger className="w-44">
+                            <SelectValue placeholder="All types" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ALL_FILTER}>
+                                All types
+                            </SelectItem>
+                            {SUBJECT_TYPES.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                    {type}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select
+                        value={filterAction}
+                        onValueChange={(val) => {
+                            setFilterAction(val);
+                            setPage(1);
+                        }}
+                    >
+                        <SelectTrigger className="w-40">
+                            <SelectValue placeholder="All actions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ALL_FILTER}>
+                                All actions
+                            </SelectItem>
+                            {ACTIONS.map((action) => (
+                                <SelectItem key={action} value={action}>
+                                    {action.charAt(0).toUpperCase() +
+                                        action.slice(1)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
+
+                {loading ? (
+                    <ActivityLoadingSkeleton />
+                ) : (
+                    <div className="grid gap-3">
+                        {activity.length === 0 ? (
+                            <EmptyState
+                                icon={<ClipboardList className="size-6" />}
+                                title="No activity yet"
+                                description="Changes to your workspace will appear here."
+                            />
+                        ) : (
+                            activity.map((entry) => (
+                                <ActivityEntry key={entry.id} entry={entry} />
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {/* Pagination */}
+                {activityResult && activityResult.last_page > 1 && (
+                    <div className="flex items-center justify-center gap-2">
+                        <button
+                            type="button"
+                            className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+                            disabled={page <= 1}
+                            onClick={() => setPage((p) => p - 1)}
+                        >
+                            Previous
+                        </button>
+                        <span className="text-sm text-muted-foreground">
+                            Page {activityResult.current_page} of{' '}
+                            {activityResult.last_page}
+                        </span>
+                        <button
+                            type="button"
+                            className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+                            disabled={page >= activityResult.last_page}
+                            onClick={() => setPage((p) => p + 1)}
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
             </div>
         </AppLayout>
     );

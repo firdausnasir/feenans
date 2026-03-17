@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     Bell,
@@ -13,7 +13,7 @@ import {
     Wallet,
     X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
     Area,
     AreaChart,
@@ -43,6 +43,7 @@ import {
     ChartTooltipContent,
 } from '@/components/ui/chart';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -56,7 +57,9 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api } from '@/lib/api-client';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
 import {
@@ -77,8 +80,6 @@ import type {
     Bill,
     BreadcrumbItem,
     BudgetStat,
-    Category,
-    Ledger,
     Transaction,
 } from '@/types';
 
@@ -89,14 +90,43 @@ type Summary = {
     prev_income: number;
     prev_expense: number;
 };
+
 type AccountGroup = {
-    type: AccountType;
-    accounts: (Account & { balance: number })[];
+    type: Pick<AccountType, 'id' | 'name' | 'color' | 'is_credit'>;
+    accounts: Account[];
+    total_balance?: string;
 };
-type UpcomingBills = { upcoming: Bill[]; due: Bill[]; missed: Bill[] };
+
+type UpcomingBills = {
+    upcoming: Bill[];
+    due: Bill[];
+    missed: Bill[];
+};
+
 type DailyTrend = { date: string; expense: number; income: number };
-type TopCategory = { name: string; color: string | null; total: number };
-type CycleDates = { start: string; end: string };
+
+type TopCategory = {
+    id: number | null;
+    name: string;
+    color: string | null;
+    total: number;
+    percentage: number;
+};
+
+type CycleResponse = {
+    cycle_start: string;
+    cycle_end: string;
+    prev_cycle_start: string;
+    prev_cycle_end: string;
+    offset: number;
+};
+
+type NetWorthData = {
+    assets: number;
+    liabilities: number;
+    net: number;
+    trend: Array<{ month: string; net: number }>;
+};
 
 const CHART_COLORS = [
     'var(--color-chart-1)',
@@ -117,47 +147,143 @@ function formatChartDate(dateStr: string): string {
     return d.toLocaleDateString('en-MY', { month: 'short', day: 'numeric' });
 }
 
-export default function LedgerDashboard({
-    ledger,
-    summary,
-    accounts,
-    flatAccounts,
-    upcomingBills,
-    recentTransactions,
-    categories,
-    dailyExpenseTrend,
-    cycleDates,
-    cycleOffset,
-    topCategories,
-    topBudgets,
-    uncategorizedCount,
-    netWorth,
-    netWorthTrend,
-}: {
-    ledger: Ledger;
-    summary: Summary;
-    accounts: AccountGroup[];
-    flatAccounts: Account[];
-    upcomingBills: UpcomingBills;
-    recentTransactions: Transaction[];
-    categories: Category[];
-    dailyExpenseTrend: DailyTrend[];
-    cycleDates: CycleDates;
-    cycleOffset: number;
-    topCategories: TopCategory[];
-    topBudgets: BudgetStat[];
-    uncategorizedCount: number;
-    netWorth: { assets: number; liabilities: number; net: number };
-    netWorthTrend: { month: string; net: number }[];
-}) {
+export default function LedgerDashboard() {
+    const { currentLedger: ledger } = usePage().props;
+    const base = `/api/v1/ledgers/${ledger!.id}`;
+
     const breadcrumbs: BreadcrumbItem[] = [
-        { title: ledger.name, href: dashboard.url(ledger.id) },
+        { title: ledger!.name, href: dashboard.url(ledger!.id) },
     ];
 
+    const [cycleOffset, setCycleOffset] = useState(0);
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
     const [showExpense, setShowExpense] = useState(true);
     const [showIncome, setShowIncome] = useState(true);
     const [uncategorizedDismissed, setUncategorizedDismissed] = useState(false);
+    const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
+
+    // ── Cycle dates (other queries depend on this) ─────────────────────────
+    const { data: cycle } = useApiQuery<CycleResponse>(`${base}/cycle`, {
+        params: { offset: cycleOffset },
+        deps: [cycleOffset],
+    });
+
+    const dateParams = cycle
+        ? { date_from: cycle.cycle_start, date_to: cycle.cycle_end }
+        : {};
+
+    // ── Parallel data fetches ──────────────────────────────────────────────
+    const {
+        data: summary,
+        loading: summaryLoading,
+        refetch: refetchSummary,
+    } = useApiQuery<Summary>(cycle ? `${base}/transactions/summary` : null, {
+        params: dateParams,
+        deps: [cycle],
+    });
+
+    const {
+        data: accountsResponse,
+        loading: accountsLoading,
+        refetch: refetchAccounts,
+    } = useApiQuery<{ data: AccountGroup[] }>(`${base}/accounts`, {
+        params: { grouped: true, with_type_totals: true },
+    });
+
+    const {
+        data: recentTxResponse,
+        loading: recentTxLoading,
+        refetch: refetchRecentTx,
+    } = useApiQuery<{ data: Transaction[] }>(
+        cycle ? `${base}/transactions` : null,
+        { params: { ...dateParams, per_page: 10 }, deps: [cycle] },
+    );
+
+    const {
+        data: dailyTrendResponse,
+        loading: dailyTrendLoading,
+        refetch: refetchDailyTrend,
+    } = useApiQuery<{ data: DailyTrend[] }>(
+        cycle ? `${base}/transactions/daily-trend` : null,
+        { params: dateParams, deps: [cycle] },
+    );
+
+    const {
+        data: topCategoriesResponse,
+        loading: topCategoriesLoading,
+        refetch: refetchTopCategories,
+    } = useApiQuery<{ data: TopCategory[] }>(
+        cycle ? `${base}/categories/top-spending` : null,
+        { params: { ...dateParams, limit: 5 }, deps: [cycle] },
+    );
+
+    const { data: uncategorizedResponse, refetch: refetchUncategorized } =
+        useApiQuery<{ count: number }>(
+            cycle ? `${base}/transactions/uncategorized-count` : null,
+            { params: dateParams, deps: [cycle] },
+        );
+
+    const { data: upcomingBillsResponse, loading: billsLoading } =
+        useApiQuery<UpcomingBills>(`${base}/bills`, {
+            params: { upcoming: true },
+        });
+
+    const {
+        data: topBudgetsResponse,
+        loading: budgetsLoading,
+        refetch: refetchBudgets,
+    } = useApiQuery<{ data: BudgetStat[] }>(`${base}/budgets`, {
+        params: { with_stats: true, top: 3 },
+    });
+
+    const {
+        data: netWorthResponse,
+        loading: netWorthLoading,
+        refetch: refetchNetWorth,
+    } = useApiQuery<{ data: NetWorthData }>(`${base}/net-worth`);
+
+    const refetchDashboard = useCallback(() => {
+        refetchSummary();
+        refetchAccounts();
+        refetchRecentTx();
+        refetchDailyTrend();
+        refetchTopCategories();
+        refetchUncategorized();
+        refetchBudgets();
+        refetchNetWorth();
+    }, [
+        refetchSummary,
+        refetchAccounts,
+        refetchRecentTx,
+        refetchDailyTrend,
+        refetchTopCategories,
+        refetchUncategorized,
+        refetchBudgets,
+        refetchNetWorth,
+    ]);
+
+    // ── Derived values ─────────────────────────────────────────────────────
+    const accounts = accountsResponse?.data ?? [];
+    const recentTransactions = recentTxResponse?.data ?? [];
+    const dailyExpenseTrend = dailyTrendResponse?.data ?? [];
+    const topCategories = topCategoriesResponse?.data ?? [];
+    const uncategorizedCount = uncategorizedResponse?.count ?? 0;
+    const upcomingBills: {
+        upcoming: Bill[];
+        due: Bill[];
+        missed: Bill[];
+    } = {
+        upcoming: upcomingBillsResponse?.upcoming ?? [],
+        due: upcomingBillsResponse?.due ?? [],
+        missed: upcomingBillsResponse?.missed ?? [],
+    };
+    const topBudgets = topBudgetsResponse?.data ?? [];
+    const netWorth = netWorthResponse?.data ?? null;
+    const netWorthTrend = netWorth?.trend ?? [];
+    const flatAccounts = accounts.flatMap((g) => g.accounts);
+    const cycleDates = cycle
+        ? { start: cycle.cycle_start, end: cycle.cycle_end }
+        : null;
 
     const hasAnyBills =
         upcomingBills.due.length > 0 ||
@@ -167,14 +293,18 @@ export default function LedgerDashboard({
     const hasUrgentBills =
         upcomingBills.missed.length > 0 || upcomingBills.due.length > 0;
 
+    const isEmpty =
+        !accountsLoading &&
+        !recentTxLoading &&
+        accounts.length === 0 &&
+        recentTransactions.length === 0;
+
     function handlePayBill(bill: Bill) {
         setPayingBill(bill);
     }
 
     function navigateCycle(offset: number) {
-        const url = dashboard.url(ledger.id);
-        const query = offset === 0 ? {} : { cycle_offset: offset };
-        router.get(url, query, { preserveState: true });
+        setCycleOffset(offset);
     }
 
     const categoryChartConfig: ChartConfig = Object.fromEntries(
@@ -193,45 +323,32 @@ export default function LedgerDashboard({
         fill: cat.color ?? CHART_COLORS[index % CHART_COLORS.length],
     }));
 
-    const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
-
-    const isEmpty = accounts.length === 0 && recentTransactions.length === 0;
-
     function handleLoadSampleData() {
         setIsLoadingSampleData(true);
 
-        router.post(
-            storeSampleData.url(ledger.id),
-            {},
-            {
-                onSuccess: () => {
-                    toast.success('Sample data loaded successfully.');
-                    window.location.reload();
-                },
-                onFinish: () => {
-                    setIsLoadingSampleData(false);
-                },
-                onError: (errors) => {
-                    const msg =
-                        errors.message ??
-                        Object.values(errors)[0] ??
-                        'Failed to load sample data.';
-                    toast.error(String(msg));
-                },
-            },
-        );
+        api.post(storeSampleData.url(ledger!.id))
+            .then(() => {
+                toast.success('Sample data loaded successfully.');
+                window.location.reload();
+            })
+            .catch(() => {
+                toast.error('Failed to load sample data.');
+            })
+            .finally(() => {
+                setIsLoadingSampleData(false);
+            });
     }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={ledger.name} />
+            <Head title={ledger!.name} />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold tracking-tight">
-                            {ledger.name}
+                            {ledger!.name}
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             Track balances, spending, and recent activity in one
@@ -240,7 +357,8 @@ export default function LedgerDashboard({
                     </div>
                     <div className="w-full sm:w-auto">
                         <AddTransactionModal
-                            ledger={ledger}
+                            ledger={ledger!}
+                            onModalClosed={refetchDashboard}
                         />
                     </div>
                 </div>
@@ -262,7 +380,7 @@ export default function LedgerDashboard({
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row">
                                 <Button asChild>
-                                    <Link href={createAccount.url(ledger.id)}>
+                                    <Link href={createAccount.url(ledger!.id)}>
                                         <CreditCard className="mr-2 size-4" />
                                         Add Your First Account
                                     </Link>
@@ -291,7 +409,7 @@ export default function LedgerDashboard({
                             transaction(s)
                         </span>
                         <Link
-                            href={transactionsIndex.url(ledger.id, {
+                            href={transactionsIndex.url(ledger!.id, {
                                 query: { uncategorized: '1' },
                             })}
                             className="font-medium underline underline-offset-2"
@@ -308,151 +426,187 @@ export default function LedgerDashboard({
                 )}
 
                 {/* Net Worth Card */}
-                <Link href={accountsIndex.url(ledger.id)} className="block">
-                    <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-primary/5">
+                {netWorthLoading || !netWorth ? (
+                    <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
                         <CardContent className="px-4 py-3">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <div className="flex items-center gap-2">
-                                        <Landmark className="size-5 text-primary" />
-                                        <span className="text-sm font-medium text-muted-foreground">
-                                            Net Worth
-                                        </span>
-                                    </div>
-                                    <p
-                                        className={`mt-2 text-2xl font-bold sm:text-3xl ${
-                                            netWorth.net >= 0
-                                                ? 'text-green-600 dark:text-green-400'
-                                                : 'text-red-600 dark:text-red-400'
-                                        }`}
-                                    >
-                                        {formatAmount(netWorth.net)}
-                                    </p>
-                                    <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                                        <span>
-                                            Assets:{' '}
-                                            <span className="font-medium text-foreground">
-                                                {formatAmount(netWorth.assets)}
-                                            </span>
-                                        </span>
-                                        <span>
-                                            Liabilities:{' '}
-                                            <span className="font-medium text-red-600 dark:text-red-400">
-                                                {formatAmount(
-                                                    netWorth.liabilities,
-                                                )}
-                                            </span>
-                                        </span>
-                                    </div>
+                                    <Skeleton className="mb-2 h-5 w-24" />
+                                    <Skeleton className="mb-2 h-8 w-40" />
+                                    <Skeleton className="h-4 w-48" />
                                 </div>
-                                {netWorthTrend.length >= 2 && (
-                                    <div className="hidden h-16 w-32 sm:block">
-                                        <AreaChart
-                                            width={128}
-                                            height={64}
-                                            data={netWorthTrend}
-                                            margin={{
-                                                top: 4,
-                                                right: 0,
-                                                left: 0,
-                                                bottom: 0,
-                                            }}
-                                        >
-                                            <defs>
-                                                <linearGradient
-                                                    id="nwGrad"
-                                                    x1="0"
-                                                    y1="0"
-                                                    x2="0"
-                                                    y2="1"
-                                                >
-                                                    <stop
-                                                        offset="5%"
-                                                        stopColor="var(--color-primary)"
-                                                        stopOpacity={0.3}
-                                                    />
-                                                    <stop
-                                                        offset="95%"
-                                                        stopColor="var(--color-primary)"
-                                                        stopOpacity={0}
-                                                    />
-                                                </linearGradient>
-                                            </defs>
-                                            <Area
-                                                type="monotone"
-                                                dataKey="net"
-                                                stroke="var(--color-primary)"
-                                                strokeWidth={1.5}
-                                                fill="url(#nwGrad)"
-                                            />
-                                        </AreaChart>
-                                    </div>
-                                )}
+                                <Skeleton className="hidden h-16 w-32 sm:block" />
                             </div>
                         </CardContent>
                     </Card>
-                </Link>
+                ) : (
+                    <Link
+                        href={accountsIndex.url(ledger!.id)}
+                        className="block"
+                    >
+                        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-primary/5">
+                            <CardContent className="px-4 py-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <Landmark className="size-5 text-primary" />
+                                            <span className="text-sm font-medium text-muted-foreground">
+                                                Net Worth
+                                            </span>
+                                        </div>
+                                        <p
+                                            className={`mt-2 text-2xl font-bold sm:text-3xl ${
+                                                netWorth.net >= 0
+                                                    ? 'text-green-600 dark:text-green-400'
+                                                    : 'text-red-600 dark:text-red-400'
+                                            }`}
+                                        >
+                                            {formatAmount(netWorth.net)}
+                                        </p>
+                                        <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                                            <span>
+                                                Assets:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {formatAmount(
+                                                        netWorth.assets,
+                                                    )}
+                                                </span>
+                                            </span>
+                                            <span>
+                                                Liabilities:{' '}
+                                                <span className="font-medium text-red-600 dark:text-red-400">
+                                                    {formatAmount(
+                                                        netWorth.liabilities,
+                                                    )}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {netWorthTrend.length >= 2 && (
+                                        <div className="hidden h-16 w-32 sm:block">
+                                            <AreaChart
+                                                width={128}
+                                                height={64}
+                                                data={netWorthTrend}
+                                                margin={{
+                                                    top: 4,
+                                                    right: 0,
+                                                    left: 0,
+                                                    bottom: 0,
+                                                }}
+                                            >
+                                                <defs>
+                                                    <linearGradient
+                                                        id="nwGrad"
+                                                        x1="0"
+                                                        y1="0"
+                                                        x2="0"
+                                                        y2="1"
+                                                    >
+                                                        <stop
+                                                            offset="5%"
+                                                            stopColor="var(--color-primary)"
+                                                            stopOpacity={0.3}
+                                                        />
+                                                        <stop
+                                                            offset="95%"
+                                                            stopColor="var(--color-primary)"
+                                                            stopOpacity={0}
+                                                        />
+                                                    </linearGradient>
+                                                </defs>
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="net"
+                                                    stroke="var(--color-primary)"
+                                                    strokeWidth={1.5}
+                                                    fill="url(#nwGrad)"
+                                                />
+                                            </AreaChart>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                )}
 
                 {/* Summary Cards - always 3 columns */}
                 <div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <Link
-                            href={transactionsIndex.url(ledger.id, {
-                                query: {
-                                    'transaction_types[]': 'income',
-                                    date_from: cycleDates.start,
-                                    date_to: cycleDates.end,
-                                },
-                            })}
-                            className="block"
-                        >
-                            <SummaryCard
-                                label="Income"
-                                value={summary.income}
-                                icon={
-                                    <TrendingUp className="size-4 text-gray-700 dark:text-gray-300" />
-                                }
-                                colorClass="text-gray-700 dark:text-gray-300"
-                                previousValue={summary.prev_income}
-                            />
-                        </Link>
-                        <Link
-                            href={transactionsIndex.url(ledger.id, {
-                                query: {
-                                    'transaction_types[]': 'expense',
-                                    date_from: cycleDates.start,
-                                    date_to: cycleDates.end,
-                                },
-                            })}
-                            className="block"
-                        >
-                            <SummaryCard
-                                label="Expense"
-                                value={summary.expense}
-                                icon={
-                                    <TrendingDown className="size-4 text-gray-700 dark:text-gray-300" />
-                                }
-                                colorClass="text-gray-700 dark:text-gray-300"
-                                previousValue={summary.prev_expense}
-                                invertTrendColor
-                            />
-                        </Link>
-                        <Link
-                            href={reportsIndex.url(ledger.id)}
-                            className="block"
-                        >
-                            <SummaryCard
-                                label="Net"
-                                value={summary.net}
-                                icon={
-                                    <Wallet className="size-4 text-gray-700 dark:text-gray-300" />
-                                }
-                                colorClass="text-gray-700 dark:text-gray-300"
-                                previousValue={
-                                    summary.prev_income - summary.prev_expense
-                                }
-                            />
-                        </Link>
+                        {summaryLoading || !summary || !cycleDates ? (
+                            <>
+                                {[1, 2, 3].map((i) => (
+                                    <Card key={i}>
+                                        <CardContent className="px-4 py-2.5">
+                                            <Skeleton className="mb-2 h-4 w-16" />
+                                            <Skeleton className="h-6 w-24" />
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </>
+                        ) : (
+                            <>
+                                <Link
+                                    href={transactionsIndex.url(ledger!.id, {
+                                        query: {
+                                            'transaction_types[]': 'income',
+                                            date_from: cycleDates.start,
+                                            date_to: cycleDates.end,
+                                        },
+                                    })}
+                                    className="block"
+                                >
+                                    <SummaryCard
+                                        label="Income"
+                                        value={summary.income}
+                                        icon={
+                                            <TrendingUp className="size-4 text-gray-700 dark:text-gray-300" />
+                                        }
+                                        colorClass="text-gray-700 dark:text-gray-300"
+                                        previousValue={summary.prev_income}
+                                    />
+                                </Link>
+                                <Link
+                                    href={transactionsIndex.url(ledger!.id, {
+                                        query: {
+                                            'transaction_types[]': 'expense',
+                                            date_from: cycleDates.start,
+                                            date_to: cycleDates.end,
+                                        },
+                                    })}
+                                    className="block"
+                                >
+                                    <SummaryCard
+                                        label="Expense"
+                                        value={summary.expense}
+                                        icon={
+                                            <TrendingDown className="size-4 text-gray-700 dark:text-gray-300" />
+                                        }
+                                        colorClass="text-gray-700 dark:text-gray-300"
+                                        previousValue={summary.prev_expense}
+                                        invertTrendColor
+                                    />
+                                </Link>
+                                <Link
+                                    href={reportsIndex.url(ledger!.id)}
+                                    className="block"
+                                >
+                                    <SummaryCard
+                                        label="Net"
+                                        value={summary.net}
+                                        icon={
+                                            <Wallet className="size-4 text-gray-700 dark:text-gray-300" />
+                                        }
+                                        colorClass="text-gray-700 dark:text-gray-300"
+                                        previousValue={
+                                            summary.prev_income -
+                                            summary.prev_expense
+                                        }
+                                    />
+                                </Link>
+                            </>
+                        )}
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                         <div className="flex items-center gap-1">
@@ -464,12 +618,15 @@ export default function LedgerDashboard({
                             >
                                 <ChevronLeft className="size-4" />
                             </Button>
-                            <p className="text-xs text-muted-foreground">
-                                <Calendar className="mr-1 inline size-3" />
-                                Cycle: {formatDate(
-                                    cycleDates.start,
-                                )} &ndash; {formatDate(cycleDates.end)}
-                            </p>
+                            {cycleDates ? (
+                                <p className="text-xs text-muted-foreground">
+                                    <Calendar className="mr-1 inline size-3" />
+                                    Cycle: {formatDate(cycleDates.start)}{' '}
+                                    &ndash; {formatDate(cycleDates.end)}
+                                </p>
+                            ) : (
+                                <Skeleton className="h-4 w-36" />
+                            )}
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -517,40 +674,57 @@ export default function LedgerDashboard({
                             )}
                         </CardHeader>
                         <CardContent className="overflow-y-auto">
-                            <div className="space-y-4">
-                                {!hasAnyBills && (
-                                    <p className="text-sm text-muted-foreground">
-                                        No upcoming recurring transactions.
-                                    </p>
-                                )}
+                            {billsLoading ? (
+                                <div className="space-y-3">
+                                    {[1, 2, 3].map((i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center justify-between px-3 py-2.5"
+                                        >
+                                            <div className="space-y-2">
+                                                <Skeleton className="h-4 w-32" />
+                                                <Skeleton className="h-3 w-24" />
+                                            </div>
+                                            <Skeleton className="h-8 w-16" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {!hasAnyBills && (
+                                        <p className="text-sm text-muted-foreground">
+                                            No upcoming recurring transactions.
+                                        </p>
+                                    )}
 
-                                {upcomingBills.missed.length > 0 && (
-                                    <BillSection
-                                        label="Missed"
-                                        variant="destructive"
-                                        bills={upcomingBills.missed}
-                                        onPay={handlePayBill}
-                                    />
-                                )}
+                                    {upcomingBills.missed.length > 0 && (
+                                        <BillSection
+                                            label="Missed"
+                                            variant="destructive"
+                                            bills={upcomingBills.missed}
+                                            onPay={handlePayBill}
+                                        />
+                                    )}
 
-                                {upcomingBills.due.length > 0 && (
-                                    <BillSection
-                                        label="Due Today"
-                                        variant="secondary"
-                                        bills={upcomingBills.due}
-                                        onPay={handlePayBill}
-                                    />
-                                )}
+                                    {upcomingBills.due.length > 0 && (
+                                        <BillSection
+                                            label="Due Today"
+                                            variant="secondary"
+                                            bills={upcomingBills.due}
+                                            onPay={handlePayBill}
+                                        />
+                                    )}
 
-                                {upcomingBills.upcoming.length > 0 && (
-                                    <BillSection
-                                        label="Upcoming"
-                                        variant="outline"
-                                        bills={upcomingBills.upcoming}
-                                        onPay={handlePayBill}
-                                    />
-                                )}
-                            </div>
+                                    {upcomingBills.upcoming.length > 0 && (
+                                        <BillSection
+                                            label="Upcoming"
+                                            variant="outline"
+                                            bills={upcomingBills.upcoming}
+                                            onPay={handlePayBill}
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -563,93 +737,141 @@ export default function LedgerDashboard({
                             </div>
                         </CardHeader>
                         <CardContent className="overflow-y-auto">
-                            <div className="space-y-5">
-                                {accounts.map((group) => (
-                                    <div key={group.type.id}>
-                                        <div className="mb-2 flex items-center gap-2">
-                                            {group.type.color && (
-                                                <span
-                                                    className="inline-block size-2.5 rounded-full"
-                                                    style={{
-                                                        backgroundColor:
-                                                            group.type.color,
-                                                    }}
-                                                />
-                                            )}
-                                            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                                                {group.type.name}
-                                            </span>
+                            {accountsLoading ? (
+                                <div className="space-y-5">
+                                    {[1, 2].map((i) => (
+                                        <div key={i}>
+                                            <Skeleton className="mb-2 h-3 w-20" />
+                                            <div className="space-y-1">
+                                                {[1, 2].map((j) => (
+                                                    <div
+                                                        key={j}
+                                                        className="flex items-center justify-between px-3 py-2.5"
+                                                    >
+                                                        <Skeleton className="h-4 w-28" />
+                                                        <Skeleton className="h-4 w-16" />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            {group.accounts.map((account) => (
-                                                <Link
-                                                    key={account.id}
-                                                    href={accountShow.url({
-                                                        ledger: ledger.id,
-                                                        account: account.id,
-                                                    })}
-                                                    className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
-                                                >
-                                                    <span className="inline-flex items-center gap-1.5 text-sm">
-                                                        {account.color && (
-                                                            <span
-                                                                className="inline-block h-2 w-2 shrink-0 rounded-full"
-                                                                style={{
-                                                                    backgroundColor:
-                                                                        account.color,
-                                                                }}
-                                                            />
-                                                        )}
-                                                        {account.name}
-                                                    </span>
-                                                    {account.balance < 0 ? (
-                                                        <Tooltip>
-                                                            <TooltipTrigger
-                                                                asChild
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-5">
+                                    {accounts.map((group) => (
+                                        <div key={group.type.id}>
+                                            <div className="mb-2 flex items-center gap-2">
+                                                {group.type.color && (
+                                                    <span
+                                                        className="inline-block size-2.5 rounded-full"
+                                                        style={{
+                                                            backgroundColor:
+                                                                group.type
+                                                                    .color,
+                                                        }}
+                                                    />
+                                                )}
+                                                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                                    {group.type.name}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                {group.accounts.map(
+                                                    (account) => {
+                                                        const balance =
+                                                            parseFloat(
+                                                                String(
+                                                                    account.current_balance ??
+                                                                        account.initial_balance ??
+                                                                        '0',
+                                                                ),
+                                                            );
+
+                                                        return (
+                                                            <Link
+                                                                key={account.id}
+                                                                href={accountShow.url(
+                                                                    {
+                                                                        ledger: ledger!
+                                                                            .id,
+                                                                        account:
+                                                                            account.id,
+                                                                    },
+                                                                )}
+                                                                className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
                                                             >
-                                                                <span className="inline-flex items-center gap-1 text-sm font-medium text-red-600 dark:text-red-400">
-                                                                    <AlertTriangle className="size-3.5 shrink-0" />
-                                                                    {formatAmount(
-                                                                        account.balance,
+                                                                <span className="inline-flex items-center gap-1.5 text-sm">
+                                                                    {account.color && (
+                                                                        <span
+                                                                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                                                            style={{
+                                                                                backgroundColor:
+                                                                                    account.color,
+                                                                            }}
+                                                                        />
                                                                     )}
+                                                                    {
+                                                                        account.name
+                                                                    }
                                                                 </span>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>
-                                                                <p>
-                                                                    This account
-                                                                    has a
-                                                                    negative
-                                                                    balance,
-                                                                    which can
-                                                                    happen if
-                                                                    you've
-                                                                    logged more
-                                                                    expenses
-                                                                    than the
-                                                                    initial
-                                                                    balance you
-                                                                    set.
-                                                                </p>
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                    ) : (
-                                                        <span className="text-sm font-medium">
-                                                            {formatAmount(
-                                                                account.balance,
-                                                            )}
-                                                        </span>
-                                                    )}
-                                                </Link>
-                                            ))}
+                                                                {balance < 0 ? (
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger
+                                                                            asChild
+                                                                        >
+                                                                            <span className="inline-flex items-center gap-1 text-sm font-medium text-red-600 dark:text-red-400">
+                                                                                <AlertTriangle className="size-3.5 shrink-0" />
+                                                                                {formatAmount(
+                                                                                    balance,
+                                                                                )}
+                                                                            </span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>
+                                                                                This
+                                                                                account
+                                                                                has
+                                                                                a
+                                                                                negative
+                                                                                balance,
+                                                                                which
+                                                                                can
+                                                                                happen
+                                                                                if
+                                                                                you've
+                                                                                logged
+                                                                                more
+                                                                                expenses
+                                                                                than
+                                                                                the
+                                                                                initial
+                                                                                balance
+                                                                                you
+                                                                                set.
+                                                                            </p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                ) : (
+                                                                    <span className="text-sm font-medium">
+                                                                        {formatAmount(
+                                                                            balance,
+                                                                        )}
+                                                                    </span>
+                                                                )}
+                                                            </Link>
+                                                        );
+                                                    },
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                                {accounts.length === 0 && (
-                                    <p className="text-sm text-muted-foreground">
-                                        No accounts yet.
-                                    </p>
-                                )}
-                            </div>
+                                    ))}
+                                    {accounts.length === 0 && (
+                                        <p className="text-sm text-muted-foreground">
+                                            No accounts yet.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -707,7 +929,9 @@ export default function LedgerDashboard({
                             )}
                         </CardHeader>
                         <CardContent>
-                            {dailyExpenseTrend.length === 0 ? (
+                            {dailyTrendLoading ? (
+                                <Skeleton className="h-[280px] w-full" />
+                            ) : dailyExpenseTrend.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
                                     No expense data this cycle.
                                 </p>
@@ -820,7 +1044,9 @@ export default function LedgerDashboard({
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            {topCategories.length === 0 ? (
+                            {topCategoriesLoading ? (
+                                <Skeleton className="h-[280px] w-full" />
+                            ) : topCategories.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
                                     No expenses this cycle.
                                 </p>
@@ -860,21 +1086,18 @@ export default function LedgerDashboard({
                                             radius={[0, 4, 4, 0]}
                                             className="cursor-pointer"
                                             onClick={(data) => {
-                                                const category =
-                                                    categories.find(
-                                                        (c) =>
-                                                            c.name ===
-                                                            data.name,
-                                                    );
+                                                const cat = topCategories.find(
+                                                    (c) => c.name === data.name,
+                                                );
 
-                                                if (category) {
+                                                if (cat?.id && cycleDates) {
                                                     router.visit(
                                                         transactionsIndex.url(
-                                                            ledger.id,
+                                                            ledger!.id,
                                                             {
                                                                 query: {
                                                                     'category_ids[]':
-                                                                        category.id,
+                                                                        cat.id,
                                                                     date_from:
                                                                         cycleDates.start,
                                                                     date_to:
@@ -894,23 +1117,47 @@ export default function LedgerDashboard({
                 </div>
 
                 {/* Budget Progress */}
-                {topBudgets.length > 0 && (
+                {budgetsLoading ? (
                     <Card>
                         <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <CardTitle>Budget Progress</CardTitle>
-                                <Button variant="ghost" size="sm" asChild>
-                                    <Link href={budgetsIndex.url(ledger.id)}>
-                                        View all
-                                    </Link>
-                                </Button>
-                            </div>
+                            <CardTitle>Budget Progress</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
-                                {topBudgets.map((budget) => {
-                                    const statusColor: Record<string, string> =
-                                        {
+                                {[1, 2, 3].map((i) => (
+                                    <div key={i} className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <Skeleton className="h-4 w-24" />
+                                            <Skeleton className="h-3 w-20" />
+                                        </div>
+                                        <Skeleton className="h-2 w-full" />
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    topBudgets.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <CardTitle>Budget Progress</CardTitle>
+                                    <Button variant="ghost" size="sm" asChild>
+                                        <Link
+                                            href={budgetsIndex.url(ledger!.id)}
+                                        >
+                                            View all
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4">
+                                    {topBudgets.map((budget) => {
+                                        const statusColor: Record<
+                                            string,
+                                            string
+                                        > = {
                                             good: 'text-green-600 dark:text-green-400',
                                             warning:
                                                 'text-yellow-600 dark:text-yellow-400',
@@ -918,37 +1165,38 @@ export default function LedgerDashboard({
                                             over: 'text-red-600 dark:text-red-400',
                                         };
 
-                                    return (
-                                        <div
-                                            key={budget.id}
-                                            className="space-y-1.5"
-                                        >
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="font-medium">
-                                                    {budget.category_name}
-                                                </span>
-                                                <span
-                                                    className={`text-xs ${statusColor[budget.status] ?? ''}`}
-                                                >
-                                                    {formatAbsAmount(
-                                                        budget.spent,
-                                                    )}{' '}
-                                                    /{' '}
-                                                    {formatAbsAmount(
-                                                        budget.amount,
-                                                    )}
-                                                </span>
+                                        return (
+                                            <div
+                                                key={budget.id}
+                                                className="space-y-1.5"
+                                            >
+                                                <div className="flex items-center justify-between text-sm">
+                                                    <span className="font-medium">
+                                                        {budget.category_name}
+                                                    </span>
+                                                    <span
+                                                        className={`text-xs ${statusColor[budget.status] ?? ''}`}
+                                                    >
+                                                        {formatAbsAmount(
+                                                            budget.spent,
+                                                        )}{' '}
+                                                        /{' '}
+                                                        {formatAbsAmount(
+                                                            budget.amount,
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <Progress
+                                                    value={budget.percentage}
+                                                    className="h-2"
+                                                />
                                             </div>
-                                            <Progress
-                                                value={budget.percentage}
-                                                className="h-2"
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                        );
+                                    })}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )
                 )}
 
                 {/* Recent Transactions - full width */}
@@ -957,7 +1205,22 @@ export default function LedgerDashboard({
                         <CardTitle>Recent Transactions</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {recentTransactions.length === 0 ? (
+                        {recentTxLoading ? (
+                            <div className="space-y-3">
+                                {[1, 2, 3, 4, 5].map((i) => (
+                                    <div
+                                        key={i}
+                                        className="flex items-center justify-between py-2"
+                                    >
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-4 w-40" />
+                                            <Skeleton className="h-3 w-24" />
+                                        </div>
+                                        <Skeleton className="h-4 w-16" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : recentTransactions.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
                                 No recent transactions.
                             </p>
@@ -984,7 +1247,7 @@ export default function LedgerDashboard({
                                                 onClick={() =>
                                                     router.visit(
                                                         transactionEdit.url({
-                                                            ledger: ledger.id,
+                                                            ledger: ledger!.id,
                                                             transaction:
                                                                 transaction.id,
                                                         }),
@@ -1058,7 +1321,8 @@ export default function LedgerDashboard({
                                                             router.visit(
                                                                 transactionEdit.url(
                                                                     {
-                                                                        ledger: ledger.id,
+                                                                        ledger: ledger!
+                                                                            .id,
                                                                         transaction:
                                                                             transaction.id,
                                                                     },
@@ -1109,7 +1373,7 @@ export default function LedgerDashboard({
 
             <PayBillDialog
                 bill={payingBill}
-                ledgerId={ledger.id}
+                ledgerId={ledger!.id}
                 accounts={flatAccounts}
                 onClose={() => setPayingBill(null)}
             />

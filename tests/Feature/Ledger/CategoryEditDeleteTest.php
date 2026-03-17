@@ -171,16 +171,9 @@ test('delete rejects reassignment to the same category being deleted', function 
     $response->assertSessionHasErrors('reassign_category_id');
 });
 
-test('category index includes transaction counts', function () {
+test('category index page renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    $account = Account::factory()->for($ledger)->create();
-    $category = Category::factory()->for($ledger)->create(['parent_id' => null, 'position' => 1]);
-
-    Transaction::factory()->count(3)->for($ledger)->create([
-        'account_id' => $account->id,
-        'category_id' => $category->id,
-    ]);
 
     $response = $this
         ->actingAs($user)
@@ -189,7 +182,5 @@ test('category index includes transaction counts', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/categories/index')
-        ->has('categories')
-        ->where('categories.0.transactions_count', 3)
     );
 });

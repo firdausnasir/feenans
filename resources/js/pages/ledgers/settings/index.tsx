@@ -1,4 +1,4 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { Download } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -18,29 +18,32 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import {
     dashboard as ledgerDashboard,
-    destroy as destroyLedger,
     exportMethod as ledgerExport,
 } from '@/routes/ledgers';
-import {
-    destroy as accountTypeDestroy,
-    reorder,
-    store as accountTypeStore,
-    update as accountTypeUpdate,
-} from '@/routes/ledgers/account-types';
-import { destroy as destroySampleData } from '@/routes/ledgers/sample-data';
-import {
-    index as settingsIndex,
-    update as settingsUpdate,
-} from '@/routes/ledgers/settings';
-import type { AccountType, BreadcrumbItem, Ledger } from '@/types';
+import { index as settingsIndex } from '@/routes/ledgers/settings';
+import type { AccountType, BreadcrumbItem } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type LedgerWithAccountTypes = Ledger & { account_types: AccountType[] };
+type SettingsResponse = {
+    ledger: {
+        id: number;
+        name: string;
+        currency_code: string;
+        cycle_start_day: number;
+        uses_seeded_categories: boolean;
+        account_types: AccountType[];
+    };
+    has_sample_data: boolean;
+    api_tokens: ApiToken[];
+};
 
 type ApiToken = {
     id: number;
@@ -79,23 +82,49 @@ function colorDot(color: string | null) {
     );
 }
 
+function SettingsLoadingSkeleton() {
+    return (
+        <div className="space-y-8">
+            <section className="space-y-4">
+                <Skeleton className="h-5 w-20" />
+                <Separator />
+                <div className="grid max-w-md gap-4">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-24" />
+                    <Skeleton className="h-9 w-16" />
+                </div>
+            </section>
+            <section className="space-y-4">
+                <Skeleton className="h-5 w-32" />
+                <Separator />
+                <div className="max-w-lg space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function SettingsIndex({
-    ledger,
-    hasSampleData,
-    apiTokens,
-    newToken,
-}: {
-    ledger: LedgerWithAccountTypes;
-    hasSampleData: boolean;
-    apiTokens: ApiToken[];
-    newToken: string | null;
-}) {
+export default function SettingsIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const {
+        data: settings,
+        loading,
+        refetch,
+    } = useApiQuery<SettingsResponse>(`${base}/settings`);
+
     // General settings state
-    const [ledgerName, setLedgerName] = useState(ledger.name);
-    const [cycleStartDay, setCycleStartDay] = useState(ledger.cycle_start_day);
-    const [currencyCode, setCurrencyCode] = useState(ledger.currency_code);
+    const [ledgerName, setLedgerName] = useState<string | null>(null);
+    const [cycleStartDay, setCycleStartDay] = useState<number | null>(null);
+    const [currencyCode, setCurrencyCode] = useState<string | null>(null);
     const [isSavingGeneral, setIsSavingGeneral] = useState(false);
 
     // Account types state
@@ -119,9 +148,7 @@ export default function SettingsIndex({
     // API token state
     const [tokenName, setTokenName] = useState('');
     const [isCreatingToken, setIsCreatingToken] = useState(false);
-    const [revealedToken, setRevealedToken] = useState<string | null>(
-        newToken ?? null,
-    );
+    const [revealedToken, setRevealedToken] = useState<string | null>(null);
     const [deletingTokenId, setDeletingTokenId] = useState<number | null>(null);
 
     // Danger zone state
@@ -132,6 +159,16 @@ export default function SettingsIndex({
     // Sample data state
     const [isRemovingSampleData, setIsRemovingSampleData] = useState(false);
 
+    // Derived values: use local overrides or fall back to API data
+    const effectiveName = ledgerName ?? settings?.ledger.name ?? '';
+    const effectiveCycleDay =
+        cycleStartDay ?? settings?.ledger.cycle_start_day ?? 1;
+    const effectiveCurrency =
+        currencyCode ?? settings?.ledger.currency_code ?? 'MYR';
+    const accountTypes = settings?.ledger.account_types ?? [];
+    const hasSampleData = settings?.has_sample_data ?? false;
+    const apiTokens = settings?.api_tokens ?? [];
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Workspace Settings', href: settingsIndex.url(ledger.id) },
@@ -139,8 +176,8 @@ export default function SettingsIndex({
 
     // ── General settings handlers ─────────────────────────────────────────────
 
-    function handleSaveGeneral() {
-        if (cycleStartDay < 1 || cycleStartDay > 31) {
+    async function handleSaveGeneral() {
+        if (effectiveCycleDay < 1 || effectiveCycleDay > 31) {
             toast.error('Cycle start day must be between 1 and 31.');
 
             return;
@@ -148,30 +185,34 @@ export default function SettingsIndex({
 
         setIsSavingGeneral(true);
 
-        router.put(
-            settingsUpdate.url(ledger.id),
-            {
-                name: ledgerName.trim(),
-                cycle_start_day: cycleStartDay,
-                currency_code: currencyCode,
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsSavingGeneral(false);
-                    toast.success('Settings saved.');
+        try {
+            await api.put(`${base}/settings`, {
+                body: {
+                    name: effectiveName.trim(),
+                    cycle_start_day: effectiveCycleDay,
+                    currency_code: effectiveCurrency,
                 },
-                onError: (errors) => {
-                    setIsSavingGeneral(false);
-                    const msg =
-                        errors.name ??
-                        errors.cycle_start_day ??
-                        errors.currency_code ??
-                        'Failed to save settings.';
-                    toast.error(msg);
-                },
-            },
-        );
+            });
+            toast.success('Settings saved.');
+            setLedgerName(null);
+            setCycleStartDay(null);
+            setCurrencyCode(null);
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const msg =
+                    errors.name?.[0] ??
+                    errors.cycle_start_day?.[0] ??
+                    errors.currency_code?.[0] ??
+                    'Failed to save settings.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to save settings.');
+            }
+        } finally {
+            setIsSavingGeneral(false);
+        }
     }
 
     // ── Account type drag & drop ──────────────────────────────────────────────
@@ -195,7 +236,7 @@ export default function SettingsIndex({
         setDragOverId(null);
     }
 
-    function handleDrop(e: React.DragEvent, targetId: number) {
+    async function handleDrop(e: React.DragEvent, targetId: number) {
         e.preventDefault();
         dragOverIdRef.current = null;
         setDragOverId(null);
@@ -210,7 +251,7 @@ export default function SettingsIndex({
             return;
         }
 
-        const reordered = [...ledger.account_types];
+        const reordered = [...accountTypes];
         const fromIdx = reordered.findIndex((t) => t.id === draggedId);
         const toIdx = reordered.findIndex((t) => t.id === targetId);
 
@@ -225,20 +266,16 @@ export default function SettingsIndex({
 
         isReorderingRef.current = true;
 
-        router.post(
-            reorder.url(ledger.id),
-            { items },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    isReorderingRef.current = false;
-                },
-                onError: () => {
-                    isReorderingRef.current = false;
-                    toast.error('Failed to reorder account types.');
-                },
-            },
-        );
+        try {
+            await api.post(`${base}/account-types/reorder`, {
+                body: { items },
+            });
+            refetch();
+        } catch {
+            toast.error('Failed to reorder account types.');
+        } finally {
+            isReorderingRef.current = false;
+        }
     }
 
     // ── Account type inline edit ──────────────────────────────────────────────
@@ -252,7 +289,7 @@ export default function SettingsIndex({
         });
     }
 
-    function saveEdit() {
+    async function saveEdit() {
         if (!editState) {
             return;
         }
@@ -263,194 +300,194 @@ export default function SettingsIndex({
             return;
         }
 
-        router.put(
-            accountTypeUpdate.url({
-                ledger: ledger.id,
-                accountType: editState.accountTypeId,
-            }),
-            {
-                name: editState.name,
-                color: editState.color,
-                is_credit: editState.is_credit,
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setEditState(null);
-                    toast.success('Account type updated.');
+        try {
+            await api.put(
+                `${base}/account-types/${editState.accountTypeId}`,
+                {
+                    body: {
+                        name: editState.name,
+                        color: editState.color,
+                        is_credit: editState.is_credit,
+                    },
                 },
-                onError: (errors) => {
-                    const msg =
-                        errors.name ??
-                        errors.color ??
-                        errors.is_credit ??
-                        'Failed to update account type.';
-                    toast.error(msg);
-                },
-            },
-        );
+            );
+            setEditState(null);
+            toast.success('Account type updated.');
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const msg =
+                    errors.name?.[0] ??
+                    errors.color?.[0] ??
+                    errors.is_credit?.[0] ??
+                    'Failed to update account type.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to update account type.');
+            }
+        }
     }
 
     // ── Account type add ──────────────────────────────────────────────────────
 
-    function handleAddAccountType() {
+    async function handleAddAccountType() {
         if (!addState.name.trim()) {
             return;
         }
 
-        router.post(
-            accountTypeStore.url(ledger.id),
-            {
-                name: addState.name.trim(),
-                color: addState.color,
-                is_credit: addState.is_credit,
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setAddState({
-                        name: '',
-                        color: '#6b7280',
-                        is_credit: false,
-                    });
-                    setShowAddForm(false);
-                    toast.success('Account type added.');
+        try {
+            await api.post(`${base}/account-types`, {
+                body: {
+                    name: addState.name.trim(),
+                    color: addState.color,
+                    is_credit: addState.is_credit,
                 },
-                onError: (errors) => {
-                    const msg =
-                        errors.name ??
-                        errors.color ??
-                        errors.is_credit ??
-                        'Failed to add account type.';
-                    toast.error(msg);
-                },
-            },
-        );
+            });
+            setAddState({
+                name: '',
+                color: '#6b7280',
+                is_credit: false,
+            });
+            setShowAddForm(false);
+            toast.success('Account type added.');
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const msg =
+                    errors.name?.[0] ??
+                    errors.color?.[0] ??
+                    errors.is_credit?.[0] ??
+                    'Failed to add account type.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to add account type.');
+            }
+        }
     }
 
     // ── Account type delete ───────────────────────────────────────────────────
 
-    function handleDeleteAccountType() {
+    async function handleDeleteAccountType() {
         if (!deleteTarget) {
             return;
         }
 
         setIsDeletingAccountType(true);
 
-        router.delete(
-            accountTypeDestroy.url({
-                ledger: ledger.id,
-                accountType: deleteTarget.id,
-            }),
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsDeletingAccountType(false);
-                    setDeleteTarget(null);
-                    toast.success('Account type deleted.');
-                },
-                onError: (errors) => {
-                    setIsDeletingAccountType(false);
-                    setDeleteTarget(null);
-                    const msg =
-                        errors.account_type ??
-                        errors.message ??
-                        Object.values(errors)[0] ??
-                        'Cannot delete this account type.';
-                    toast.error(String(msg));
-                },
-            },
-        );
+        try {
+            await api.delete(`${base}/account-types/${deleteTarget.id}`);
+            setIsDeletingAccountType(false);
+            setDeleteTarget(null);
+            toast.success('Account type deleted.');
+            refetch();
+        } catch (err) {
+            setIsDeletingAccountType(false);
+            setDeleteTarget(null);
+
+            if (err instanceof ApiError) {
+                const body = err.body as Record<string, string> | null;
+                const msg =
+                    body?.message ?? 'Cannot delete this account type.';
+                toast.error(msg);
+            } else {
+                toast.error('Cannot delete this account type.');
+            }
+        }
     }
 
     // ── Sample data handler ─────────────────────────────────────────────
 
-    function handleRemoveSampleData() {
+    async function handleRemoveSampleData() {
         setIsRemovingSampleData(true);
 
-        router.delete(destroySampleData.url(ledger.id), {
-            onSuccess: () => {
-                toast.success('Sample data removed.');
-                window.location.reload();
-            },
-            onFinish: () => {
-                setIsRemovingSampleData(false);
-            },
-            onError: (errors) => {
+        try {
+            await api.delete(`${base}/sample-data`);
+            toast.success('Sample data removed.');
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError) {
+                const body = err.body as Record<string, string> | null;
                 const msg =
-                    errors.message ??
-                    Object.values(errors)[0] ??
-                    'Failed to remove sample data.';
-                toast.error(String(msg));
-            },
-        });
+                    body?.message ?? 'Failed to remove sample data.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to remove sample data.');
+            }
+        } finally {
+            setIsRemovingSampleData(false);
+        }
     }
 
     // ── API token handlers ────────────────────────────────────────────────────
 
-    function handleCreateToken() {
+    async function handleCreateToken() {
         if (!tokenName.trim()) {
             return;
         }
 
         setIsCreatingToken(true);
 
-        router.post(
-            '/api-tokens',
-            { name: tokenName.trim() },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsCreatingToken(false);
-                    setTokenName('');
-                    toast.success('API token created.');
-                },
-                onError: (errors) => {
-                    setIsCreatingToken(false);
-                    const msg = errors.name ?? 'Failed to create API token.';
-                    toast.error(msg);
-                },
-            },
-        );
+        try {
+            const result = await api.post<{ token: string }>(
+                '/api-tokens',
+                { body: { name: tokenName.trim() } },
+            );
+            setIsCreatingToken(false);
+            setTokenName('');
+            setRevealedToken(result.token);
+            toast.success('API token created.');
+            refetch();
+        } catch (err) {
+            setIsCreatingToken(false);
+
+            if (err instanceof ApiError && err.isValidationError) {
+                const msg =
+                    err.validationErrors.name?.[0] ??
+                    'Failed to create API token.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to create API token.');
+            }
+        }
     }
 
-    function handleRevokeToken(tokenId: number) {
+    async function handleRevokeToken(tokenId: number) {
         setDeletingTokenId(tokenId);
 
-        router.delete(`/api-tokens/${tokenId}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-                setDeletingTokenId(null);
-                toast.success('API token revoked.');
-            },
-            onError: () => {
-                setDeletingTokenId(null);
-                toast.error('Failed to revoke API token.');
-            },
-        });
+        try {
+            await api.delete(`/api-tokens/${tokenId}`);
+            setDeletingTokenId(null);
+            toast.success('API token revoked.');
+            refetch();
+        } catch {
+            setDeletingTokenId(null);
+            toast.error('Failed to revoke API token.');
+        }
     }
 
     // ── Ledger delete ─────────────────────────────────────────────────────────
 
-    function handleDeleteLedger() {
+    async function handleDeleteLedger() {
         setIsDeletingLedger(true);
 
-        router.delete(destroyLedger.url(ledger.id), {
-            preserveScroll: false,
-            onSuccess: () => {
-                setIsDeletingLedger(false);
-                setShowDeleteDialog(false);
-            },
-            onError: (errors) => {
-                setIsDeletingLedger(false);
-                const msg =
-                    errors.ledger ??
-                    errors.message ??
-                    Object.values(errors)[0] ??
-                    'Failed to delete workspace.';
-                toast.error(String(msg));
-            },
-        });
+        try {
+            await api.delete(`/api/v1/ledgers/${ledger.id}`);
+            setIsDeletingLedger(false);
+            setShowDeleteDialog(false);
+            router.visit('/');
+        } catch (err) {
+            setIsDeletingLedger(false);
+
+            if (err instanceof ApiError) {
+                const body = err.body as Record<string, string> | null;
+                const msg = body?.message ?? 'Failed to delete workspace.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to delete workspace.');
+            }
+        }
     }
 
     return (
@@ -463,560 +500,642 @@ export default function SettingsIndex({
                     description="Ledger configuration, account types, API access, and data management."
                 />
 
-                {/* ── General ────────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">General</h2>
-                    <Separator />
+                {loading ? (
+                    <SettingsLoadingSkeleton />
+                ) : (
+                    <>
+                        {/* ── General ────────────────────────────────────────────── */}
+                        <section className="space-y-4">
+                            <h2 className="text-base font-semibold">General</h2>
+                            <Separator />
 
-                    <div className="grid max-w-md gap-4">
-                        {/* Workspace name */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="ledger-name">Workspace name</Label>
-                            <Input
-                                id="ledger-name"
-                                value={ledgerName}
-                                onChange={(e) => setLedgerName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        handleSaveGeneral();
-                                    }
-                                }}
-                            />
-                        </div>
+                            <div className="grid max-w-md gap-4">
+                                {/* Workspace name */}
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="ledger-name">
+                                        Workspace name
+                                    </Label>
+                                    <Input
+                                        id="ledger-name"
+                                        value={effectiveName}
+                                        onChange={(e) =>
+                                            setLedgerName(e.target.value)
+                                        }
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                void handleSaveGeneral();
+                                            }
+                                        }}
+                                    />
+                                </div>
 
-                        {/* Currency */}
-                        <div className="space-y-1.5">
-                            <Label>Currency code</Label>
-                            <CurrencySelect
-                                value={currencyCode}
-                                onValueChange={setCurrencyCode}
-                            />
-                            {currencyCode !== ledger.currency_code && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
-                                    Changing the currency code does not convert
-                                    existing transaction amounts.
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Cycle start day */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="cycle-start-day">
-                                Cycle start day
-                            </Label>
-                            <Input
-                                id="cycle-start-day"
-                                type="number"
-                                inputMode="decimal"
-                                min={1}
-                                max={31}
-                                value={cycleStartDay}
-                                onChange={(e) =>
-                                    setCycleStartDay(Number(e.target.value))
-                                }
-                                className="w-24"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Day of the month your budget cycle starts
-                                (1–31). Months with fewer days will use the last
-                                day.
-                            </p>
-                        </div>
-
-                        <div>
-                            <Button
-                                onClick={handleSaveGeneral}
-                                disabled={isSavingGeneral || !ledgerName.trim()}
-                            >
-                                {isSavingGeneral ? 'Saving…' : 'Save'}
-                            </Button>
-                        </div>
-                    </div>
-                </section>
-
-                {/* ── Account Types ───────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">Account Types</h2>
-                    <Separator />
-
-                    <div className="max-w-lg space-y-1">
-                        {ledger.account_types.length === 0 && !showAddForm && (
-                            <p className="py-4 text-sm text-muted-foreground">
-                                No account types yet.
-                            </p>
-                        )}
-
-                        {ledger.account_types.map((accountType) => {
-                            const isEditing =
-                                editState?.accountTypeId === accountType.id;
-                            const isDragOver = dragOverId === accountType.id;
-
-                            return (
-                                <div
-                                    key={accountType.id}
-                                    draggable
-                                    onDragStart={(e) =>
-                                        handleDragStart(e, accountType.id)
-                                    }
-                                    onDragOver={(e) =>
-                                        handleDragOver(e, accountType.id)
-                                    }
-                                    onDragLeave={handleDragLeave}
-                                    onDragEnd={() => {
-                                        dragOverIdRef.current = null;
-                                        setDragOverId(null);
-                                    }}
-                                    onDrop={(e) =>
-                                        handleDrop(e, accountType.id)
-                                    }
-                                    className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
-                                        isDragOver
-                                            ? 'border border-primary/40 bg-primary/5'
-                                            : 'border border-transparent hover:bg-muted/50'
-                                    }`}
-                                >
-                                    {/* Drag handle */}
-                                    <span
-                                        aria-hidden="true"
-                                        className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100"
-                                    >
-                                        ⋮⋮
-                                    </span>
-
-                                    {/* Color dot */}
-                                    {colorDot(accountType.color)}
-
-                                    {isEditing && editState ? (
-                                        /* Inline edit form */
-                                        <div className="flex flex-1 flex-wrap items-center gap-2">
-                                            <Input
-                                                autoFocus
-                                                value={editState.name}
-                                                onChange={(e) =>
-                                                    setEditState({
-                                                        ...editState,
-                                                        name: e.target.value,
-                                                    })
-                                                }
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        saveEdit();
-                                                    } else if (
-                                                        e.key === 'Escape'
-                                                    ) {
-                                                        setEditState(null);
-                                                    }
-                                                }}
-                                                className="h-7 w-40 text-sm"
-                                            />
-                                            <div className="flex items-center gap-1">
-                                                <Label
-                                                    className="sr-only"
-                                                    htmlFor={`at-color-${editState.accountTypeId}`}
-                                                >
-                                                    Color
-                                                </Label>
-                                                <ColorPicker
-                                                    id={`at-color-${editState.accountTypeId}`}
-                                                    value={editState.color}
-                                                    onChange={(color) =>
-                                                        setEditState({
-                                                            ...editState,
-                                                            color,
-                                                        })
-                                                    }
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Switch
-                                                    id={`at-credit-${editState.accountTypeId}`}
-                                                    checked={
-                                                        editState.is_credit
-                                                    }
-                                                    onCheckedChange={(v) =>
-                                                        setEditState({
-                                                            ...editState,
-                                                            is_credit: v,
-                                                        })
-                                                    }
-                                                />
-                                                <Label
-                                                    htmlFor={`at-credit-${editState.accountTypeId}`}
-                                                    className="text-xs"
-                                                >
-                                                    Credit
-                                                </Label>
-                                            </div>
-                                            <Button
-                                                size="sm"
-                                                className="h-7 px-2 text-xs"
-                                                onClick={saveEdit}
-                                            >
-                                                Save
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-7 px-2 text-xs"
-                                                onClick={() =>
-                                                    setEditState(null)
-                                                }
-                                            >
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <Button
-                                                type="button"
-                                                variant="link"
-                                                onClick={() =>
-                                                    startEdit(accountType)
-                                                }
-                                                className="h-auto flex-1 justify-start p-0 text-sm font-medium text-foreground no-underline hover:underline"
-                                            >
-                                                {accountType.name}
-                                            </Button>
-
-                                            <Badge
-                                                variant={
-                                                    accountType.is_credit
-                                                        ? 'default'
-                                                        : 'secondary'
-                                                }
-                                            >
-                                                {accountType.is_credit
-                                                    ? 'Credit'
-                                                    : 'Debit'}
-                                            </Badge>
-
-                                            <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
-                                                    onClick={() =>
-                                                        setDeleteTarget(
-                                                            accountType,
-                                                        )
-                                                    }
-                                                >
-                                                    Delete
-                                                </Button>
-                                            </div>
-                                        </>
+                                {/* Currency */}
+                                <div className="space-y-1.5">
+                                    <Label>Currency code</Label>
+                                    <CurrencySelect
+                                        value={effectiveCurrency}
+                                        onValueChange={setCurrencyCode}
+                                    />
+                                    {effectiveCurrency !==
+                                        settings?.ledger.currency_code && (
+                                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                                            Changing the currency code does not
+                                            convert existing transaction
+                                            amounts.
+                                        </p>
                                     )}
                                 </div>
-                            );
-                        })}
 
-                        {/* Add account type form */}
-                        {showAddForm ? (
-                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3">
-                                <Input
-                                    autoFocus
-                                    value={addState.name}
-                                    onChange={(e) =>
-                                        setAddState({
-                                            ...addState,
-                                            name: e.target.value,
-                                        })
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleAddAccountType();
-                                        } else if (e.key === 'Escape') {
-                                            setShowAddForm(false);
-                                        }
-                                    }}
-                                    placeholder="Account type name…"
-                                    className="h-7 w-48 text-sm"
-                                />
-                                <ColorPicker
-                                    value={addState.color}
-                                    onChange={(color) =>
-                                        setAddState({
-                                            ...addState,
-                                            color,
-                                        })
-                                    }
-                                />
-                                <div className="flex items-center gap-1.5">
-                                    <Switch
-                                        id="add-at-credit"
-                                        checked={addState.is_credit}
-                                        onCheckedChange={(v) =>
-                                            setAddState({
-                                                ...addState,
-                                                is_credit: v,
-                                            })
-                                        }
-                                    />
-                                    <Label
-                                        htmlFor="add-at-credit"
-                                        className="text-xs"
-                                    >
-                                        Credit
+                                {/* Cycle start day */}
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="cycle-start-day">
+                                        Cycle start day
                                     </Label>
-                                </div>
-                                <Button
-                                    size="sm"
-                                    className="h-7 px-2 text-xs"
-                                    onClick={handleAddAccountType}
-                                    disabled={!addState.name.trim()}
-                                >
-                                    Add
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 px-2 text-xs"
-                                    onClick={() => setShowAddForm(false)}
-                                >
-                                    Cancel
-                                </Button>
-                            </div>
-                        ) : (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={() => setShowAddForm(true)}
-                            >
-                                + Add Account Type
-                            </Button>
-                        )}
-                    </div>
-                </section>
-
-                {/* ── Sample Data ─────────────────────────────────────────── */}
-                {hasSampleData && (
-                    <section className="space-y-4">
-                        <h2 className="text-base font-semibold">Sample Data</h2>
-                        <Separator />
-
-                        <div className="rounded-lg border border-border p-4">
-                            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <p className="text-sm font-medium">
-                                        Remove sample data
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        This will delete all sample accounts,
-                                        transactions, bills, and payees. Your
-                                        own data will not be affected.
-                                    </p>
-                                </div>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={handleRemoveSampleData}
-                                    disabled={isRemovingSampleData}
-                                >
-                                    {isRemovingSampleData
-                                        ? 'Removing...'
-                                        : 'Remove sample data'}
-                                </Button>
-                            </div>
-                        </div>
-                    </section>
-                )}
-
-                {/* ── Data Export ──────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">Data Export</h2>
-                    <Separator />
-
-                    <div className="rounded-lg border border-border p-4">
-                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm font-medium">
-                                    Export all data
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                    Download all accounts, transactions,
-                                    categories, payees, tags, bills, and budgets
-                                    as a JSON file.
-                                </p>
-                            </div>
-                            <a href={ledgerExport.url(ledger.id)} download>
-                                <Button variant="outline" size="sm">
-                                    <Download className="mr-2 size-4" />
-                                    Export
-                                </Button>
-                            </a>
-                        </div>
-                    </div>
-                </section>
-
-                {/* ── API Tokens ──────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">API Tokens</h2>
-                    <Separator />
-
-                    <p className="text-sm text-muted-foreground">
-                        API tokens allow external applications to access your
-                        data via the REST API. Treat tokens like passwords
-                        &mdash; keep them secret.
-                    </p>
-
-                    {revealedToken && (
-                        <div className="rounded-lg border border-green-500/30 bg-green-50 p-4 dark:bg-green-950/20">
-                            <p className="mb-2 text-sm font-medium text-green-800 dark:text-green-200">
-                                Your new API token (copy it now &mdash; it
-                                won&apos;t be shown again):
-                            </p>
-                            <code className="block rounded bg-green-100 px-3 py-2 text-sm break-all dark:bg-green-900/40">
-                                {revealedToken}
-                            </code>
-                            <div className="mt-2 flex gap-2">
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                        navigator.clipboard.writeText(
-                                            revealedToken,
-                                        );
-                                        toast.success(
-                                            'Token copied to clipboard.',
-                                        );
-                                    }}
-                                >
-                                    Copy
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setRevealedToken(null)}
-                                >
-                                    Dismiss
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="max-w-md space-y-3">
-                        <div className="flex items-end gap-2">
-                            <div className="flex-1 space-y-1.5">
-                                <Label htmlFor="token-name">Token name</Label>
-                                <Input
-                                    id="token-name"
-                                    value={tokenName}
-                                    onChange={(e) =>
-                                        setTokenName(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleCreateToken();
+                                    <Input
+                                        id="cycle-start-day"
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={1}
+                                        max={31}
+                                        value={effectiveCycleDay}
+                                        onChange={(e) =>
+                                            setCycleStartDay(
+                                                Number(e.target.value),
+                                            )
                                         }
-                                    }}
-                                    placeholder="e.g. My App"
-                                />
-                            </div>
-                            <Button
-                                onClick={handleCreateToken}
-                                disabled={isCreatingToken || !tokenName.trim()}
-                            >
-                                {isCreatingToken
-                                    ? 'Creating...'
-                                    : 'Create Token'}
-                            </Button>
-                        </div>
+                                        className="w-24"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Day of the month your budget cycle
+                                        starts (1–31). Months with fewer days
+                                        will use the last day.
+                                    </p>
+                                </div>
 
-                        {apiTokens.length > 0 && (
-                            <div className="rounded-lg border">
-                                {apiTokens.map((token, idx) => (
-                                    <div
-                                        key={token.id}
-                                        className={`flex items-center justify-between px-4 py-3 ${
-                                            idx > 0 ? 'border-t' : ''
-                                        }`}
+                                <div>
+                                    <Button
+                                        onClick={() =>
+                                            void handleSaveGeneral()
+                                        }
+                                        disabled={
+                                            isSavingGeneral ||
+                                            !effectiveName.trim()
+                                        }
                                     >
+                                        {isSavingGeneral ? 'Saving…' : 'Save'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* ── Account Types ───────────────────────────────────────── */}
+                        <section className="space-y-4">
+                            <h2 className="text-base font-semibold">
+                                Account Types
+                            </h2>
+                            <Separator />
+
+                            <div className="max-w-lg space-y-1">
+                                {accountTypes.length === 0 && !showAddForm && (
+                                    <p className="py-4 text-sm text-muted-foreground">
+                                        No account types yet.
+                                    </p>
+                                )}
+
+                                {accountTypes.map((accountType) => {
+                                    const isEditing =
+                                        editState?.accountTypeId ===
+                                        accountType.id;
+                                    const isDragOver =
+                                        dragOverId === accountType.id;
+
+                                    return (
+                                        <div
+                                            key={accountType.id}
+                                            draggable
+                                            onDragStart={(e) =>
+                                                handleDragStart(
+                                                    e,
+                                                    accountType.id,
+                                                )
+                                            }
+                                            onDragOver={(e) =>
+                                                handleDragOver(
+                                                    e,
+                                                    accountType.id,
+                                                )
+                                            }
+                                            onDragLeave={handleDragLeave}
+                                            onDragEnd={() => {
+                                                dragOverIdRef.current = null;
+                                                setDragOverId(null);
+                                            }}
+                                            onDrop={(e) =>
+                                                void handleDrop(
+                                                    e,
+                                                    accountType.id,
+                                                )
+                                            }
+                                            className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
+                                                isDragOver
+                                                    ? 'border border-primary/40 bg-primary/5'
+                                                    : 'border border-transparent hover:bg-muted/50'
+                                            }`}
+                                        >
+                                            {/* Drag handle */}
+                                            <span
+                                                aria-hidden="true"
+                                                className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100"
+                                            >
+                                                ⋮⋮
+                                            </span>
+
+                                            {/* Color dot */}
+                                            {colorDot(accountType.color)}
+
+                                            {isEditing && editState ? (
+                                                /* Inline edit form */
+                                                <div className="flex flex-1 flex-wrap items-center gap-2">
+                                                    <Input
+                                                        autoFocus
+                                                        value={editState.name}
+                                                        onChange={(e) =>
+                                                            setEditState({
+                                                                ...editState,
+                                                                name: e.target
+                                                                    .value,
+                                                            })
+                                                        }
+                                                        onKeyDown={(e) => {
+                                                            if (
+                                                                e.key ===
+                                                                'Enter'
+                                                            ) {
+                                                                void saveEdit();
+                                                            } else if (
+                                                                e.key ===
+                                                                'Escape'
+                                                            ) {
+                                                                setEditState(
+                                                                    null,
+                                                                );
+                                                            }
+                                                        }}
+                                                        className="h-7 w-40 text-sm"
+                                                    />
+                                                    <div className="flex items-center gap-1">
+                                                        <Label
+                                                            className="sr-only"
+                                                            htmlFor={`at-color-${editState.accountTypeId}`}
+                                                        >
+                                                            Color
+                                                        </Label>
+                                                        <ColorPicker
+                                                            id={`at-color-${editState.accountTypeId}`}
+                                                            value={
+                                                                editState.color
+                                                            }
+                                                            onChange={(color) =>
+                                                                setEditState({
+                                                                    ...editState,
+                                                                    color,
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Switch
+                                                            id={`at-credit-${editState.accountTypeId}`}
+                                                            checked={
+                                                                editState.is_credit
+                                                            }
+                                                            onCheckedChange={(
+                                                                v,
+                                                            ) =>
+                                                                setEditState({
+                                                                    ...editState,
+                                                                    is_credit:
+                                                                        v,
+                                                                })
+                                                            }
+                                                        />
+                                                        <Label
+                                                            htmlFor={`at-credit-${editState.accountTypeId}`}
+                                                            className="text-xs"
+                                                        >
+                                                            Credit
+                                                        </Label>
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-7 px-2 text-xs"
+                                                        onClick={() =>
+                                                            void saveEdit()
+                                                        }
+                                                    >
+                                                        Save
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-7 px-2 text-xs"
+                                                        onClick={() =>
+                                                            setEditState(null)
+                                                        }
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        variant="link"
+                                                        onClick={() =>
+                                                            startEdit(
+                                                                accountType,
+                                                            )
+                                                        }
+                                                        className="h-auto flex-1 justify-start p-0 text-sm font-medium text-foreground no-underline hover:underline"
+                                                    >
+                                                        {accountType.name}
+                                                    </Button>
+
+                                                    <Badge
+                                                        variant={
+                                                            accountType.is_credit
+                                                                ? 'default'
+                                                                : 'secondary'
+                                                        }
+                                                    >
+                                                        {accountType.is_credit
+                                                            ? 'Credit'
+                                                            : 'Debit'}
+                                                    </Badge>
+
+                                                    <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
+                                                            onClick={() =>
+                                                                setDeleteTarget(
+                                                                    accountType,
+                                                                )
+                                                            }
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Add account type form */}
+                                {showAddForm ? (
+                                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3">
+                                        <Input
+                                            autoFocus
+                                            value={addState.name}
+                                            onChange={(e) =>
+                                                setAddState({
+                                                    ...addState,
+                                                    name: e.target.value,
+                                                })
+                                            }
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    void handleAddAccountType();
+                                                } else if (
+                                                    e.key === 'Escape'
+                                                ) {
+                                                    setShowAddForm(false);
+                                                }
+                                            }}
+                                            placeholder="Account type name…"
+                                            className="h-7 w-48 text-sm"
+                                        />
+                                        <ColorPicker
+                                            value={addState.color}
+                                            onChange={(color) =>
+                                                setAddState({
+                                                    ...addState,
+                                                    color,
+                                                })
+                                            }
+                                        />
+                                        <div className="flex items-center gap-1.5">
+                                            <Switch
+                                                id="add-at-credit"
+                                                checked={addState.is_credit}
+                                                onCheckedChange={(v) =>
+                                                    setAddState({
+                                                        ...addState,
+                                                        is_credit: v,
+                                                    })
+                                                }
+                                            />
+                                            <Label
+                                                htmlFor="add-at-credit"
+                                                className="text-xs"
+                                            >
+                                                Credit
+                                            </Label>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() =>
+                                                void handleAddAccountType()
+                                            }
+                                            disabled={!addState.name.trim()}
+                                        >
+                                            Add
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() =>
+                                                setShowAddForm(false)
+                                            }
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2"
+                                        onClick={() => setShowAddForm(true)}
+                                    >
+                                        + Add Account Type
+                                    </Button>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* ── Sample Data ─────────────────────────────────────────── */}
+                        {hasSampleData && (
+                            <section className="space-y-4">
+                                <h2 className="text-base font-semibold">
+                                    Sample Data
+                                </h2>
+                                <Separator />
+
+                                <div className="rounded-lg border border-border p-4">
+                                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <p className="text-sm font-medium">
-                                                {token.name}
+                                                Remove sample data
                                             </p>
                                             <p className="text-xs text-muted-foreground">
-                                                Created{' '}
-                                                {token.created_at
-                                                    ? new Date(
-                                                          token.created_at,
-                                                      ).toLocaleDateString()
-                                                    : 'unknown'}
-                                                {token.last_used_at && (
-                                                    <>
-                                                        {' '}
-                                                        &middot; Last used{' '}
-                                                        {new Date(
-                                                            token.last_used_at,
-                                                        ).toLocaleDateString()}
-                                                    </>
-                                                )}
+                                                This will delete all sample
+                                                accounts, transactions, bills,
+                                                and payees. Your own data will
+                                                not be affected.
                                             </p>
                                         </div>
                                         <Button
-                                            variant="ghost"
+                                            variant="destructive"
                                             size="sm"
-                                            className="text-destructive hover:text-destructive"
-                                            disabled={
-                                                deletingTokenId === token.id
-                                            }
                                             onClick={() =>
-                                                handleRevokeToken(token.id)
+                                                void handleRemoveSampleData()
                                             }
+                                            disabled={isRemovingSampleData}
                                         >
-                                            {deletingTokenId === token.id
-                                                ? 'Revoking...'
-                                                : 'Revoke'}
+                                            {isRemovingSampleData
+                                                ? 'Removing...'
+                                                : 'Remove sample data'}
                                         </Button>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            </section>
                         )}
 
-                        {apiTokens.length === 0 && (
+                        {/* ── Data Export ──────────────────────────────────────────── */}
+                        <section className="space-y-4">
+                            <h2 className="text-base font-semibold">
+                                Data Export
+                            </h2>
+                            <Separator />
+
+                            <div className="rounded-lg border border-border p-4">
+                                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-sm font-medium">
+                                            Export all data
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Download all accounts, transactions,
+                                            categories, payees, tags, bills, and
+                                            budgets as a JSON file.
+                                        </p>
+                                    </div>
+                                    <a
+                                        href={ledgerExport.url(ledger.id)}
+                                        download
+                                    >
+                                        <Button variant="outline" size="sm">
+                                            <Download className="mr-2 size-4" />
+                                            Export
+                                        </Button>
+                                    </a>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* ── API Tokens ──────────────────────────────────────────── */}
+                        <section className="space-y-4">
+                            <h2 className="text-base font-semibold">
+                                API Tokens
+                            </h2>
+                            <Separator />
+
                             <p className="text-sm text-muted-foreground">
-                                No API tokens yet. Create one to get started.
+                                API tokens allow external applications to access
+                                your data via the REST API. Treat tokens like
+                                passwords &mdash; keep them secret.
                             </p>
-                        )}
-                    </div>
-                </section>
 
-                {/* ── Danger Zone ─────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold text-destructive">
-                        Danger Zone
-                    </h2>
-                    <Separator />
+                            {revealedToken && (
+                                <div className="rounded-lg border border-green-500/30 bg-green-50 p-4 dark:bg-green-950/20">
+                                    <p className="mb-2 text-sm font-medium text-green-800 dark:text-green-200">
+                                        Your new API token (copy it now &mdash;
+                                        it won&apos;t be shown again):
+                                    </p>
+                                    <code className="block rounded bg-green-100 px-3 py-2 text-sm break-all dark:bg-green-900/40">
+                                        {revealedToken}
+                                    </code>
+                                    <div className="mt-2 flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(
+                                                    revealedToken,
+                                                );
+                                                toast.success(
+                                                    'Token copied to clipboard.',
+                                                );
+                                            }}
+                                        >
+                                            Copy
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                setRevealedToken(null)
+                                            }
+                                        >
+                                            Dismiss
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
 
-                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
-                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-destructive">
-                                    Delete this workspace
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    Permanently deletes all accounts,
-                                    transactions, categories, budgets, and other
-                                    data. This action cannot be undone.
-                                </p>
+                            <div className="max-w-md space-y-3">
+                                <div className="flex items-end gap-2">
+                                    <div className="flex-1 space-y-1.5">
+                                        <Label htmlFor="token-name">
+                                            Token name
+                                        </Label>
+                                        <Input
+                                            id="token-name"
+                                            value={tokenName}
+                                            onChange={(e) =>
+                                                setTokenName(e.target.value)
+                                            }
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    void handleCreateToken();
+                                                }
+                                            }}
+                                            placeholder="e.g. My App"
+                                        />
+                                    </div>
+                                    <Button
+                                        onClick={() =>
+                                            void handleCreateToken()
+                                        }
+                                        disabled={
+                                            isCreatingToken ||
+                                            !tokenName.trim()
+                                        }
+                                    >
+                                        {isCreatingToken
+                                            ? 'Creating...'
+                                            : 'Create Token'}
+                                    </Button>
+                                </div>
+
+                                {apiTokens.length > 0 && (
+                                    <div className="rounded-lg border">
+                                        {apiTokens.map((token, idx) => (
+                                            <div
+                                                key={token.id}
+                                                className={`flex items-center justify-between px-4 py-3 ${
+                                                    idx > 0 ? 'border-t' : ''
+                                                }`}
+                                            >
+                                                <div>
+                                                    <p className="text-sm font-medium">
+                                                        {token.name}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Created{' '}
+                                                        {token.created_at
+                                                            ? new Date(
+                                                                  token.created_at,
+                                                              ).toLocaleDateString()
+                                                            : 'unknown'}
+                                                        {token.last_used_at && (
+                                                            <>
+                                                                {' '}
+                                                                &middot; Last
+                                                                used{' '}
+                                                                {new Date(
+                                                                    token.last_used_at,
+                                                                ).toLocaleDateString()}
+                                                            </>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-destructive hover:text-destructive"
+                                                    disabled={
+                                                        deletingTokenId ===
+                                                        token.id
+                                                    }
+                                                    onClick={() =>
+                                                        void handleRevokeToken(
+                                                            token.id,
+                                                        )
+                                                    }
+                                                >
+                                                    {deletingTokenId ===
+                                                    token.id
+                                                        ? 'Revoking...'
+                                                        : 'Revoke'}
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {apiTokens.length === 0 && (
+                                    <p className="text-sm text-muted-foreground">
+                                        No API tokens yet. Create one to get
+                                        started.
+                                    </p>
+                                )}
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => {
-                                    setDeleteConfirmName('');
-                                    setShowDeleteDialog(true);
-                                }}
-                            >
-                                Delete workspace
-                            </Button>
-                        </div>
-                    </div>
-                </section>
+                        </section>
+
+                        {/* ── Danger Zone ─────────────────────────────────────────── */}
+                        <section className="space-y-4">
+                            <h2 className="text-base font-semibold text-destructive">
+                                Danger Zone
+                            </h2>
+                            <Separator />
+
+                            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-sm font-medium text-destructive">
+                                            Delete this workspace
+                                        </p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Permanently deletes all accounts,
+                                            transactions, categories, budgets,
+                                            and other data. This action cannot
+                                            be undone.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        onClick={() => {
+                                            setDeleteConfirmName('');
+                                            setShowDeleteDialog(true);
+                                        }}
+                                    >
+                                        Delete workspace
+                                    </Button>
+                                </div>
+                            </div>
+                        </section>
+                    </>
+                )}
             </div>
 
             {/* ── Delete account type dialog ───────────────────────────────── */}
@@ -1047,7 +1166,7 @@ export default function SettingsIndex({
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={handleDeleteAccountType}
+                            onClick={() => void handleDeleteAccountType()}
                             disabled={isDeletingAccountType}
                         >
                             {isDeletingAccountType ? 'Deleting…' : 'Delete'}
@@ -1104,7 +1223,7 @@ export default function SettingsIndex({
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={handleDeleteLedger}
+                            onClick={() => void handleDeleteLedger()}
                             disabled={
                                 isDeletingLedger ||
                                 deleteConfirmName !== ledger.name

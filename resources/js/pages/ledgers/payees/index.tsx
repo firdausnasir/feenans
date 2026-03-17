@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { Loader2, Pencil, Search, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,19 +23,16 @@ import {
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import { formatAmount } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    destroy,
-    index as payeesIndex,
-    merge,
-    store,
-    update,
-} from '@/routes/ledgers/payees';
+import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { BreadcrumbItem, Ledger, Payee, Transaction } from '@/types';
+import type { BreadcrumbItem, Payee, Transaction } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 
@@ -63,15 +60,45 @@ function getDuplicateGroups(payees: PayeeWithCount[]): DuplicateGroup[] {
         .map(([key, items]) => ({ key, payees: items }));
 }
 
-export default function PayeesIndex({
-    ledger,
-    payees,
-    filters,
-}: {
-    ledger: Ledger;
-    payees: PayeeWithCount[];
-    filters: { search: string };
-}) {
+function PayeesLoadingSkeleton() {
+    return (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                    <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-3 w-20" />
+                            </div>
+                            <Skeleton className="h-7 w-7" />
+                            <Skeleton className="h-7 w-7" />
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
+export default function PayeesIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const {
+        data: payeesResult,
+        loading,
+        refetch,
+    } = useApiQuery<{ data: PayeeWithCount[] }>(`${base}/payees`, {
+        params: { with_counts: true, search: searchTerm || undefined },
+        deps: [searchTerm],
+    });
+
+    const payees = useMemo(() => payeesResult?.data ?? [], [payeesResult]);
+
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editingName, setEditingName] = useState('');
     const [payeeToDelete, setPayeeToDelete] = useState<PayeeWithCount | null>(
@@ -80,7 +107,6 @@ export default function PayeesIndex({
     const [isDeleting, setIsDeleting] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
     const [newPayeeName, setNewPayeeName] = useState('');
-    const [searchQuery, setSearchQuery] = useState(filters.search ?? '');
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [mergeState, setMergeState] = useState<MergeState | null>(null);
     const [isMerging, setIsMerging] = useState(false);
@@ -108,16 +134,7 @@ export default function PayeesIndex({
     const canMerge = selectedPayees.length === 2;
 
     function handleSearch(value: string) {
-        setSearchQuery(value);
-        router.get(
-            payeesIndex.url(ledger.id),
-            value.trim() ? { search: value.trim() } : {},
-            {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            },
-        );
+        setSearchTerm(value);
     }
 
     function toggleSelection(payeeId: number) {
@@ -159,39 +176,40 @@ export default function PayeesIndex({
         });
     }
 
-    function handleMerge() {
+    async function handleMerge() {
         if (!mergeState) {
             return;
         }
 
         setIsMerging(true);
 
-        router.post(
-            merge.url(ledger.id),
-            {
-                source_id: mergeState.source.id,
-                target_id: mergeState.target.id,
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setMergeState(null);
-                    setIsMerging(false);
-                    clearSelection();
-                    toast.success(
-                        `Merged "${mergeState.source.name}" into "${mergeState.target.name}"`,
-                    );
+        try {
+            await api.post(`${base}/payees/merge`, {
+                body: {
+                    source_id: mergeState.source.id,
+                    target_id: mergeState.target.id,
                 },
-                onError: (errors) => {
-                    const message =
-                        errors.source_id ??
-                        errors.target_id ??
-                        'Failed to merge payees.';
-                    toast.error(message);
-                    setIsMerging(false);
-                },
-            },
-        );
+            });
+            toast.success(
+                `Merged "${mergeState.source.name}" into "${mergeState.target.name}"`,
+            );
+            setMergeState(null);
+            clearSelection();
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const message =
+                    errors.source_id?.[0] ??
+                    errors.target_id?.[0] ??
+                    'Failed to merge payees.';
+                toast.error(message);
+            } else {
+                toast.error('Failed to merge payees.');
+            }
+        } finally {
+            setIsMerging(false);
+        }
     }
 
     function startEditing(payee: PayeeWithCount, event: React.MouseEvent) {
@@ -205,7 +223,7 @@ export default function PayeesIndex({
         setEditingName('');
     }
 
-    function submitEdit(payee: PayeeWithCount) {
+    async function submitEdit(payee: PayeeWithCount) {
         const trimmed = editingName.trim();
 
         if (!trimmed || trimmed === payee.name) {
@@ -214,22 +232,23 @@ export default function PayeesIndex({
             return;
         }
 
-        router.put(
-            update.url({ ledger: ledger.id, payee: payee.id }),
-            { name: trimmed },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setEditingId(null);
-                    setEditingName('');
-                    toast.success('Payee updated');
-                },
-                onError: (errors) => {
-                    const message = errors.name ?? 'Failed to update payee.';
-                    toast.error(message);
-                },
-            },
-        );
+        try {
+            await api.patch(`${base}/payees/${payee.id}`, {
+                body: { name: trimmed },
+            });
+            setEditingId(null);
+            setEditingName('');
+            toast.success('Payee updated');
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const message =
+                    err.validationErrors.name?.[0] ?? 'Failed to update payee.';
+                toast.error(message);
+            } else {
+                toast.error('Failed to update payee.');
+            }
+        }
     }
 
     async function handlePayeeClick(payee: PayeeWithCount) {
@@ -248,19 +267,11 @@ export default function PayeesIndex({
         setPayeeTransactions([]);
 
         try {
-            const url = transactionsIndex.url(ledger.id, {
-                query: { 'payee_ids[]': String(payee.id) },
-            });
-            const response = await fetch(url, {
-                headers: { Accept: 'application/json' },
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch transactions');
-            }
-
-            const data = await response.json();
-            setPayeeTransactions(data.transactions?.data ?? []);
+            const data = await api.get<{ data: Transaction[] }>(
+                `${base}/transactions`,
+                { params: { payee_ids: [payee.id], per_page: 20 } },
+            );
+            setPayeeTransactions(data.data ?? []);
         } catch {
             setPayeeTransactions([]);
             toast.error('Failed to load transactions.');
@@ -269,37 +280,32 @@ export default function PayeesIndex({
         }
     }
 
-    function handleDelete() {
+    async function handleDelete() {
         if (!payeeToDelete) {
             return;
         }
 
         setIsDeleting(true);
 
-        router.delete(
-            destroy.url({ ledger: ledger.id, payee: payeeToDelete.id }),
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setPayeeToDelete(null);
-                    setIsDeleting(false);
+        try {
+            await api.delete(`${base}/payees/${payeeToDelete.id}`);
+            setPayeeToDelete(null);
+            setIsDeleting(false);
 
-                    if (selectedPayee?.id === payeeToDelete.id) {
-                        setSelectedPayee(null);
-                        setPayeeTransactions([]);
-                    }
+            if (selectedPayee?.id === payeeToDelete.id) {
+                setSelectedPayee(null);
+                setPayeeTransactions([]);
+            }
 
-                    toast.success('Payee deleted');
-                },
-                onError: () => {
-                    toast.error('Failed to delete payee.');
-                    setIsDeleting(false);
-                },
-            },
-        );
+            toast.success('Payee deleted');
+            refetch();
+        } catch {
+            toast.error('Failed to delete payee.');
+            setIsDeleting(false);
+        }
     }
 
-    function handleAddPayee() {
+    async function handleAddPayee() {
         const trimmed = newPayeeName.trim();
 
         if (!trimmed) {
@@ -308,25 +314,26 @@ export default function PayeesIndex({
             return;
         }
 
-        router.post(
-            store.url(ledger.id),
-            { name: trimmed },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setNewPayeeName('');
-                    setShowAddForm(false);
-                    toast.success('Payee added');
-                },
-                onError: (errors) => {
-                    const message = errors.name ?? 'Failed to add payee.';
-                    toast.error(message);
-                },
-            },
-        );
+        try {
+            await api.post(`${base}/payees`, {
+                body: { name: trimmed },
+            });
+            setNewPayeeName('');
+            setShowAddForm(false);
+            toast.success('Payee added');
+            refetch();
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const message =
+                    err.validationErrors.name?.[0] ?? 'Failed to add payee.';
+                toast.error(message);
+            } else {
+                toast.error('Failed to add payee.');
+            }
+        }
     }
 
-    const hasPayees = payees.length > 0 || filters.search;
+    const hasPayees = payees.length > 0 || searchTerm;
 
     const duplicateGroups = useMemo(() => getDuplicateGroups(payees), [payees]);
     const duplicateCount = duplicateGroups.reduce(
@@ -362,7 +369,7 @@ export default function PayeesIndex({
         setShowDuplicateDialog(true);
     }
 
-    function handleMergeGroup(group: DuplicateGroup) {
+    async function handleMergeGroup(group: DuplicateGroup) {
         const targetId = groupTargets[group.key];
 
         if (!targetId) {
@@ -377,43 +384,33 @@ export default function PayeesIndex({
 
         setMergingGroupKey(group.key);
 
-        let completed = 0;
+        try {
+            for (const source of sources) {
+                await api.post(`${base}/payees/merge`, {
+                    body: { source_id: source.id, target_id: targetId },
+                });
+            }
 
-        for (const source of sources) {
-            router.post(
-                merge.url(ledger.id),
-                { source_id: source.id, target_id: targetId },
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        completed++;
-
-                        if (completed === sources.length) {
-                            const targetName =
-                                group.payees.find((p) => p.id === targetId)
-                                    ?.name ?? '';
-                            toast.success(
-                                `Merged ${sources.length} payee${sources.length > 1 ? 's' : ''} into "${targetName}"`,
-                            );
-                            setResolvedKeys((prev) => {
-                                const next = new Set(prev);
-                                next.add(group.key);
-
-                                if (next.size >= duplicateGroups.length) {
-                                    setShowDuplicateDialog(false);
-                                }
-
-                                return next;
-                            });
-                            setMergingGroupKey(null);
-                        }
-                    },
-                    onError: () => {
-                        toast.error('Failed to merge payees.');
-                        setMergingGroupKey(null);
-                    },
-                },
+            const targetName =
+                group.payees.find((p) => p.id === targetId)?.name ?? '';
+            toast.success(
+                `Merged ${sources.length} payee${sources.length > 1 ? 's' : ''} into "${targetName}"`,
             );
+            setResolvedKeys((prev) => {
+                const next = new Set(prev);
+                next.add(group.key);
+
+                if (next.size >= duplicateGroups.length) {
+                    setShowDuplicateDialog(false);
+                }
+
+                return next;
+            });
+            refetch();
+        } catch {
+            toast.error('Failed to merge payees.');
+        } finally {
+            setMergingGroupKey(null);
         }
     }
 
@@ -485,7 +482,7 @@ export default function PayeesIndex({
                         <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
                             placeholder="Search payees..."
-                            value={searchQuery}
+                            value={searchTerm}
                             onChange={(e) => handleSearch(e.target.value)}
                             className="pl-9"
                         />
@@ -557,16 +554,18 @@ export default function PayeesIndex({
                     </Card>
                 )}
 
-                {payees.length === 0 && !showAddForm ? (
+                {loading ? (
+                    <PayeesLoadingSkeleton />
+                ) : payees.length === 0 && !showAddForm ? (
                     <EmptyState
                         icon={<Users className="size-6" />}
                         title={
-                            filters.search
+                            searchTerm
                                 ? 'No payees match your search'
                                 : 'No payees yet'
                         }
                         description={
-                            filters.search
+                            searchTerm
                                 ? 'Try a different search term.'
                                 : 'Payees will appear here as you create transactions.'
                         }
@@ -976,7 +975,8 @@ export default function PayeesIndex({
                         <div className="space-y-6 py-2">
                             {pendingGroups.map((group) => {
                                 const targetId = groupTargets[group.key];
-                                const isMerging = mergingGroupKey === group.key;
+                                const isGroupMerging =
+                                    mergingGroupKey === group.key;
                                 const isPair = group.payees.length === 2;
 
                                 return (
@@ -1070,7 +1070,7 @@ export default function PayeesIndex({
                                                             );
                                                         }
                                                     }}
-                                                    disabled={isMerging}
+                                                    disabled={isGroupMerging}
                                                 >
                                                     Swap direction
                                                 </Button>
@@ -1084,10 +1084,10 @@ export default function PayeesIndex({
                                                     handleMergeGroup(group)
                                                 }
                                                 disabled={
-                                                    !targetId || isMerging
+                                                    !targetId || isGroupMerging
                                                 }
                                             >
-                                                {isMerging
+                                                {isGroupMerging
                                                     ? 'Merging...'
                                                     : 'Merge this group'}
                                             </Button>

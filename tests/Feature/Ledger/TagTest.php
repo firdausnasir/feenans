@@ -95,17 +95,14 @@ test('transaction index can be filtered by tag', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [
+        ->getJson(route('api.v1.ledgers.transactions.index', [
             'ledger' => $ledger,
             'tag_ids' => [$tag->id],
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->component('ledgers/transactions/index')
-        ->where('transactions.data.0.id', $tagged->id)
-        ->where('transactions.total', 1)
-    );
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.id', $tagged->id);
 });
 
 test('transaction tags are synced on update', function () {

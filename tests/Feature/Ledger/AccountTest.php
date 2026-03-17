@@ -43,7 +43,7 @@ test('account store rejects an account type from another ledger', function () {
     $response->assertSessionHasErrors('account_type_id');
 });
 
-test('account show returns 200 with correct account', function () {
+test('account show returns 200 with correct component', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -59,10 +59,7 @@ test('account show returns 200 with correct account', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/accounts/show')
-        ->has('account')
-        ->has('ledger')
-        ->has('transactions')
-        ->has('balance')
+        ->where('accountId', $account->id)
     );
 });
 

@@ -309,7 +309,7 @@ test('transferPair relationship returns the other paired transaction', function 
         ->and($incoming->transferPair->id)->toBe($outgoing->id);
 });
 
-test('transaction edit includes transferPair in response', function () {
+test('transaction edit page renders for transfer transaction', function () {
     $pairId = (string) Str::uuid();
 
     $user = User::factory()->create();
@@ -337,11 +337,40 @@ test('transaction edit includes transferPair in response', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/transactions/edit')
-        ->has('transaction.transfer_pair')
+        ->where('transaction_id', $outgoing->id)
     );
 });
 
-test('transaction edit includes attachments and splits in response', function () {
+test('API show includes transferPair for transfer transaction', function () {
+    $pairId = (string) Str::uuid();
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $outgoing = Transaction::factory()->for($ledger)->for($fromAccount)->create([
+        'transaction_type' => TransactionType::Transfer,
+        'amount' => -100.00,
+        'transfer_pair_id' => $pairId,
+    ]);
+
+    Transaction::factory()->for($ledger)->for($toAccount)->create([
+        'transaction_type' => TransactionType::Transfer,
+        'amount' => 100.00,
+        'transfer_pair_id' => $pairId,
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->getJson(route('api.v1.ledgers.transactions.show', [$ledger, $outgoing]));
+
+    $response->assertSuccessful();
+    $response->assertJsonStructure(['data' => ['transfer_pair']]);
+});
+
+test('API show includes attachments and splits in response', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -376,13 +405,10 @@ test('transaction edit includes attachments and splits in response', function ()
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.edit', [$ledger, $transaction]));
+        ->getJson(route('api.v1.ledgers.transactions.show', [$ledger, $transaction]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->component('ledgers/transactions/edit')
-        ->has('transaction.attachments', 1)
-        ->has('transaction.splits', 2)
-        ->where('transaction.splits.0.description', 'Food')
-    );
+    $response->assertJsonCount(1, 'data.attachments');
+    $response->assertJsonCount(2, 'data.splits');
+    $response->assertJsonPath('data.splits.0.description', 'Food');
 });

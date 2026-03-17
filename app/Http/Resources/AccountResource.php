@@ -22,6 +22,10 @@ class AccountResource extends JsonResource
             'initial_balance' => $this->initial_balance,
             'current_balance' => $this->current_balance,
             'statement_day' => $this->statement_day,
+            'color' => $this->color,
+            'is_hidden' => (bool) $this->is_hidden,
+            'position' => $this->position,
+            'payment_due_day' => $this->payment_due_day,
             'include_in_totals' => $this->include_in_totals,
             'account_type' => $this->whenLoaded('accountType', fn () => [
                 'id' => $this->accountType->id,

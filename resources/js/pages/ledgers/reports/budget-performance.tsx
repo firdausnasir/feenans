@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { AlertTriangle, BarChart3, CheckCircle, XCircle } from 'lucide-react';
 import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -13,7 +15,7 @@ import {
     index as reportsIndex,
     budgetPerformance as budgetPerformanceRoute,
 } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem, Ledger } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,13 @@ type BudgetStat = {
     percentage: number;
     period: string;
     status: 'good' | 'warning' | 'danger' | 'over';
+};
+
+type BudgetPerformanceResponse = {
+    data: {
+        budget_stats: BudgetStat[];
+        period_label: string;
+    };
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -75,6 +84,43 @@ function StatusIcon({ status }: { status: BudgetStat['status'] }) {
                 <XCircle className="size-4 text-red-600 dark:text-red-400" />
             );
     }
+}
+
+// ─── Skeleton Components ─────────────────────────────────────────────────────
+
+function BudgetPerformanceSkeleton() {
+    return (
+        <div className="space-y-6">
+            {/* Summary cards skeleton */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-3 w-24 rounded" />
+                            <Skeleton className="h-8 w-20 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            {/* Budget cards skeleton */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-4 w-32 rounded" />
+                            <Skeleton className="mb-3 h-3 w-16 rounded" />
+                            <Skeleton className="mb-3 h-2 w-full rounded" />
+                            <div className="flex justify-between">
+                                <Skeleton className="h-3 w-20 rounded" />
+                                <Skeleton className="h-3 w-20 rounded" />
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -192,15 +238,18 @@ function BudgetCard({ stat }: { stat: BudgetStat }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function BudgetPerformancePage({
-    ledger,
-    budgetStats,
-    periodLabel,
-}: {
-    ledger: Ledger;
-    budgetStats: BudgetStat[];
-    periodLabel: string;
-}) {
+export default function BudgetPerformancePage() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    const { data: result, loading } = useApiQuery<BudgetPerformanceResponse>(
+        `${base}/reports/budget-performance`,
+    );
+
+    const budgetStats = result?.data?.budget_stats ?? [];
+    const periodLabel = result?.data?.period_label ?? 'current period';
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Reports', href: reportsIndex.url(ledger.id) },
@@ -236,7 +285,9 @@ export default function BudgetPerformancePage({
                     </div>
                 </div>
 
-                {budgetStats.length === 0 ? (
+                {loading ? (
+                    <BudgetPerformanceSkeleton />
+                ) : budgetStats.length === 0 ? (
                     <Card>
                         <CardContent className="py-12">
                             <EmptyState

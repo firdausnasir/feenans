@@ -6,80 +6,68 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
-use Inertia\Testing\AssertableInertia as Assert;
 
-test('dashboard returns uncategorized_count of 0 when all transactions have categories', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    Transaction::factory()->for($ledger)->for($account)->for($category)->expense()->create([
-        'transaction_date' => now(),
-    ]);
-
-    Transaction::factory()->for($ledger)->for($account)->for($category)->income()->create([
-        'transaction_date' => now(),
-    ]);
-
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('uncategorizedCount', 0)
-        );
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $this->ledger = Ledger::factory()->for($this->user)->create(['cycle_start_day' => 1]);
+    $this->accountType = AccountType::factory()->for($this->ledger)->create();
+    $this->account = Account::factory()->for($this->ledger)->for($this->accountType)->create();
+    $this->category = Category::factory()->for($this->ledger)->create();
+    $this->token = $this->user->createToken('test');
 });
 
-test('dashboard returns correct uncategorized count when some transactions lack categories', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
+test('uncategorized count returns 0 when all transactions have categories', function () {
+    Transaction::factory()->for($this->ledger)->for($this->account)->for($this->category)->expense()->create([
+        'transaction_date' => now(),
+    ]);
 
+    Transaction::factory()->for($this->ledger)->for($this->account)->for($this->category)->income()->create([
+        'transaction_date' => now(),
+    ]);
+
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+        ->assertSuccessful()
+        ->assertJson(['count' => 0]);
+});
+
+test('uncategorized count returns correct count when some transactions lack categories', function () {
     // Categorized transaction
-    Transaction::factory()->for($ledger)->for($account)->for($category)->expense()->create([
+    Transaction::factory()->for($this->ledger)->for($this->account)->for($this->category)->expense()->create([
         'transaction_date' => now(),
     ]);
 
     // Uncategorized transactions
-    Transaction::factory()->for($ledger)->for($account)->expense()->create([
+    Transaction::factory()->for($this->ledger)->for($this->account)->expense()->create([
         'category_id' => null,
         'transaction_date' => now(),
     ]);
 
-    Transaction::factory()->for($ledger)->for($account)->income()->create([
+    Transaction::factory()->for($this->ledger)->for($this->account)->income()->create([
         'category_id' => null,
         'transaction_date' => now(),
     ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('uncategorizedCount', 2)
-        );
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+        ->assertSuccessful()
+        ->assertJson(['count' => 2]);
 });
 
 test('transfer transactions are excluded from the uncategorized count', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-
     // Uncategorized expense (should count)
-    Transaction::factory()->for($ledger)->for($account)->expense()->create([
+    Transaction::factory()->for($this->ledger)->for($this->account)->expense()->create([
         'category_id' => null,
         'transaction_date' => now(),
     ]);
 
     // Transfer without category (should NOT count)
-    Transaction::factory()->for($ledger)->for($account)->transferOut()->create([
+    Transaction::factory()->for($this->ledger)->for($this->account)->transferOut()->create([
         'transaction_date' => now(),
     ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('uncategorizedCount', 1)
-        );
+    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
+        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+        ->assertSuccessful()
+        ->assertJson(['count' => 1]);
 });

@@ -3,6 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\Budget;
+use App\Models\Category;
+use App\Models\Ledger;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,7 +20,13 @@ class BudgetFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'ledger_id' => Ledger::factory(),
+            'category_id' => Category::factory(),
+            'amount' => $this->faker->randomFloat(2, 50, 2000),
+            'period' => 'monthly',
+            'start_date' => now()->startOfMonth()->toDateString(),
+            'is_active' => true,
+            'rollover' => false,
         ];
     }
 }

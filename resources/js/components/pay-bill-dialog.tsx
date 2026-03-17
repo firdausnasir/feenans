@@ -1,4 +1,3 @@
-import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { pay } from '@/routes/ledgers/bills';
+import { api, ApiError } from '@/lib/api-client';
 import type { Account, Bill } from '@/types';
 
 type PayBillDialogProps = {
@@ -28,6 +27,7 @@ type PayBillDialogProps = {
     ledgerId: number;
     accounts: Account[];
     onClose: () => void;
+    onSuccess?: () => void;
 };
 
 export function PayBillDialog({
@@ -35,6 +35,7 @@ export function PayBillDialog({
     ledgerId,
     accounts,
     onClose,
+    onSuccess,
 }: PayBillDialogProps) {
     const [amount, setAmount] = useState('');
     const [accountId, setAccountId] = useState('');
@@ -60,41 +61,48 @@ export function PayBillDialog({
     const actionLabel = isIncome ? 'Record Income' : 'Record Payment';
     const successLabel = isIncome ? 'recorded' : 'paid';
 
-    function handlePay() {
+    async function handlePay() {
         if (!bill) {
             return;
         }
 
         setProcessing(true);
 
-        const payload: Record<string, string> = {};
+        const body: Record<string, string> = {};
 
         if (amount && amount !== String(bill.amount)) {
-            payload.amount = amount;
+            body.amount = amount;
         }
 
         if (accountId && accountId !== String(bill.account_id)) {
-            payload.account_id = accountId;
+            body.account_id = accountId;
         }
 
         if (
             paymentDate &&
             paymentDate !== new Date().toISOString().slice(0, 10)
         ) {
-            payload.date = paymentDate;
+            body.date = paymentDate;
         }
 
-        router.post(pay.url({ ledger: ledgerId, bill: bill.id }), payload, {
-            preserveScroll: true,
-            onSuccess: () => {
-                setProcessing(false);
-                toast.success(`${bill.name} ${successLabel}`);
-                onClose();
-            },
-            onError: () => {
-                setProcessing(false);
-            },
-        });
+        try {
+            await api.post(
+                `/api/v1/ledgers/${ledgerId}/bills/${bill.id}/pay`,
+                { body },
+            );
+            toast.success(`${bill.name} ${successLabel}`);
+            onClose();
+            onSuccess?.();
+        } catch (err) {
+            const message =
+                err instanceof ApiError && err.isValidationError
+                    ? Object.values(err.validationErrors)[0]?.[0] ??
+                      'Validation failed'
+                    : 'Failed to record payment';
+            toast.error(message);
+        } finally {
+            setProcessing(false);
+        }
     }
 
     return (

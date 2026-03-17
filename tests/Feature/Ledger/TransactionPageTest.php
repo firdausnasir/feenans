@@ -8,22 +8,9 @@ use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('transaction index page lists ledger transactions', function () {
+test('transaction index page renders the correct component', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    Transaction::factory()
-        ->for($ledger)
-        ->for($account)
-        ->for($category)
-        ->create([
-            'description' => 'Groceries',
-            'amount' => '-50.00',
-            'transaction_date' => '2026-03-13',
-        ]);
 
     $response = $this
         ->actingAs($user)
@@ -31,17 +18,11 @@ test('transaction index page lists ledger transactions', function () {
 
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/transactions/index')
-        ->has('transactions.data', 1)
-        ->where('transactions.data.0.description', 'Groceries')
-        ->has('accounts')
-        ->has('categories')
-        ->has('payees')
-        ->has('filters')
-        ->etc()
+        ->has('ledger')
     );
 });
 
-test('uncategorized filter returns only non-transfer transactions without a category', function () {
+test('uncategorized filter returns only non-transfer transactions without a category via API', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -66,12 +47,9 @@ test('uncategorized filter returns only non-transfer transactions without a cate
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', [$ledger, 'uncategorized' => '1']));
+        ->getJson(route('api.v1.ledgers.transactions.index', [$ledger, 'uncategorized' => '1']));
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/transactions/index')
-        ->has('transactions.data', 1)
-        ->where('transactions.data.0.description', 'No category')
-        ->where('filters.uncategorized', '1')
-    );
+    $response->assertSuccessful();
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.description', 'No category');
 });

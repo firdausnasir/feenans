@@ -5,7 +5,6 @@ use App\Models\AccountType;
 use App\Models\Bill;
 use App\Models\Category;
 use App\Models\Ledger;
-use App\Models\Payee;
 use App\Models\User;
 
 test('bill update via HTTP updates the bill', function () {
@@ -64,13 +63,9 @@ test('bill destroy deletes bill via HTTP', function () {
     expect(Bill::find($bill->id))->toBeNull();
 });
 
-test('bill create page renders with necessary data', function () {
+test('bill create page renders', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    Account::factory()->for($ledger)->for($accountType)->create();
-    Category::factory()->for($ledger)->create();
-    Payee::factory()->for($ledger)->create();
 
     $response = $this
         ->actingAs($user)
@@ -79,13 +74,10 @@ test('bill create page renders with necessary data', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/create')
-        ->has('accounts', 1)
-        ->has('categories')
-        ->has('payees', 1)
     );
 });
 
-test('bill edit page renders with bill data', function () {
+test('bill edit page renders', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -100,10 +92,6 @@ test('bill edit page renders with bill data', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/edit')
-        ->has('bill')
-        ->has('accounts')
-        ->has('categories')
-        ->has('payees')
     );
 });
 

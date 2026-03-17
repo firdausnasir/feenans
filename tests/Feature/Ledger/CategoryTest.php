@@ -44,8 +44,6 @@ test('category index returns categories with children', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/categories/index')
-        ->has('categories')
-        ->has('ledger')
     );
 });
 

@@ -13,12 +13,7 @@ declare module '@inertiajs/core' {
                 error: string | null;
                 first_transaction: boolean;
             };
-            currentLedger: {
-                id: number;
-                name: string;
-                currency_code: string;
-                cycle_start_day: number;
-            } | null;
+            currentLedger: Ledger | null;
             availableLedgers: Array<
                 Pick<Ledger, 'id' | 'name' | 'currency_code'>
             >;

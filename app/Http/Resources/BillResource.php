@@ -36,6 +36,8 @@ class BillResource extends JsonResource
             'account' => new AccountResource($this->whenLoaded('account')),
             'category' => new CategoryResource($this->whenLoaded('category')),
             'payee' => new PayeeResource($this->whenLoaded('payee')),
+            'transactions' => TransactionResource::collection($this->whenLoaded('transactions')),
+            'missed_cycles' => $this->when($this->missed_cycles !== null, $this->missed_cycles),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

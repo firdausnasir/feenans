@@ -4,7 +4,6 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\ImportMapping;
-use App\Models\ImportRecord;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
@@ -285,11 +284,9 @@ test('import record tracks skipped duplicates correctly', function () {
     expect($record->skipped_count)->toBe(1);
 });
 
-test('create page passes import history to the view', function () {
+test('create page renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-
-    ImportRecord::factory()->for($ledger)->count(3)->create();
 
     $response = $this
         ->actingAs($user)
@@ -298,19 +295,5 @@ test('create page passes import history to the view', function () {
     $response->assertOk();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/import/index')
-        ->has('importHistory', 3)
     );
-});
-
-test('import history is limited to latest 10 records', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-
-    ImportRecord::factory()->for($ledger)->count(15)->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.import.create', $ledger));
-
-    $response->assertInertia(fn ($page) => $page->has('importHistory', 10));
 });

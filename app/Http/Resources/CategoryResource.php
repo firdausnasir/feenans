@@ -23,6 +23,10 @@ class CategoryResource extends JsonResource
             'color' => $this->color,
             'icon' => $this->icon,
             'position' => $this->position,
+            'transactions_count' => $this->when(
+                $this->transactions_count !== null,
+                $this->transactions_count
+            ),
             'children' => CategoryResource::collection($this->whenLoaded('children')),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

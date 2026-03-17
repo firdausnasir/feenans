@@ -86,7 +86,6 @@ test('settings index returns 200 with ledger data', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/settings/index')
-        ->has('ledger')
     );
 });
 

@@ -1,6 +1,6 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { Check } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -22,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -30,15 +31,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
+import { api, ApiError } from '@/lib/api-client';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    create as importCreate,
-    parse as importParse,
-    store as importStore,
-} from '@/routes/ledgers/import';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { Account, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
+import type { Account, BreadcrumbItem } from '@/types';
 
 type ParseResult = {
     headers: string[];
@@ -89,21 +87,46 @@ const TARGET_FIELDS: {
     { key: 'type', label: 'Transaction Type', required: false },
 ];
 
-export default function ImportIndex({
-    ledger,
-    accounts,
-    importHistory = [],
-}: {
-    ledger: Ledger;
-    accounts: Account[];
-    categories: Category[];
-    payees: Payee[];
-    importHistory?: ImportHistoryRecord[];
-}) {
+function ImportLoadingSkeleton() {
+    return (
+        <div className="space-y-6">
+            <Skeleton className="h-8 w-48" />
+            <Card>
+                <CardContent className="p-6">
+                    <Skeleton className="h-40 w-full" />
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+export default function ImportIndex() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger!;
+    const base = `/api/v1/ledgers/${ledger.id}`;
+
+    // Fetch lookup data via API
+    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
+        data: Account[];
+    }>(`${base}/accounts`);
+    const { data: historyResult, loading: historyLoading } = useApiQuery<{
+        data: ImportHistoryRecord[];
+    }>(`${base}/import/history`);
+    const {
+        data: savedMappingsResult,
+        loading: mappingsLoading,
+        refetch: refetchMappings,
+    } = useApiQuery<{ data: SavedMapping[] }>(`${base}/import/mappings`);
+
+    const accounts = accountsResult?.data ?? [];
+    const importHistory = historyResult?.data ?? [];
+    const savedMappings = savedMappingsResult?.data ?? [];
+    const lookupLoading = accountsLoading || historyLoading || mappingsLoading;
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
-        { title: 'Import', href: importCreate.url(ledger.id) },
+        { title: 'Import', href: '#' },
     ];
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -124,7 +147,6 @@ export default function ImportIndex({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Import mapping state
-    const [savedMappings, setSavedMappings] = useState<SavedMapping[]>([]);
     const [saveMappingName, setSaveMappingName] = useState('');
     const [isSavingMapping, setIsSavingMapping] = useState(false);
     const [showSaveMappingInput, setShowSaveMappingInput] = useState(false);
@@ -132,32 +154,6 @@ export default function ImportIndex({
 
     // Import history state
     const [historyOpen, setHistoryOpen] = useState(false);
-
-    const csrfToken =
-        document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-            ?.content ?? '';
-
-    const fetchSavedMappings = useCallback(() => {
-        fetch(`/ledgers/${ledger.id}/import/mappings`, {
-            headers: {
-                Accept: 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-        })
-            .then((res) => {
-                if (res.ok) {
-                    return res.json();
-                }
-
-                return [];
-            })
-            .then((data: SavedMapping[]) => setSavedMappings(data))
-            .catch(() => setSavedMappings([]));
-    }, [ledger.id, csrfToken]);
-
-    useEffect(() => {
-        fetchSavedMappings();
-    }, [fetchSavedMappings]);
 
     const handleFile = async (file: File) => {
         setParseError(null);
@@ -168,27 +164,10 @@ export default function ImportIndex({
         formData.append('file', file);
 
         try {
-            const response = await fetch(importParse.url(ledger.id), {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    Accept: 'application/json',
-                },
-                body: formData,
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const message =
-                    errorData?.errors?.file?.[0] ??
-                    errorData?.message ??
-                    'Failed to parse CSV. Please check the file and try again.';
-                setParseError(message);
-
-                return;
-            }
-
-            const data: ParseResult = await response.json();
+            const data = await api.post<ParseResult>(
+                `${base}/import/parse`,
+                { body: formData },
+            );
             setParseResult(data);
 
             // If bank format detected, use suggested mapping
@@ -199,6 +178,8 @@ export default function ImportIndex({
                     amount: data.suggested_mapping.amount ?? NOT_MAPPED,
                     description:
                         data.suggested_mapping.description ?? NOT_MAPPED,
+                    category:
+                        data.suggested_mapping.category ?? NOT_MAPPED,
                     payee: data.suggested_mapping.payee ?? NOT_MAPPED,
                     type: data.suggested_mapping.type ?? NOT_MAPPED,
                 };
@@ -213,6 +194,7 @@ export default function ImportIndex({
                 date: NOT_MAPPED,
                 amount: NOT_MAPPED,
                 description: NOT_MAPPED,
+                category: NOT_MAPPED,
                 payee: NOT_MAPPED,
                 type: NOT_MAPPED,
             };
@@ -252,8 +234,18 @@ export default function ImportIndex({
 
             setMapping(autoMapping);
             setStep(2);
-        } catch {
-            setParseError('An unexpected error occurred. Please try again.');
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const message =
+                    errors.file?.[0] ??
+                    'Failed to parse CSV. Please check the file and try again.';
+                setParseError(message);
+            } else {
+                setParseError(
+                    'An unexpected error occurred. Please try again.',
+                );
+            }
         } finally {
             setIsLoading(false);
         }
@@ -302,6 +294,7 @@ export default function ImportIndex({
             date: saved.mapping.date ?? NOT_MAPPED,
             amount: saved.mapping.amount ?? NOT_MAPPED,
             description: saved.mapping.description ?? NOT_MAPPED,
+            category: saved.mapping.category ?? NOT_MAPPED,
             payee: saved.mapping.payee ?? NOT_MAPPED,
             type: saved.mapping.type ?? NOT_MAPPED,
         });
@@ -317,45 +310,35 @@ export default function ImportIndex({
         setIsSavingMapping(true);
 
         try {
-            const response = await fetch(
-                `/ledgers/${ledger.id}/import/mappings`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        Accept: 'application/json',
+            await api.post(`${base}/import/mappings`, {
+                body: {
+                    name: saveMappingName.trim(),
+                    mapping: {
+                        date: mapping.date,
+                        amount: mapping.amount,
+                        description:
+                            mapping.description !== NOT_MAPPED
+                                ? mapping.description
+                                : undefined,
+                        category:
+                            mapping.category !== NOT_MAPPED
+                                ? mapping.category
+                                : undefined,
+                        payee:
+                            mapping.payee !== NOT_MAPPED
+                                ? mapping.payee
+                                : undefined,
+                        type:
+                            mapping.type !== NOT_MAPPED
+                                ? mapping.type
+                                : undefined,
                     },
-                    body: JSON.stringify({
-                        name: saveMappingName.trim(),
-                        mapping: {
-                            date: mapping.date,
-                            amount: mapping.amount,
-                            description:
-                                mapping.description !== NOT_MAPPED
-                                    ? mapping.description
-                                    : undefined,
-                            payee:
-                                mapping.payee !== NOT_MAPPED
-                                    ? mapping.payee
-                                    : undefined,
-                            type:
-                                mapping.type !== NOT_MAPPED
-                                    ? mapping.type
-                                    : undefined,
-                        },
-                    }),
                 },
-            );
-
-            if (response.ok) {
-                toast.success(`Mapping "${saveMappingName.trim()}" saved`);
-                setSaveMappingName('');
-                setShowSaveMappingInput(false);
-                fetchSavedMappings();
-            } else {
-                toast.error('Failed to save mapping');
-            }
+            });
+            toast.success(`Mapping "${saveMappingName.trim()}" saved`);
+            setSaveMappingName('');
+            setShowSaveMappingInput(false);
+            refetchMappings();
         } catch {
             toast.error('Failed to save mapping');
         } finally {
@@ -365,21 +348,9 @@ export default function ImportIndex({
 
     const handleDeleteMapping = async (mappingId: number) => {
         try {
-            const response = await fetch(
-                `/ledgers/${ledger.id}/import/mappings/${mappingId}`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        Accept: 'application/json',
-                    },
-                },
-            );
-
-            if (response.ok) {
-                toast.success('Mapping deleted');
-                fetchSavedMappings();
-            }
+            await api.delete(`${base}/import/mappings/${mappingId}`);
+            toast.success('Mapping deleted');
+            refetchMappings();
         } catch {
             toast.error('Failed to delete mapping');
         }
@@ -424,34 +395,71 @@ export default function ImportIndex({
         return raw;
     };
 
-    const handleConfirmImport = () => {
+    const handleConfirmImport = async () => {
         if (!parseResult) {
             return;
         }
 
-        const payload = {
-            file_path: parseResult.file_path,
-            account_id: accountId,
-            mapping: {
-                date: mapping.date,
-                amount: mapping.amount,
-                description:
-                    mapping.description !== NOT_MAPPED
-                        ? mapping.description
-                        : null,
-                category:
-                    mapping.category !== NOT_MAPPED ? mapping.category : null,
-                payee: mapping.payee !== NOT_MAPPED ? mapping.payee : null,
-                type: mapping.type !== NOT_MAPPED ? mapping.type : null,
-            },
-            skip_duplicates: skipDuplicates,
-        };
+        setIsLoading(true);
 
-        router.post(importStore.url(ledger.id), payload, {
-            onSuccess: () => {
-                toast.success('Transactions imported');
-            },
-        });
+        try {
+            const result = await api.post<{
+                imported: number;
+                skipped: number;
+            }>(`${base}/import/execute`, {
+                body: {
+                    file_path: parseResult.file_path,
+                    account_id: accountId,
+                    mapping: {
+                        date: mapping.date,
+                        amount: mapping.amount,
+                        description:
+                            mapping.description !== NOT_MAPPED
+                                ? mapping.description
+                                : null,
+                        category:
+                            mapping.category !== NOT_MAPPED
+                                ? mapping.category
+                                : null,
+                        payee:
+                            mapping.payee !== NOT_MAPPED
+                                ? mapping.payee
+                                : null,
+                        type:
+                            mapping.type !== NOT_MAPPED ? mapping.type : null,
+                    },
+                    skip_duplicates: skipDuplicates,
+                },
+            });
+            const msg = `Imported ${result.imported} transactions${result.skipped > 0 ? `, skipped ${result.skipped} duplicates` : ''}`;
+            toast.success(msg);
+            // Reset to step 1
+            setStep(1);
+            setParseResult(null);
+            setMapping({
+                date: NOT_MAPPED,
+                amount: NOT_MAPPED,
+                description: NOT_MAPPED,
+                category: NOT_MAPPED,
+                payee: NOT_MAPPED,
+                type: NOT_MAPPED,
+            });
+            setAccountId('');
+            setDetectedBank(null);
+        } catch (err) {
+            if (err instanceof ApiError && err.isValidationError) {
+                const errors = err.validationErrors;
+                const msg =
+                    errors.file_path?.[0] ??
+                    errors.account_id?.[0] ??
+                    'Failed to import transactions.';
+                toast.error(msg);
+            } else {
+                toast.error('Failed to import transactions.');
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -466,569 +474,637 @@ export default function ImportIndex({
                     />
                 </div>
 
-                {/* Step indicator */}
-                <div className="flex items-center justify-center gap-2 sm:gap-4">
-                    {[
-                        {
-                            num: 1,
-                            label: 'Upload CSV',
-                            description:
-                                'Select or drag your bank statement CSV file',
-                        },
-                        {
-                            num: 2,
-                            label: 'Map Columns',
-                            description:
-                                'Match your CSV columns to transaction fields',
-                        },
-                        {
-                            num: 3,
-                            label: 'Preview & Confirm',
-                            description:
-                                'Review your data and import into your account',
-                        },
-                    ].map(({ num, label, description }, idx) => (
-                        <div
-                            key={num}
-                            className="flex items-center gap-1 sm:gap-2"
-                        >
-                            <div className="relative">
-                                {step === num && (
-                                    <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
-                                )}
+                {lookupLoading ? (
+                    <ImportLoadingSkeleton />
+                ) : (
+                    <>
+                        {/* Step indicator */}
+                        <div className="flex items-center justify-center gap-2 sm:gap-4">
+                            {[
+                                {
+                                    num: 1,
+                                    label: 'Upload CSV',
+                                    description:
+                                        'Select or drag your bank statement CSV file',
+                                },
+                                {
+                                    num: 2,
+                                    label: 'Map Columns',
+                                    description:
+                                        'Match your CSV columns to transaction fields',
+                                },
+                                {
+                                    num: 3,
+                                    label: 'Preview & Confirm',
+                                    description:
+                                        'Review your data and import into your account',
+                                },
+                            ].map(({ num, label, description }, idx) => (
                                 <div
-                                    className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
-                                        step === num
-                                            ? 'bg-primary text-primary-foreground'
-                                            : step > num
-                                              ? 'bg-emerald-500 text-white'
-                                              : 'bg-muted text-muted-foreground'
-                                    }`}
+                                    key={num}
+                                    className="flex items-center gap-1 sm:gap-2"
                                 >
-                                    {step > num ? (
-                                        <Check className="size-4" />
-                                    ) : (
-                                        num
+                                    <div className="relative">
+                                        {step === num && (
+                                            <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
+                                        )}
+                                        <div
+                                            className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
+                                                step === num
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : step > num
+                                                      ? 'bg-emerald-500 text-white'
+                                                      : 'bg-muted text-muted-foreground'
+                                            }`}
+                                        >
+                                            {step > num ? (
+                                                <Check className="size-4" />
+                                            ) : (
+                                                num
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span
+                                            className={`text-sm ${step === num ? 'font-medium' : step > num ? 'font-medium text-emerald-500' : 'text-muted-foreground'}`}
+                                        >
+                                            {label}
+                                        </span>
+                                        <p
+                                            className={`text-xs ${step === num ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
+                                        >
+                                            {description}
+                                        </p>
+                                    </div>
+                                    {idx < 2 && (
+                                        <div
+                                            className={`mx-1 h-px w-4 sm:mx-2 sm:w-8 ${
+                                                step > idx + 1
+                                                    ? 'bg-emerald-500'
+                                                    : 'border-t border-dashed border-border bg-transparent'
+                                            }`}
+                                        />
                                     )}
                                 </div>
-                            </div>
-                            <div>
-                                <span
-                                    className={`text-sm ${step === num ? 'font-medium' : step > num ? 'font-medium text-emerald-500' : 'text-muted-foreground'}`}
-                                >
-                                    {label}
-                                </span>
-                                <p
-                                    className={`text-xs ${step === num ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
-                                >
-                                    {description}
-                                </p>
-                            </div>
-                            {idx < 2 && (
-                                <div
-                                    className={`mx-1 h-px w-4 sm:mx-2 sm:w-8 ${
-                                        step > idx + 1
-                                            ? 'bg-emerald-500'
-                                            : 'border-t border-dashed border-border bg-transparent'
-                                    }`}
-                                />
-                            )}
+                            ))}
                         </div>
-                    ))}
-                </div>
 
-                {/* Step 1: Upload */}
-                {step === 1 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Upload CSV File</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div
-                                className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
-                                    dragOver
-                                        ? 'border-primary bg-primary/5'
-                                        : 'border-border hover:border-primary/50 hover:bg-muted/30'
-                                }`}
-                                onDrop={handleDrop}
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".csv,.txt"
-                                    className="hidden"
-                                    onChange={handleFileInput}
-                                />
-                                {isLoading ? (
-                                    <p className="text-muted-foreground">
-                                        Parsing file...
+                        {/* Step 1: Upload */}
+                        {step === 1 && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Upload CSV File</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div
+                                        className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
+                                            dragOver
+                                                ? 'border-primary bg-primary/5'
+                                                : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                                        }`}
+                                        onDrop={handleDrop}
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
+                                    >
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".csv,.txt"
+                                            className="hidden"
+                                            onChange={handleFileInput}
+                                        />
+                                        {isLoading ? (
+                                            <p className="text-muted-foreground">
+                                                Parsing file...
+                                            </p>
+                                        ) : (
+                                            <>
+                                                <div className="text-4xl">
+                                                    &#128196;
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="font-medium">
+                                                        Drop your CSV file here,
+                                                        or click to browse
+                                                    </p>
+                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                        Supports .csv and .txt
+                                                        files up to 5MB
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                    {parseError && (
+                                        <p className="mt-3 text-sm text-destructive">
+                                            {parseError}
+                                        </p>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Step 2: Map Columns */}
+                        {step === 2 && parseResult && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Map Columns</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex flex-col gap-6">
+                                    <p className="text-sm text-muted-foreground">
+                                        Your CSV has {parseResult.total_rows}{' '}
+                                        rows and {parseResult.headers.length}{' '}
+                                        columns. Map each field below.
                                     </p>
-                                ) : (
-                                    <>
-                                        <div className="text-4xl">
-                                            &#128196;
+
+                                    {/* Detected bank notice */}
+                                    {detectedBank && (
+                                        <Alert>
+                                            <AlertTitle>
+                                                Bank format detected
+                                            </AlertTitle>
+                                            <AlertDescription>
+                                                Detected {detectedBank} format
+                                                — mapping auto-applied.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+
+                                    {/* Load saved mapping */}
+                                    {savedMappings.length > 0 && (
+                                        <div className="flex flex-col gap-2">
+                                            <Label>Load saved mapping</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Select
+                                                    onValueChange={
+                                                        handleLoadSavedMapping
+                                                    }
+                                                >
+                                                    <SelectTrigger className="w-full max-w-xs">
+                                                        <SelectValue placeholder="Select a saved mapping..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {savedMappings.map(
+                                                            (sm) => (
+                                                                <SelectItem
+                                                                    key={sm.id}
+                                                                    value={String(
+                                                                        sm.id,
+                                                                    )}
+                                                                >
+                                                                    {sm.name}
+                                                                </SelectItem>
+                                                            ),
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                                {savedMappings.length > 0 && (
+                                                    <Select
+                                                        onValueChange={(val) =>
+                                                            void handleDeleteMapping(
+                                                                Number(val),
+                                                            )
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="w-auto">
+                                                            <SelectValue placeholder="Delete..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {savedMappings.map(
+                                                                (sm) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            sm.id
+                                                                        }
+                                                                        value={String(
+                                                                            sm.id,
+                                                                        )}
+                                                                    >
+                                                                        Delete
+                                                                        &quot;
+                                                                        {
+                                                                            sm.name
+                                                                        }
+                                                                        &quot;
+                                                                    </SelectItem>
+                                                                ),
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="text-center">
-                                            <p className="font-medium">
-                                                Drop your CSV file here, or
-                                                click to browse
-                                            </p>
-                                            <p className="mt-1 text-sm text-muted-foreground">
-                                                Supports .csv and .txt files up
-                                                to 5MB
-                                            </p>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            {parseError && (
-                                <p className="mt-3 text-sm text-destructive">
-                                    {parseError}
-                                </p>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
+                                    )}
 
-                {/* Step 2: Map Columns */}
-                {step === 2 && parseResult && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Map Columns</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-6">
-                            <p className="text-sm text-muted-foreground">
-                                Your CSV has {parseResult.total_rows} rows and{' '}
-                                {parseResult.headers.length} columns. Map each
-                                field below.
-                            </p>
-
-                            {/* Detected bank notice */}
-                            {detectedBank && (
-                                <Alert>
-                                    <AlertTitle>
-                                        Bank format detected
-                                    </AlertTitle>
-                                    <AlertDescription>
-                                        Detected {detectedBank} format — mapping
-                                        auto-applied.
-                                    </AlertDescription>
-                                </Alert>
-                            )}
-
-                            {/* Load saved mapping */}
-                            {savedMappings.length > 0 && (
-                                <div className="flex flex-col gap-2">
-                                    <Label>Load saved mapping</Label>
-                                    <div className="flex items-center gap-2">
+                                    {/* Account selector */}
+                                    <div className="flex flex-col gap-2">
+                                        <Label>
+                                            Account{' '}
+                                            <span className="text-destructive">
+                                                *
+                                            </span>
+                                        </Label>
                                         <Select
-                                            onValueChange={
-                                                handleLoadSavedMapping
-                                            }
+                                            value={accountId}
+                                            onValueChange={setAccountId}
                                         >
                                             <SelectTrigger className="w-full max-w-xs">
-                                                <SelectValue placeholder="Select a saved mapping..." />
+                                                <SelectValue placeholder="Select account..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {savedMappings.map((sm) => (
+                                                {accounts.map((account) => (
                                                     <SelectItem
-                                                        key={sm.id}
-                                                        value={String(sm.id)}
+                                                        key={account.id}
+                                                        value={String(
+                                                            account.id,
+                                                        )}
                                                     >
-                                                        {sm.name}
+                                                        {account.name}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        {savedMappings.length > 0 && (
-                                            <Select
-                                                onValueChange={(val) =>
-                                                    void handleDeleteMapping(
-                                                        Number(val),
-                                                    )
-                                                }
-                                            >
-                                                <SelectTrigger className="w-auto">
-                                                    <SelectValue placeholder="Delete..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {savedMappings.map((sm) => (
-                                                        <SelectItem
-                                                            key={sm.id}
-                                                            value={String(
-                                                                sm.id,
+                                    </div>
+
+                                    {/* Field mappings */}
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        {TARGET_FIELDS.map(
+                                            ({ key, label, required }) => (
+                                                <div
+                                                    key={key}
+                                                    className="flex flex-col gap-2"
+                                                >
+                                                    <Label>
+                                                        {label}{' '}
+                                                        {required && (
+                                                            <span className="text-destructive">
+                                                                *
+                                                            </span>
+                                                        )}
+                                                    </Label>
+                                                    <Select
+                                                        value={mapping[key]}
+                                                        onValueChange={(val) =>
+                                                            handleMappingChange(
+                                                                key,
+                                                                val,
+                                                            )
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="— not mapped —" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {!required && (
+                                                                <SelectItem
+                                                                    value={
+                                                                        NOT_MAPPED
+                                                                    }
+                                                                >
+                                                                    — not mapped
+                                                                    —
+                                                                </SelectItem>
                                                             )}
-                                                        >
-                                                            Delete &quot;
-                                                            {sm.name}&quot;
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Account selector */}
-                            <div className="flex flex-col gap-2">
-                                <Label>
-                                    Account{' '}
-                                    <span className="text-destructive">*</span>
-                                </Label>
-                                <Select
-                                    value={accountId}
-                                    onValueChange={setAccountId}
-                                >
-                                    <SelectTrigger className="w-full max-w-xs">
-                                        <SelectValue placeholder="Select account..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {accounts.map((account) => (
-                                            <SelectItem
-                                                key={account.id}
-                                                value={String(account.id)}
-                                            >
-                                                {account.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* Field mappings */}
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {TARGET_FIELDS.map(
-                                    ({ key, label, required }) => (
-                                        <div
-                                            key={key}
-                                            className="flex flex-col gap-2"
-                                        >
-                                            <Label>
-                                                {label}{' '}
-                                                {required && (
-                                                    <span className="text-destructive">
-                                                        *
-                                                    </span>
-                                                )}
-                                            </Label>
-                                            <Select
-                                                value={mapping[key]}
-                                                onValueChange={(val) =>
-                                                    handleMappingChange(
-                                                        key,
-                                                        val,
-                                                    )
-                                                }
-                                            >
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="— not mapped —" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {!required && (
-                                                        <SelectItem
-                                                            value={NOT_MAPPED}
-                                                        >
-                                                            — not mapped —
-                                                        </SelectItem>
-                                                    )}
-                                                    {parseResult.headers.map(
-                                                        (header) => (
-                                                            <SelectItem
-                                                                key={header}
-                                                                value={header}
-                                                            >
-                                                                {header}
-                                                            </SelectItem>
-                                                        ),
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    ),
-                                )}
-                            </div>
-
-                            {/* Skip duplicates */}
-                            <div className="flex items-center gap-2">
-                                <Checkbox
-                                    id="skip-duplicates"
-                                    checked={skipDuplicates}
-                                    onCheckedChange={(checked) =>
-                                        setSkipDuplicates(checked === true)
-                                    }
-                                />
-                                <Label htmlFor="skip-duplicates">
-                                    Skip duplicate transactions (same date,
-                                    amount, and description)
-                                </Label>
-                            </div>
-
-                            {/* Save mapping */}
-                            <div className="flex flex-col gap-2">
-                                {!showSaveMappingInput ? (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-fit"
-                                        onClick={() =>
-                                            setShowSaveMappingInput(true)
-                                        }
-                                        disabled={
-                                            mapping.date === NOT_MAPPED ||
-                                            mapping.amount === NOT_MAPPED
-                                        }
-                                    >
-                                        Save this mapping
-                                    </Button>
-                                ) : (
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            placeholder="Mapping name..."
-                                            value={saveMappingName}
-                                            onChange={(e) =>
-                                                setSaveMappingName(
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className="max-w-xs"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    void handleSaveMapping();
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            size="sm"
-                                            onClick={() =>
-                                                void handleSaveMapping()
-                                            }
-                                            disabled={
-                                                !saveMappingName.trim() ||
-                                                isSavingMapping
-                                            }
-                                        >
-                                            {isSavingMapping
-                                                ? 'Saving...'
-                                                : 'Save'}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                                setShowSaveMappingInput(false);
-                                                setSaveMappingName('');
-                                            }}
-                                        >
-                                            Cancel
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex gap-3">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setStep(1)}
-                                >
-                                    Back
-                                </Button>
-                                <Button
-                                    disabled={!canProceedToPreview}
-                                    onClick={() => setStep(3)}
-                                >
-                                    Preview
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* Step 3: Preview */}
-                {step === 3 && parseResult && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Preview & Confirm</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-6">
-                            <p className="text-sm text-muted-foreground">
-                                Showing the first{' '}
-                                {parseResult.preview_rows.length} of{' '}
-                                {parseResult.total_rows} rows. Review before
-                                importing.
-                            </p>
-
-                            <div className="overflow-x-auto rounded-md border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Date</TableHead>
-                                            <TableHead>Amount</TableHead>
-                                            <TableHead>Description</TableHead>
-                                            <TableHead>Category</TableHead>
-                                            <TableHead>Payee</TableHead>
-                                            <TableHead>Type</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {parseResult.preview_rows.map(
-                                            (row, i) => (
-                                                <TableRow key={i}>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'date',
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'amount',
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'description',
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'category',
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'payee',
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getPreviewValue(
-                                                            row,
-                                                            'type',
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
+                                                            {parseResult.headers.map(
+                                                                (header) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            header
+                                                                        }
+                                                                        value={
+                                                                            header
+                                                                        }
+                                                                    >
+                                                                        {header}
+                                                                    </SelectItem>
+                                                                ),
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             ),
                                         )}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                                    </div>
 
-                            <div className="flex gap-3">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setStep(2)}
-                                >
-                                    Back
-                                </Button>
-                                <Button onClick={handleConfirmImport}>
-                                    Import {parseResult.total_rows} transactions
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+                                    {/* Skip duplicates */}
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox
+                                            id="skip-duplicates"
+                                            checked={skipDuplicates}
+                                            onCheckedChange={(checked) =>
+                                                setSkipDuplicates(
+                                                    checked === true,
+                                                )
+                                            }
+                                        />
+                                        <Label htmlFor="skip-duplicates">
+                                            Skip duplicate transactions (same
+                                            date, amount, and description)
+                                        </Label>
+                                    </div>
 
-                {/* Import History */}
-                {importHistory.length > 0 && (
-                    <Collapsible
-                        open={historyOpen}
-                        onOpenChange={setHistoryOpen}
-                    >
-                        <Card>
-                            <CardHeader>
-                                <CollapsibleTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="flex w-full items-center justify-between"
-                                    >
-                                        <CardTitle>Import History</CardTitle>
-                                        <span className="text-sm text-muted-foreground">
-                                            {historyOpen
-                                                ? 'Hide'
-                                                : `Show (${importHistory.length})`}
-                                        </span>
-                                    </button>
-                                </CollapsibleTrigger>
-                            </CardHeader>
-                            <CollapsibleContent>
-                                <CardContent>
+                                    {/* Save mapping */}
+                                    <div className="flex flex-col gap-2">
+                                        {!showSaveMappingInput ? (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-fit"
+                                                onClick={() =>
+                                                    setShowSaveMappingInput(
+                                                        true,
+                                                    )
+                                                }
+                                                disabled={
+                                                    mapping.date ===
+                                                        NOT_MAPPED ||
+                                                    mapping.amount ===
+                                                        NOT_MAPPED
+                                                }
+                                            >
+                                                Save this mapping
+                                            </Button>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    placeholder="Mapping name..."
+                                                    value={saveMappingName}
+                                                    onChange={(e) =>
+                                                        setSaveMappingName(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    className="max-w-xs"
+                                                    onKeyDown={(e) => {
+                                                        if (
+                                                            e.key === 'Enter'
+                                                        ) {
+                                                            void handleSaveMapping();
+                                                        }
+                                                    }}
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        void handleSaveMapping()
+                                                    }
+                                                    disabled={
+                                                        !saveMappingName.trim() ||
+                                                        isSavingMapping
+                                                    }
+                                                >
+                                                    {isSavingMapping
+                                                        ? 'Saving...'
+                                                        : 'Save'}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setShowSaveMappingInput(
+                                                            false,
+                                                        );
+                                                        setSaveMappingName('');
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setStep(1)}
+                                        >
+                                            Back
+                                        </Button>
+                                        <Button
+                                            disabled={!canProceedToPreview}
+                                            onClick={() => setStep(3)}
+                                        >
+                                            Preview
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Step 3: Preview */}
+                        {step === 3 && parseResult && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Preview & Confirm</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex flex-col gap-6">
+                                    <p className="text-sm text-muted-foreground">
+                                        Showing the first{' '}
+                                        {parseResult.preview_rows.length} of{' '}
+                                        {parseResult.total_rows} rows. Review
+                                        before importing.
+                                    </p>
+
                                     <div className="overflow-x-auto rounded-md border">
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead>
-                                                        Filename
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Total Rows
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Imported
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Skipped
-                                                    </TableHead>
                                                     <TableHead>Date</TableHead>
+                                                    <TableHead>
+                                                        Amount
+                                                    </TableHead>
+                                                    <TableHead>
+                                                        Description
+                                                    </TableHead>
+                                                    <TableHead>
+                                                        Category
+                                                    </TableHead>
+                                                    <TableHead>Payee</TableHead>
+                                                    <TableHead>Type</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {importHistory.map((record) => (
-                                                    <TableRow key={record.id}>
-                                                        <TableCell className="font-medium">
-                                                            {record.filename}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {record.row_count}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Badge variant="secondary">
-                                                                {
-                                                                    record.imported_count
-                                                                }
-                                                            </Badge>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {record.skipped_count >
-                                                            0 ? (
-                                                                <Badge variant="outline">
-                                                                    {
-                                                                        record.skipped_count
-                                                                    }
-                                                                </Badge>
-                                                            ) : (
-                                                                '0'
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-muted-foreground">
-                                                            {new Date(
-                                                                record.imported_at,
-                                                            ).toLocaleDateString(
-                                                                undefined,
-                                                                {
-                                                                    year: 'numeric',
-                                                                    month: 'short',
-                                                                    day: 'numeric',
-                                                                    hour: '2-digit',
-                                                                    minute: '2-digit',
-                                                                },
-                                                            )}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
+                                                {parseResult.preview_rows.map(
+                                                    (row, i) => (
+                                                        <TableRow key={i}>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'date',
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'amount',
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'description',
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'category',
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'payee',
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {getPreviewValue(
+                                                                    row,
+                                                                    'type',
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ),
+                                                )}
                                             </TableBody>
                                         </Table>
                                     </div>
+
+                                    <div className="flex gap-3">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setStep(2)}
+                                        >
+                                            Back
+                                        </Button>
+                                        <Button
+                                            onClick={() =>
+                                                void handleConfirmImport()
+                                            }
+                                            disabled={isLoading}
+                                        >
+                                            {isLoading
+                                                ? 'Importing...'
+                                                : `Import ${parseResult.total_rows} transactions`}
+                                        </Button>
+                                    </div>
                                 </CardContent>
-                            </CollapsibleContent>
-                        </Card>
-                    </Collapsible>
+                            </Card>
+                        )}
+
+                        {/* Import History */}
+                        {importHistory.length > 0 && (
+                            <Collapsible
+                                open={historyOpen}
+                                onOpenChange={setHistoryOpen}
+                            >
+                                <Card>
+                                    <CardHeader>
+                                        <CollapsibleTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="flex w-full items-center justify-between"
+                                            >
+                                                <CardTitle>
+                                                    Import History
+                                                </CardTitle>
+                                                <span className="text-sm text-muted-foreground">
+                                                    {historyOpen
+                                                        ? 'Hide'
+                                                        : `Show (${importHistory.length})`}
+                                                </span>
+                                            </button>
+                                        </CollapsibleTrigger>
+                                    </CardHeader>
+                                    <CollapsibleContent>
+                                        <CardContent>
+                                            <div className="overflow-x-auto rounded-md border">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>
+                                                                Filename
+                                                            </TableHead>
+                                                            <TableHead>
+                                                                Total Rows
+                                                            </TableHead>
+                                                            <TableHead>
+                                                                Imported
+                                                            </TableHead>
+                                                            <TableHead>
+                                                                Skipped
+                                                            </TableHead>
+                                                            <TableHead>
+                                                                Date
+                                                            </TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {importHistory.map(
+                                                            (record) => (
+                                                                <TableRow
+                                                                    key={
+                                                                        record.id
+                                                                    }
+                                                                >
+                                                                    <TableCell className="font-medium">
+                                                                        {
+                                                                            record.filename
+                                                                        }
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        {
+                                                                            record.row_count
+                                                                        }
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <Badge variant="secondary">
+                                                                            {
+                                                                                record.imported_count
+                                                                            }
+                                                                        </Badge>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        {record.skipped_count >
+                                                                        0 ? (
+                                                                            <Badge variant="outline">
+                                                                                {
+                                                                                    record.skipped_count
+                                                                                }
+                                                                            </Badge>
+                                                                        ) : (
+                                                                            '0'
+                                                                        )}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-muted-foreground">
+                                                                        {new Date(
+                                                                            record.imported_at,
+                                                                        ).toLocaleDateString(
+                                                                            undefined,
+                                                                            {
+                                                                                year: 'numeric',
+                                                                                month: 'short',
+                                                                                day: 'numeric',
+                                                                                hour: '2-digit',
+                                                                                minute: '2-digit',
+                                                                            },
+                                                                        )}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ),
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </CardContent>
+                                    </CollapsibleContent>
+                                </Card>
+                            </Collapsible>
+                        )}
+                    </>
                 )}
             </div>
         </AppLayout>

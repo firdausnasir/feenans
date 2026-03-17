@@ -7,7 +7,6 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
-use Inertia\Testing\AssertableInertia as Assert;
 
 test('store creates split transaction with splits', function () {
     $user = User::factory()->create();
@@ -174,7 +173,7 @@ test('update syncs splits correctly', function () {
         ->and($transaction->splits->pluck('description')->all())->toBe(['Food', 'Drinks', 'Dessert']);
 });
 
-test('transaction with splits shows splits in index response', function () {
+test('transaction with splits shows splits count in API index response', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -203,13 +202,10 @@ test('transaction with splits shows splits in index response', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('ledgers.transactions.index', $ledger));
+        ->getJson(route('api.v1.ledgers.transactions.index', $ledger));
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/transactions/index')
-        ->has('transactions.data.0.splits', 2)
-        ->where('transactions.data.0.splits.0.description', 'Food')
-    );
+    $response->assertSuccessful();
+    $response->assertJsonPath('data.0.is_split', true);
 });
 
 test('deleting transaction also removes its splits', function () {

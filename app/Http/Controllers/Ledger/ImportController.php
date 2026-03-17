@@ -72,16 +72,7 @@ class ImportController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/import/index', [
-            'ledger' => $ledger,
-            'accounts' => $ledger->accounts()->visible()->orderBy('name')->get(['id', 'name']),
-            'categories' => $ledger->categories()->with('children')->parents()->orderBy('position')->get(),
-            'payees' => $ledger->payees()->orderBy('name')->get(['id', 'name']),
-            'importHistory' => $ledger->importRecords()
-                ->orderByDesc('imported_at')
-                ->limit(10)
-                ->get(),
-        ]);
+        return Inertia::render('ledgers/import/index');
     }
 
     /**
