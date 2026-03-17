@@ -21,7 +21,7 @@ test('bill update via HTTP updates the bill', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.bills.update', [$ledger, $bill]), [
+        ->putJson(route('api.v1.ledgers.bills.update', [$ledger, $bill]), [
             'name' => 'Updated Bill',
             'transaction_type' => 'expense',
             'amount' => 250.00,
@@ -38,7 +38,7 @@ test('bill update via HTTP updates the bill', function () {
             'end_after_occurrences' => null,
         ]);
 
-    $response->assertRedirect(route('ledgers.bills.index', $ledger));
+    $response->assertOk();
 
     $bill->refresh();
     expect($bill->name)->toBe('Updated Bill')
@@ -56,9 +56,9 @@ test('bill destroy deletes bill via HTTP', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.bills.destroy', [$ledger, $bill]));
+        ->deleteJson(route('api.v1.ledgers.bills.destroy', [$ledger, $bill]));
 
-    $response->assertRedirect(route('ledgers.bills.index', $ledger));
+    $response->assertNoContent();
 
     expect(Bill::find($bill->id))->toBeNull();
 });
@@ -103,7 +103,7 @@ test('bill store is forbidden for another users ledger', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
 
     $this->actingAs($intruder)
-        ->post(route('ledgers.bills.store', $ledger), [
+        ->post(route('api.v1.ledgers.bills.store', $ledger), [
             'name' => 'Test',
             'transaction_type' => 'expense',
             'amount' => 100.00,
@@ -125,7 +125,7 @@ test('bill update is forbidden for another users ledger', function () {
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
     $this->actingAs($intruder)
-        ->put(route('ledgers.bills.update', [$ledger, $bill]), [
+        ->put(route('api.v1.ledgers.bills.update', [$ledger, $bill]), [
             'name' => 'Hacked',
             'transaction_type' => 'expense',
             'amount' => 1.00,

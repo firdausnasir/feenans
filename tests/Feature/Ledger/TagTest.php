@@ -14,12 +14,12 @@ test('users can create a tag in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.tags.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.tags.store', $ledger), [
             'name' => 'groceries',
             'color' => '#4ade80',
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
 });
@@ -29,10 +29,10 @@ test('tag store does not create duplicate tags for the same ledger', function ()
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->post(route('ledgers.tags.store', $ledger), ['name' => 'dining']);
+        ->postJson(route('api.v1.ledgers.tags.store', $ledger), ['name' => 'dining']);
 
     $this->actingAs($user)
-        ->post(route('ledgers.tags.store', $ledger), ['name' => 'dining']);
+        ->postJson(route('api.v1.ledgers.tags.store', $ledger), ['name' => 'dining']);
 
     expect($ledger->tags()->where('name', 'dining')->count())->toBe(1);
 });
@@ -44,9 +44,9 @@ test('users can delete a tag', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
+        ->deleteJson(route('api.v1.ledgers.tags.destroy', [$ledger, $tag]));
 
-    $response->assertRedirect();
+    $response->assertNoContent();
 
     expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
 });
@@ -122,7 +122,7 @@ test('transaction tags are synced on update', function () {
     $transaction->tags()->sync([$tag1->id]);
 
     $this->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->put(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'category_id' => $category->id,
             'transaction_type' => 'expense',

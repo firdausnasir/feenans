@@ -47,7 +47,7 @@ test('updating transaction logs old and new values', function () {
     ]);
 
     $this->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'category_id' => null,
             'payee_id' => null,
@@ -57,7 +57,7 @@ test('updating transaction logs old and new values', function () {
             'notes' => null,
             'transaction_date' => '2026-03-13',
         ])
-        ->assertRedirect(route('ledgers.transactions.index', $ledger));
+        ->assertOk();
 
     $activity = ActivityLog::query()->latest('id')->first();
 
@@ -78,8 +78,8 @@ test('deleting transaction logs deletion', function () {
     ]);
 
     $this->actingAs($user)
-        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
-        ->assertRedirect(route('ledgers.transactions.index', $ledger));
+        ->deleteJson(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->assertNoContent();
 
     $activity = ActivityLog::query()->latest('id')->first();
 

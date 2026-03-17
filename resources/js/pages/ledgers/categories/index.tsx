@@ -28,9 +28,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
-import type { BreadcrumbItem, Category } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as categoriesIndex } from '@/routes/ledgers/categories';
+import type { BreadcrumbItem, Category } from '@/types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

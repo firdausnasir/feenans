@@ -36,13 +36,13 @@ test('settings update changes ledger name and cycle day', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.settings.update', $ledger), [
+        ->putJson(route('api.v1.ledgers.settings.update', $ledger), [
             'name' => 'New Name',
             'currency_code' => 'USD',
             'cycle_start_day' => 15,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     $ledger->refresh();
     expect($ledger->name)->toBe('New Name')
@@ -55,7 +55,7 @@ test('settings update is forbidden for non-owner', function () {
     $ledger = Ledger::factory()->for($owner)->create();
 
     $this->actingAs($other)
-        ->put(route('ledgers.settings.update', $ledger), [
+        ->put(route('api.v1.ledgers.settings.update', $ledger), [
             'name' => 'Hacked',
             'currency_code' => 'USD',
             'cycle_start_day' => 1,

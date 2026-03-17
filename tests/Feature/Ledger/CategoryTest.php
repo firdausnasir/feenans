@@ -10,14 +10,14 @@ test('users can create categories in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.categories.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.categories.store', $ledger), [
             'name' => 'Subscriptions',
             'transaction_type' => 'expense',
             'color' => '#0f172a',
             'icon' => 'tv',
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->categories()->where('name', 'Subscriptions')->exists())->toBeTrue();
 });
@@ -54,12 +54,12 @@ test('category update updates the category', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.categories.update', [$ledger, $category]), [
+        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
             'name' => 'New Name',
             'transaction_type' => 'expense',
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($category->fresh()->name)->toBe('New Name');
 });
@@ -72,13 +72,13 @@ test('category update rejects a parent from another ledger', function () {
     $foreignParent = Category::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->put(route('ledgers.categories.update', [$ledger, $category]), [
+        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
             'name' => 'New Name',
             'transaction_type' => 'expense',
             'parent_id' => $foreignParent->id,
         ]);
 
-    $response->assertSessionHasErrors('parent_id');
+    $response->assertStatus(422)->assertJsonValidationErrors('parent_id');
 });
 
 test('category destroy deletes category without transactions', function () {
@@ -88,9 +88,9 @@ test('category destroy deletes category without transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.categories.destroy', [$ledger, $category]));
+        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]));
 
-    $response->assertRedirect();
+    $response->assertNoContent();
 
     expect(Category::find($category->id))->toBeNull();
 });
@@ -103,14 +103,14 @@ test('category reorder updates positions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.categories.reorder', $ledger), [
+        ->postJson(route('api.v1.ledgers.categories.reorder', $ledger), [
             'items' => [
                 ['id' => $cat1->id, 'position' => 2],
                 ['id' => $cat2->id, 'position' => 1],
             ],
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($cat1->fresh()->position)->toBe(2)
         ->and($cat2->fresh()->position)->toBe(1);

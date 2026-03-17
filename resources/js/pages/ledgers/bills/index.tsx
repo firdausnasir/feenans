@@ -51,7 +51,6 @@ import {
     parseDate,
 } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { Account, Bill, BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     create,
@@ -59,6 +58,7 @@ import {
     index as billsIndex,
 } from '@/routes/ledgers/bills';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
+import type { Account, Bill, BreadcrumbItem } from '@/types';
 
 const COLUMN_COUNT = 9;
 

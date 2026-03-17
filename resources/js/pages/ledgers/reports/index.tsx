@@ -49,9 +49,9 @@ import {
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
-import type { BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
+import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

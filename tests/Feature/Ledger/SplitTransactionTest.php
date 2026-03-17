@@ -137,7 +137,7 @@ test('update syncs splits correctly', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'category_id' => null,
             'payee_id' => null,
@@ -165,7 +165,7 @@ test('update syncs splits correctly', function () {
             ],
         ]);
 
-    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+    $response->assertOk();
 
     $transaction->refresh();
 
@@ -238,8 +238,8 @@ test('deleting transaction also removes its splits', function () {
 
     $this
         ->actingAs($user)
-        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
-        ->assertRedirect(route('ledgers.transactions.index', $ledger));
+        ->deleteJson(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->assertNoContent();
 
     expect(Transaction::find($transaction->id))->toBeNull();
 });

@@ -19,9 +19,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
-import type { AccountType, BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { create, index as accountsIndex } from '@/routes/ledgers/accounts';
+import type { AccountType, BreadcrumbItem } from '@/types';
 
 export default function CreateAccount() {
     const { currentLedger: ledger } = usePage().props;

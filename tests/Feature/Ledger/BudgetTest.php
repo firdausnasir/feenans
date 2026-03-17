@@ -28,7 +28,7 @@ test('budget store rejects categories from another ledger', function () {
     $foreignCategory = Category::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.budgets.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.budgets.store', $ledger), [
             'category_id' => $foreignCategory->id,
             'amount' => 250,
             'period' => 'monthly',
@@ -37,7 +37,7 @@ test('budget store rejects categories from another ledger', function () {
             'rollover' => false,
         ]);
 
-    $response->assertSessionHasErrors('category_id');
+    $response->assertStatus(422)->assertJsonValidationErrors('category_id');
 
     expect($ledger->budgets()->count())->toBe(0);
 });
@@ -60,7 +60,7 @@ test('budget update is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->put(route('ledgers.budgets.update', [$ledger, $budget]), [
+        ->put(route('api.v1.ledgers.budgets.update', [$ledger, $budget]), [
             'category_id' => $category->id,
             'amount' => 150,
             'period' => 'monthly',
@@ -89,7 +89,7 @@ test('budget destroy is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->delete(route('ledgers.budgets.destroy', [$ledger, $budget]))
+        ->delete(route('api.v1.ledgers.budgets.destroy', [$ledger, $budget]))
         ->assertForbidden();
 
     expect(Budget::query()->whereKey($budget->id)->exists())->toBeTrue();

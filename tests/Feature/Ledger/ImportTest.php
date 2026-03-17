@@ -52,7 +52,7 @@ test('parse endpoint returns headers and preview rows from valid CSV', function 
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     $response->assertJsonStructure([
@@ -84,7 +84,7 @@ test('parse endpoint returns correct row count for larger CSV', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     $data = $response->json();
@@ -100,9 +100,10 @@ test('parse endpoint rejects non-csv files', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->withHeaders(['Accept' => 'application/json'])
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertSessionHasErrors('file');
+    $response->assertStatus(422)->assertJsonValidationErrors('file');
 });
 
 test('store imports transactions from mapped CSV', function () {
@@ -119,7 +120,7 @@ test('store imports transactions from mapped CSV', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -130,7 +131,7 @@ test('store imports transactions from mapped CSV', function () {
             'skip_duplicates' => true,
         ]);
 
-    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+    $response->assertOk();
     expect($ledger->transactions()->count())->toBe(2);
 
     $coffee = $ledger->transactions()->where('description', 'Coffee')->first();
@@ -154,7 +155,7 @@ test('store imports income transactions when amount is positive', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -164,7 +165,7 @@ test('store imports income transactions when amount is positive', function () {
             'skip_duplicates' => true,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
     $transaction = $ledger->transactions()->first();
     expect($transaction->transaction_type)->toBe(TransactionType::Income);
     expect((float) $transaction->amount)->toBe(500.0);
@@ -192,7 +193,7 @@ test('store skips duplicate transactions when skip_duplicates is true', function
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -203,7 +204,7 @@ test('store skips duplicate transactions when skip_duplicates is true', function
             'skip_duplicates' => true,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     // Should only add 1 new transaction (Lunch), not duplicate Coffee
     expect($ledger->transactions()->count())->toBe(2);
@@ -230,7 +231,7 @@ test('store imports all rows including duplicates when skip_duplicates is false'
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -241,7 +242,7 @@ test('store imports all rows including duplicates when skip_duplicates is false'
             'skip_duplicates' => false,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
     expect($ledger->transactions()->count())->toBe(2);
 });
 
@@ -259,7 +260,7 @@ test('store creates payees from CSV when payee column is mapped', function () {
 
     $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -284,7 +285,7 @@ test('store returns error when import file is not found', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => 'imports/temp/nonexistent.csv',
             'account_id' => $account->id,
             'mapping' => [
@@ -294,7 +295,7 @@ test('store returns error when import file is not found', function () {
             'skip_duplicates' => true,
         ]);
 
-    $response->assertSessionHasErrors('file_path');
+    $response->assertStatus(422)->assertJsonValidationErrors('file_path');
 });
 
 test('store rejects account ids from another ledger', function () {
@@ -310,7 +311,7 @@ test('store rejects account ids from another ledger', function () {
     Storage::disk('local')->put($path, "date,amount\n2026-01-01,-25.00");
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $foreignAccount->id,
             'mapping' => [
@@ -319,7 +320,7 @@ test('store rejects account ids from another ledger', function () {
             ],
         ]);
 
-    $response->assertSessionHasErrors('account_id');
+    $response->assertStatus(422)->assertJsonValidationErrors('account_id');
     expect($ledger->transactions()->count())->toBe(0);
 });
 
@@ -335,9 +336,10 @@ test('parse returns a validation error when uploaded file cannot be read', funct
     }
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->withHeaders(['Accept' => 'application/json'])
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertSessionHasErrors('file');
+    $response->assertStatus(422)->assertJsonValidationErrors('file');
 });
 
 test('import temp files use the configured ledger storage disk', function () {
@@ -350,7 +352,7 @@ test('import temp files use the configured ledger storage disk', function () {
     $file = UploadedFile::fake()->createWithContent('import.csv', $csv);
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
 

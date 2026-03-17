@@ -24,10 +24,10 @@ test('mappings endpoint returns saved mappings for the ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('ledgers.import.mappings', $ledger));
+        ->getJson(route('api.v1.ledgers.import.mappings', $ledger));
 
     $response->assertOk();
-    $data = $response->json();
+    $data = $response->json('data');
     expect($data)->toHaveCount(2);
     expect(collect($data)->pluck('name')->sort()->values()->all())->toBe(['Another', 'My Bank']);
 });
@@ -38,7 +38,7 @@ test('save mapping creates a new import mapping', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('ledgers.import.mappings.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), [
             'name' => 'Maybank Format',
             'mapping' => [
                 'date' => 'Transaction Date',
@@ -65,7 +65,7 @@ test('save mapping validates required fields', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('ledgers.import.mappings.store', $ledger), []);
+        ->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), []);
 
     $response->assertUnprocessable();
     $response->assertJsonValidationErrors(['name', 'mapping']);
@@ -78,9 +78,9 @@ test('destroy mapping deletes the mapping', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('ledgers.import.mappings.destroy', [$ledger, $mapping]));
+        ->deleteJson(route('api.v1.ledgers.import.mappings.destroy', [$ledger, $mapping]));
 
-    $response->assertOk();
+    $response->assertNoContent();
     expect(ImportMapping::query()->find($mapping->id))->toBeNull();
 });
 
@@ -92,7 +92,7 @@ test('destroy mapping returns 404 for mapping from another ledger', function () 
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('ledgers.import.mappings.destroy', [$ledger, $mapping]));
+        ->deleteJson(route('api.v1.ledgers.import.mappings.destroy', [$ledger, $mapping]));
 
     $response->assertNotFound();
 });
@@ -100,10 +100,10 @@ test('destroy mapping returns 404 for mapping from another ledger', function () 
 test('unauthenticated users cannot access mapping endpoints', function () {
     $ledger = Ledger::factory()->create();
 
-    $this->getJson(route('ledgers.import.mappings', $ledger))
+    $this->getJson(route('api.v1.ledgers.import.mappings', $ledger))
         ->assertUnauthorized();
 
-    $this->postJson(route('ledgers.import.mappings.store', $ledger), [
+    $this->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), [
         'name' => 'Test',
         'mapping' => ['date' => 'date'],
     ])->assertUnauthorized();
@@ -122,7 +122,7 @@ test('parse detects Maybank CSV format and returns suggested mapping', function 
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     $data = $response->json();
@@ -146,7 +146,7 @@ test('parse detects CIMB CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     expect($response->json('detected_bank'))->toBe('CIMB');
@@ -163,7 +163,7 @@ test('parse detects RHB CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     expect($response->json('detected_bank'))->toBe('RHB');
@@ -180,7 +180,7 @@ test('parse detects Public Bank CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     expect($response->json('detected_bank'))->toBe('Public Bank');
@@ -197,7 +197,7 @@ test('parse does not return detected_bank for unrecognized formats', function ()
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
 
     $response->assertOk();
     expect($response->json())->not->toHaveKey('detected_bank');
@@ -220,7 +220,7 @@ test('store creates import record after successful import', function () {
 
     $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->post(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -268,7 +268,7 @@ test('import record tracks skipped duplicates correctly', function () {
 
     $this
         ->actingAs($user)
-        ->post(route('ledgers.import.store', $ledger), [
+        ->post(route('api.v1.ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [

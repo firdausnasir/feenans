@@ -22,10 +22,9 @@ test('category destroy rejects deletion when category has transactions', functio
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.categories.destroy', [$ledger, $category]));
+        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]));
 
-    $response->assertRedirect();
-    $response->assertSessionHasErrors('category');
+    $response->assertStatus(422)->assertJsonValidationErrors('category');
 
     expect(Category::find($category->id))->not->toBeNull();
 });
@@ -38,10 +37,9 @@ test('category destroy rejects deletion when category has children', function ()
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.categories.destroy', [$ledger, $parent]));
+        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $parent]));
 
-    $response->assertRedirect();
-    $response->assertSessionHasErrors('category');
+    $response->assertStatus(422)->assertJsonValidationErrors('category');
 
     expect(Category::find($parent->id))->not->toBeNull();
 });
@@ -52,7 +50,7 @@ test('category store is forbidden for another users ledger', function () {
     $ledger = Ledger::factory()->for($owner)->create();
 
     $this->actingAs($intruder)
-        ->post(route('ledgers.categories.store', $ledger), [
+        ->post(route('api.v1.ledgers.categories.store', $ledger), [
             'name' => 'Hacked',
             'transaction_type' => 'expense',
         ])
@@ -66,7 +64,7 @@ test('category update is forbidden for another users ledger', function () {
     $category = Category::factory()->for($ledger)->create();
 
     $this->actingAs($intruder)
-        ->put(route('ledgers.categories.update', [$ledger, $category]), [
+        ->put(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
             'name' => 'Hacked',
             'transaction_type' => 'expense',
         ])
@@ -80,12 +78,12 @@ test('category store assigns position based on existing count', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.categories.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.categories.store', $ledger), [
             'name' => 'New Category',
             'transaction_type' => 'expense',
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     $newCat = $ledger->categories()->where('name', 'New Category')->first();
     expect($newCat)->not->toBeNull()

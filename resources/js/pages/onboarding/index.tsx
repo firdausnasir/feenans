@@ -1,5 +1,10 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    autosave,
+    complete,
+    saveStep,
+} from '@/actions/App/Http/Controllers/OnboardingController';
 import { CurrencySelect } from '@/components/currency-select';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -16,11 +21,6 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
 import type { Account, AccountType, Ledger } from '@/types/ledger';
-import {
-    autosave,
-    complete,
-    saveStep,
-} from '@/actions/App/Http/Controllers/OnboardingController';
 
 type OnboardingData = {
     // Step 1

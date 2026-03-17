@@ -45,7 +45,9 @@ class BillController extends Controller
             ]);
         }
 
-        $bills = $query->get();
+        $bills = $query
+            ->oldest('next_due_date')
+            ->get();
 
         if ($request->boolean('with_missed')) {
             $bills->each(function (Bill $bill): void {

@@ -29,10 +29,10 @@ import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
 import { formatAmount } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { BreadcrumbItem, Payee, Transaction } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
+import type { BreadcrumbItem, Payee, Transaction } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 

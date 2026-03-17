@@ -9,13 +9,13 @@ test('users can create custom account types in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.account-types.store', $ledger), [
+        ->post(route('api.v1.ledgers.account-types.store', $ledger), [
             'name' => 'Crypto Wallet',
             'color' => '#22c55e',
             'is_credit' => false,
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->accountTypes()->where('name', 'Crypto Wallet')->exists())->toBeTrue();
 });

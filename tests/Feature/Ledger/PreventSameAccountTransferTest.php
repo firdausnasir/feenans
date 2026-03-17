@@ -98,7 +98,7 @@ test('update rejects transfer when source and destination accounts are the same'
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $source->id,
             'to_account_id' => $source->id,
             'transaction_type' => 'transfer',
@@ -106,7 +106,7 @@ test('update rejects transfer when source and destination accounts are the same'
             'transaction_date' => '2026-03-14',
         ]);
 
-    $response->assertSessionHasErrors(['to_account_id']);
+    $response->assertStatus(422)->assertJsonValidationErrors(['to_account_id']);
 });
 
 test('update accepts transfer when source and destination accounts differ', function () {
@@ -135,7 +135,7 @@ test('update accepts transfer when source and destination accounts differ', func
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $source->id,
             'to_account_id' => $newDestination->id,
             'transaction_type' => 'transfer',
@@ -143,5 +143,5 @@ test('update accepts transfer when source and destination accounts differ', func
             'transaction_date' => '2026-03-14',
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 });

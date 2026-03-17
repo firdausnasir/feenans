@@ -12,7 +12,7 @@ test('users can create an account inside their ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.accounts.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.accounts.store', $ledger), [
             'account_type_id' => $accountType->id,
             'name' => 'Main Wallet',
             'initial_balance' => 150.75,
@@ -20,7 +20,7 @@ test('users can create an account inside their ledger', function () {
             'include_in_totals' => true,
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->accounts()->where('name', 'Main Wallet')->exists())->toBeTrue();
 });
@@ -32,7 +32,7 @@ test('account store rejects an account type from another ledger', function () {
     $foreignAccountType = AccountType::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.accounts.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.accounts.store', $ledger), [
             'account_type_id' => $foreignAccountType->id,
             'name' => 'Main Wallet',
             'initial_balance' => 150.75,
@@ -40,7 +40,7 @@ test('account store rejects an account type from another ledger', function () {
             'include_in_totals' => true,
         ]);
 
-    $response->assertSessionHasErrors('account_type_id');
+    $response->assertStatus(422)->assertJsonValidationErrors('account_type_id');
 });
 
 test('account show returns 200 with correct component', function () {
@@ -74,7 +74,7 @@ test('account update updates the account and redirects', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.accounts.update', [$ledger, $account]), [
+        ->putJson(route('api.v1.ledgers.accounts.update', [$ledger, $account]), [
             'name' => 'New Name',
             'account_type_id' => $accountType->id,
             'initial_balance' => 200.00,
@@ -82,7 +82,7 @@ test('account update updates the account and redirects', function () {
             'include_in_totals' => true,
         ]);
 
-    $response->assertRedirect(route('ledgers.accounts.show', [$ledger, $account]));
+    $response->assertOk();
 
     expect($account->fresh()->name)->toBe('New Name')
         ->and((float) $account->fresh()->initial_balance)->toBe(200.00);
@@ -96,9 +96,9 @@ test('account destroy deletes account and redirects to index', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.accounts.destroy', [$ledger, $account]));
+        ->deleteJson(route('api.v1.ledgers.accounts.destroy', [$ledger, $account]));
 
-    $response->assertRedirect(route('ledgers.accounts.index', $ledger));
+    $response->assertNoContent();
 
     expect(Account::find($account->id))->toBeNull();
 });

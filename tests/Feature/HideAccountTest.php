@@ -25,8 +25,8 @@ test('toggle visibility hides a visible account', function () {
     $account = Account::factory()->for($ledger)->create(['is_hidden' => false]);
 
     $this->actingAs($user)
-        ->patch(route('ledgers.accounts.toggle-visibility', [$ledger, $account]))
-        ->assertRedirect();
+        ->patchJson(route('api.v1.ledgers.accounts.toggle-visibility', [$ledger, $account]))
+        ->assertOk();
 
     expect($account->fresh()->is_hidden)->toBeTrue();
 });
@@ -37,8 +37,8 @@ test('toggle visibility unhides a hidden account', function () {
     $account = Account::factory()->for($ledger)->hidden()->create();
 
     $this->actingAs($user)
-        ->patch(route('ledgers.accounts.toggle-visibility', [$ledger, $account]))
-        ->assertRedirect();
+        ->patchJson(route('api.v1.ledgers.accounts.toggle-visibility', [$ledger, $account]))
+        ->assertOk();
 
     expect($account->fresh()->is_hidden)->toBeFalse();
 });

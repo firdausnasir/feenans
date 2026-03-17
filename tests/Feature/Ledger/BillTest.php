@@ -245,7 +245,7 @@ test('bill store creates a bill via HTTP', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.bills.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.bills.store', $ledger), [
             'name' => 'Electricity',
             'transaction_type' => 'expense',
             'amount' => 120.00,
@@ -262,7 +262,7 @@ test('bill store creates a bill via HTTP', function () {
             'end_after_occurrences' => null,
         ]);
 
-    $response->assertRedirect(route('ledgers.bills.index', $ledger));
+    $response->assertStatus(201);
 
     expect($ledger->bills()->where('name', 'Electricity')->exists())->toBeTrue();
 });
@@ -280,7 +280,7 @@ test('bill store rejects cross ledger related ids', function () {
     $foreignPayee = Payee::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.bills.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.bills.store', $ledger), [
             'name' => 'Electricity',
             'transaction_type' => 'expense',
             'amount' => 120.00,
@@ -297,7 +297,7 @@ test('bill store rejects cross ledger related ids', function () {
             'end_after_occurrences' => null,
         ]);
 
-    $response->assertSessionHasErrors(['account_id', 'category_id', 'payee_id']);
+    $response->assertStatus(422)->assertJsonValidationErrors(['account_id', 'category_id', 'payee_id']);
 });
 
 test('bill pay creates a transaction and advances next due date', function () {
@@ -317,9 +317,9 @@ test('bill pay creates a transaction and advances next due date', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.bills.pay', [$ledger, $bill]));
+        ->postJson(route('api.v1.ledgers.bills.pay', [$ledger, $bill]));
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->transactions()->count())->toBe(1);
     expect($bill->fresh()->next_due_date->toDateString())
@@ -343,11 +343,11 @@ test('bill pay uses edited amount override when creating transaction', function 
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.bills.pay', [$ledger, $bill]), [
+        ->postJson(route('api.v1.ledgers.bills.pay', [$ledger, $bill]), [
             'amount' => 72.35,
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     $transaction = $ledger->transactions()->latest('id')->first();
 
@@ -365,15 +365,15 @@ test('bill toggle toggles the is_active flag', function () {
 
     $response = $this
         ->actingAs($user)
-        ->patch(route('ledgers.bills.toggle', [$ledger, $bill]));
+        ->patchJson(route('api.v1.ledgers.bills.toggle', [$ledger, $bill]));
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($bill->fresh()->is_active)->toBeFalse();
 
     $this
         ->actingAs($user)
-        ->patch(route('ledgers.bills.toggle', [$ledger, $bill]));
+        ->patchJson(route('api.v1.ledgers.bills.toggle', [$ledger, $bill]));
 
     expect($bill->fresh()->is_active)->toBeTrue();
 });

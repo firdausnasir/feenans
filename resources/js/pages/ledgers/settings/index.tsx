@@ -23,12 +23,12 @@ import { Switch } from '@/components/ui/switch';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
-import type { AccountType, BreadcrumbItem } from '@/types';
 import {
     dashboard as ledgerDashboard,
     exportMethod as ledgerExport,
 } from '@/routes/ledgers';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
+import type { AccountType, BreadcrumbItem } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

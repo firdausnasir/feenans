@@ -271,7 +271,7 @@ test('budget store via HTTP creates budget', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.budgets.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.budgets.store', $ledger), [
             'category_id' => $category->id,
             'amount' => 400.00,
             'period' => 'monthly',
@@ -280,7 +280,7 @@ test('budget store via HTTP creates budget', function () {
             'rollover' => false,
         ]);
 
-    $response->assertRedirect(route('ledgers.budgets.index', $ledger));
+    $response->assertStatus(201);
 
     expect($ledger->budgets()->count())->toBe(1)
         ->and((string) $ledger->budgets()->first()->amount)->toBe('400.00');
@@ -303,7 +303,7 @@ test('budget update via HTTP updates budget', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.budgets.update', [$ledger, $budget]), [
+        ->putJson(route('api.v1.ledgers.budgets.update', [$ledger, $budget]), [
             'category_id' => $category->id,
             'amount' => 350.00,
             'period' => 'monthly',
@@ -311,7 +311,7 @@ test('budget update via HTTP updates budget', function () {
             'rollover' => true,
         ]);
 
-    $response->assertRedirect(route('ledgers.budgets.index', $ledger));
+    $response->assertOk();
 
     $budget->refresh();
     expect((string) $budget->amount)->toBe('350.00')
@@ -335,9 +335,9 @@ test('budget destroy via HTTP deletes budget', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.budgets.destroy', [$ledger, $budget]));
+        ->deleteJson(route('api.v1.ledgers.budgets.destroy', [$ledger, $budget]));
 
-    $response->assertRedirect(route('ledgers.budgets.index', $ledger));
+    $response->assertNoContent();
 
     expect(Budget::query()->find($budget->id))->toBeNull();
 });

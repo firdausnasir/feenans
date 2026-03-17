@@ -50,6 +50,12 @@ import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
+import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import {
+    exportMethod as exportTransactions,
+    index as transactionsIndex,
+} from '@/routes/ledgers/transactions';
+import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
     Attachment,
@@ -62,12 +68,6 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
-import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    exportMethod as exportTransactions,
-    index as transactionsIndex,
-} from '@/routes/ledgers/transactions';
-import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 
 type Filters = {
     search: string | null;
@@ -82,6 +82,32 @@ type Filters = {
     uncategorized: string | null;
 };
 
+/**
+ * Read array-style query params supporting both `name[]=v` (JS) and
+ * `name[0]=v` (PHP/Symfony normalised) formats.
+ */
+function getArrayParams(params: URLSearchParams, name: string): string[] {
+    const bracket = params.getAll(`${name}[]`);
+
+    if (bracket.length > 0) {
+        return bracket;
+    }
+
+    const indexed: string[] = [];
+
+    for (let i = 0; ; i++) {
+        const val = params.get(`${name}[${i}]`);
+
+        if (val === null) {
+            break;
+        }
+
+        indexed.push(val);
+    }
+
+    return indexed;
+}
+
 function parseFiltersFromUrl(): Filters {
     const params = new URLSearchParams(window.location.search);
 
@@ -89,11 +115,11 @@ function parseFiltersFromUrl(): Filters {
         search: params.get('search'),
         date_from: params.get('date_from') ?? '',
         date_to: params.get('date_to') ?? '',
-        account_ids: params.getAll('account_ids[]'),
-        category_ids: params.getAll('category_ids[]'),
-        transaction_types: params.getAll('transaction_types[]'),
-        payee_ids: params.getAll('payee_ids[]'),
-        tag_ids: params.getAll('tag_ids[]'),
+        account_ids: getArrayParams(params, 'account_ids'),
+        category_ids: getArrayParams(params, 'category_ids'),
+        transaction_types: getArrayParams(params, 'transaction_types'),
+        payee_ids: getArrayParams(params, 'payee_ids'),
+        tag_ids: getArrayParams(params, 'tag_ids'),
         bill_id: params.get('bill_id'),
         uncategorized: params.get('uncategorized'),
     };
@@ -107,17 +133,16 @@ function buildFilterParams(
         search: filters.search || undefined,
         date_from: filters.date_from || undefined,
         date_to: filters.date_to || undefined,
-        'account_ids[]':
+        account_ids:
             filters.account_ids.length > 0 ? filters.account_ids : undefined,
-        'category_ids[]':
+        category_ids:
             filters.category_ids.length > 0 ? filters.category_ids : undefined,
-        'transaction_types[]':
+        transaction_types:
             filters.transaction_types.length > 0
                 ? filters.transaction_types
                 : undefined,
-        'payee_ids[]':
-            filters.payee_ids.length > 0 ? filters.payee_ids : undefined,
-        'tag_ids[]': filters.tag_ids.length > 0 ? filters.tag_ids : undefined,
+        payee_ids: filters.payee_ids.length > 0 ? filters.payee_ids : undefined,
+        tag_ids: filters.tag_ids.length > 0 ? filters.tag_ids : undefined,
         bill_id: filters.bill_id || undefined,
         uncategorized: filters.uncategorized || undefined,
         page: page > 1 ? page : undefined,

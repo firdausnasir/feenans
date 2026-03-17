@@ -4,8 +4,8 @@ import { CommandPalette } from '@/components/command-palette';
 import { KeyboardShortcutsHelp } from '@/components/keyboard-shortcuts-help';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
-import type { AppLayoutProps } from '@/types';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
+import type { AppLayoutProps } from '@/types';
 
 export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     const { currentLedger } = usePage().props as {

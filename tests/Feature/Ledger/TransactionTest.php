@@ -213,7 +213,7 @@ test('transaction update via HTTP updates the transaction', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $newAccount->id,
             'category_id' => $category->id,
             'payee_id' => null,
@@ -224,7 +224,7 @@ test('transaction update via HTTP updates the transaction', function () {
             'transaction_date' => '2026-03-13',
         ]);
 
-    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+    $response->assertOk();
 
     expect((float) $transaction->fresh()->amount)->toBe(-55.00)
         ->and($transaction->fresh()->description)->toBe('Updated')
@@ -244,9 +244,9 @@ test('transaction destroy deletes transaction via HTTP', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]));
+        ->deleteJson(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]));
 
-    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+    $response->assertNoContent();
 
     expect(Transaction::find($transaction->id))->toBeNull();
 });
@@ -274,11 +274,11 @@ test('bulk destroy deletes multiple transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-destroy', $ledger), [
             'ids' => [$t1->id, $t2->id],
         ]);
 
-    $response->assertRedirect();
+    $response->assertNoContent();
 
     expect($ledger->transactions()->count())->toBe(1)
         ->and(Transaction::find($t3->id))->not->toBeNull();

@@ -12,11 +12,11 @@ test('users can create payees in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.payees.store', $ledger), [
+        ->postJson(route('api.v1.ledgers.payees.store', $ledger), [
             'name' => 'Local Cafe',
         ]);
 
-    $response->assertRedirect();
+    $response->assertStatus(201);
 
     expect($ledger->payees()->where('name', 'Local Cafe')->exists())->toBeTrue();
 });
@@ -42,11 +42,11 @@ test('payee update updates payee name', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.payees.update', [$ledger, $payee]), [
+        ->putJson(route('api.v1.ledgers.payees.update', [$ledger, $payee]), [
             'name' => 'New Payee',
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($payee->fresh()->name)->toBe('New Payee');
 });
@@ -58,9 +58,9 @@ test('payee destroy deletes payee', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('ledgers.payees.destroy', [$ledger, $payee]));
+        ->deleteJson(route('api.v1.ledgers.payees.destroy', [$ledger, $payee]));
 
-    $response->assertRedirect();
+    $response->assertNoContent();
 
     expect(Payee::find($payee->id))->toBeNull();
 });
@@ -78,11 +78,11 @@ test('rename payee updates name on associated transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->put(route('ledgers.payees.update', [$ledger, $payee]), [
+        ->putJson(route('api.v1.ledgers.payees.update', [$ledger, $payee]), [
             'name' => 'New Store',
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     $payee->refresh();
     expect($payee->name)->toBe('New Store');
@@ -115,12 +115,12 @@ test('merge payees reassigns all transactions from source to target and deletes 
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.payees.merge', $ledger), [
+        ->postJson(route('api.v1.ledgers.payees.merge', $ledger), [
             'source_id' => $sourcePayee->id,
             'target_id' => $targetPayee->id,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect(Payee::find($sourcePayee->id))->toBeNull();
     expect(Payee::find($targetPayee->id))->not->toBeNull();
@@ -139,12 +139,12 @@ test('merge payees validates source and target must be different', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.payees.merge', $ledger), [
+        ->postJson(route('api.v1.ledgers.payees.merge', $ledger), [
             'source_id' => $payee->id,
             'target_id' => $payee->id,
         ]);
 
-    $response->assertSessionHasErrors('source_id');
+    $response->assertStatus(422)->assertJsonValidationErrors('source_id');
 });
 
 test('merge payees fails when source payee does not exist', function () {
@@ -154,7 +154,7 @@ test('merge payees fails when source payee does not exist', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('ledgers.payees.merge', $ledger), [
+        ->postJson(route('api.v1.ledgers.payees.merge', $ledger), [
             'source_id' => 99999,
             'target_id' => $targetPayee->id,
         ]);

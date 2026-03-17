@@ -19,13 +19,13 @@ import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api } from '@/lib/api-client';
 import { formatAmount } from '@/lib/format';
-import type { Account, AccountType, BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     show as accountShow,
     index as accountsIndex,
     create,
 } from '@/routes/ledgers/accounts';
+import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
 type AccountGroup = {
     type: Pick<AccountType, 'id' | 'name' | 'color' | 'is_credit'>;

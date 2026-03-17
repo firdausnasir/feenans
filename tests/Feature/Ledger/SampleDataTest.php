@@ -150,9 +150,8 @@ test('destroy route removes sample data', function () {
     app(SampleDataService::class)->generate($ledger);
 
     $this->actingAs($user)
-        ->delete(route('ledgers.sample-data.destroy', $ledger))
-        ->assertRedirect()
-        ->assertSessionHas('success', 'Sample data removed successfully.');
+        ->deleteJson(route('api.v1.ledgers.sample-data.destroy', $ledger))
+        ->assertOk();
 
     expect(Account::where('ledger_id', $ledger->id)->where('is_sample', true)->count())->toBe(0)
         ->and(Transaction::where('ledger_id', $ledger->id)->where('is_sample', true)->count())->toBe(0);
@@ -176,7 +175,7 @@ test('unauthorized user cannot remove sample data', function () {
     app(SampleDataService::class)->generate($ledger);
 
     $this->actingAs($otherUser)
-        ->delete(route('ledgers.sample-data.destroy', $ledger))
+        ->deleteJson(route('api.v1.ledgers.sample-data.destroy', $ledger))
         ->assertForbidden();
 });
 
@@ -187,8 +186,8 @@ test('unauthenticated user cannot access sample data routes', function () {
     $this->post(route('ledgers.sample-data.store', $ledger))
         ->assertRedirect(route('login'));
 
-    $this->delete(route('ledgers.sample-data.destroy', $ledger))
-        ->assertRedirect(route('login'));
+    $this->deleteJson(route('api.v1.ledgers.sample-data.destroy', $ledger))
+        ->assertUnauthorized();
 });
 
 test('settings page renders successfully for ledger with sample data', function () {

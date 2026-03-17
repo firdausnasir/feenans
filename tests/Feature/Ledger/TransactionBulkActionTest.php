@@ -26,13 +26,13 @@ test('bulk change category updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_category',
             'value' => $newCategory->id,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->category_id)->toBe($newCategory->id);
@@ -56,13 +56,13 @@ test('bulk change account updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_account',
             'value' => $newAccount->id,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->account_id)->toBe($newAccount->id);
@@ -88,13 +88,13 @@ test('bulk change payee updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_payee',
             'value' => $newPayee->id,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->payee_id)->toBe($newPayee->id);
@@ -124,13 +124,13 @@ test('bulk update skips transfer transactions', function () {
         ->create(['transfer_pair_id' => $pairId]);
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$expense->id, $transfer->id],
             'action' => 'change_category',
             'value' => $newCategory->id,
         ]);
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($expense->fresh()->category_id)->toBe($newCategory->id)
         ->and($transfer->fresh()->category_id)->toBeNull();
@@ -154,13 +154,13 @@ test('bulk update rejects cross-ledger values', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$transaction->id],
             'action' => 'change_category',
             'value' => $foreignCategory->id,
         ]);
 
-    $response->assertSessionHasErrors(['value']);
+    $response->assertStatus(422)->assertJsonValidationErrors(['value']);
 });
 
 test('bulk update rejects invalid action', function () {
@@ -178,13 +178,13 @@ test('bulk update rejects invalid action', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$transaction->id],
             'action' => 'invalid_action',
             'value' => $category->id,
         ]);
 
-    $response->assertSessionHasErrors(['action']);
+    $response->assertStatus(422)->assertJsonValidationErrors(['action']);
 });
 
 test('bulk delete with confirmation deletes all selected transactions', function () {
@@ -203,11 +203,11 @@ test('bulk delete with confirmation deletes all selected transactions', function
         ->create();
 
     $response = $this->actingAs($user)
-        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
+        ->postJson(route('api.v1.ledgers.transactions.bulk-destroy', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
         ]);
 
-    $response->assertRedirect();
+    $response->assertNoContent();
 
     foreach ($transactions as $transaction) {
         expect(Transaction::find($transaction->id))->toBeNull();

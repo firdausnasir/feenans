@@ -27,7 +27,6 @@ import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api } from '@/lib/api-client';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
-import type { Account, BreadcrumbItem, Pagination, Transaction } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     edit as editRoute,
@@ -35,6 +34,7 @@ import {
     show as accountShow,
 } from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
+import type { Account, BreadcrumbItem, Pagination, Transaction } from '@/types';
 
 type MonthPoint = {
     month: string;

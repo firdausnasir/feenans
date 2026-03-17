@@ -232,7 +232,7 @@ test('transaction update is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+        ->put(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'transaction_type' => 'expense',
             'amount' => 20.00,
@@ -252,7 +252,7 @@ test('transaction destroy is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->delete(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]))
         ->assertForbidden();
 });
 
