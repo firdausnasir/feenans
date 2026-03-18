@@ -59,7 +59,7 @@ test('summary income and expense calculated correctly for current cycle', functi
         ->assertSuccessful()
         ->assertJson([
             'income' => 100.0,
-            'expense' => 40.0,
+            'expense' => -40.0,
             'net' => 60.0,
         ]);
 });
@@ -214,7 +214,7 @@ test('cycle navigation scopes summary to the selected cycle', function () {
         ->assertSuccessful()
         ->assertJson([
             'income' => 200.0,
-            'expense' => 75.0,
+            'expense' => -75.0,
             'net' => 125.0,
         ]);
 

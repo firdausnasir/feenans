@@ -42,7 +42,7 @@ type BudgetPerformanceResponse = {
 function statusColor(status: BudgetStat['status']): string {
     switch (status) {
         case 'good':
-            return 'text-green-600 dark:text-green-400';
+            return 'text-foreground';
         case 'warning':
             return 'text-yellow-600 dark:text-yellow-400';
         case 'danger':
@@ -68,9 +68,7 @@ function statusProgressColor(status: BudgetStat['status']): string {
 function StatusIcon({ status }: { status: BudgetStat['status'] }) {
     switch (status) {
         case 'good':
-            return (
-                <CheckCircle className="size-4 text-green-600 dark:text-green-400" />
-            );
+            return <CheckCircle className="size-4 text-foreground" />;
         case 'warning':
             return (
                 <AlertTriangle className="size-4 text-yellow-600 dark:text-yellow-400" />
@@ -158,7 +156,7 @@ function BudgetSummary({ stats }: { stats: BudgetStat[] }) {
                     <p className="text-xs font-medium text-muted-foreground uppercase">
                         On track
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-green-600 tabular-nums dark:text-green-400">
+                    <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
                         {onTrackCount}
                     </p>
                 </CardContent>
@@ -221,7 +219,7 @@ function BudgetCard({ stat }: { stat: BudgetStat }) {
 
                 <div className="mt-1 text-xs">
                     {stat.remaining >= 0 ? (
-                        <span className="text-green-600 tabular-nums dark:text-green-400">
+                        <span className="text-foreground tabular-nums">
                             {formatAbsAmount(stat.remaining)} remaining
                         </span>
                     ) : (
@@ -265,17 +263,39 @@ export default function BudgetPerformancePage() {
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Reports"
-                        description={`Budget performance for ${periodLabel}.`}
-                    />
-                    <div className="flex items-center gap-2">
-                        <ReportViewSelect
-                            ledgerId={ledger.id}
-                            currentView="budget-performance"
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Heading
+                            title="Reports"
+                            description={`Budget performance for ${periodLabel}.`}
                         />
-                        <Button variant="outline" size="sm" asChild>
+                        <div className="hidden items-center gap-2 sm:flex">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="budget-performance"
+                            />
+                            <Button variant="outline" size="sm" asChild>
+                                <a
+                                    href={`/ledgers/${ledger.id}/reports/export-pdf`}
+                                >
+                                    Export PDF
+                                </a>
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:hidden">
+                        <div className="min-w-0 flex-1">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="budget-performance"
+                            />
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-1/4 shrink-0"
+                            asChild
+                        >
                             <a
                                 href={`/ledgers/${ledger.id}/reports/export-pdf`}
                             >

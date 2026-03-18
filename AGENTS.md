@@ -309,3 +309,32 @@ Wayfinder generates TypeScript functions for Laravel routes. Import from `@/acti
 - IMPORTANT: Activate `developing-with-fortify` skill when working with Fortify authentication features.
 
 </laravel-boost-guidelines>
+
+# Project Rules
+
+## Number Display (Frontend)
+
+- All numbers displayed in the frontend use absolute values (no sign character shown).
+- Color indicates direction: white/dark (primary foreground) for positive, red for negative.
+- The backend is the source of truth for sign — API responses must return signed numbers (negative for expenses, outflows, liabilities).
+- The frontend must never flip signs or apply `abs()` — it only reads the sign to pick the color, then displays `formatAbsAmount()`.
+
+## Color Scheme
+
+- Dark mode: primary = white, secondary = red (used for negative numbers). Light mode: primary = dark, secondary = red. This applies automatically unless explicitly overridden for a specific component.
+
+## Mobile First
+
+- All new UI must be mobile-friendly. Design for mobile first, then enhance for desktop.
+
+## Frontend Architecture
+
+- All new frontend features must fetch data from backend API endpoints. Inertia is used only to render the initial page view — dynamic data comes from API calls.
+
+## Linting
+
+- Always run `npm run lint` before finalizing changes and fix all errors, even if they pre-date the current session.
+
+## Backend Testing
+
+- All new backend features must follow TDD: write the test first (RED), implement to pass (GREEN), then refactor.

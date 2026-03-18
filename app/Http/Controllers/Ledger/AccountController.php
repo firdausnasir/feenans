@@ -20,22 +20,6 @@ class AccountController extends Controller
         return Inertia::render('ledgers/accounts/index');
     }
 
-    public function create(Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/accounts/create');
-    }
-
-    public function show(Request $request, Ledger $ledger, Account $account): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/accounts/show', [
-            'accountId' => $account->id,
-        ]);
-    }
-
     public function export(Request $request, Ledger $ledger, Account $account): StreamedResponse
     {
         $this->authorize('view', $ledger);
@@ -93,14 +77,5 @@ class AccountController extends Controller
 
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv']);
-    }
-
-    public function edit(Request $request, Ledger $ledger, Account $account): Response
-    {
-        $this->authorize('view', $ledger);
-
-        return Inertia::render('ledgers/accounts/edit', [
-            'accountId' => $account->id,
-        ]);
     }
 }

@@ -148,24 +148,27 @@ class BillService
     /**
      * @return array{upcoming: Collection, due: Collection, missed: Collection}
      */
-    public function getUpcomingBills(Ledger $ledger): array
+    public function getUpcomingBills(Ledger $ledger, int $days = 30): array
     {
         $today = CarbonImmutable::today();
 
         $upcoming = $ledger->bills()
+            ->with(['payee'])
             ->active()
             ->where('next_due_date', '>', $today)
-            ->where('next_due_date', '<=', $today->addDays(30))
+            ->where('next_due_date', '<=', $today->addDays($days))
             ->orderBy('next_due_date')
             ->get();
 
         $due = $ledger->bills()
+            ->with(['payee'])
             ->active()
             ->due()
             ->orderBy('next_due_date')
             ->get();
 
         $missed = $ledger->bills()
+            ->with(['payee'])
             ->active()
             ->missed()
             ->orderBy('next_due_date')

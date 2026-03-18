@@ -49,7 +49,7 @@ test('it returns income expense summary for cycle', function () {
 
     $response->assertSuccessful();
     expect((float) $response->json('income'))->toBe(1000.0)
-        ->and((float) $response->json('expense'))->toBe(400.0)
+        ->and((float) $response->json('expense'))->toBe(-400.0)
         ->and((float) $response->json('net'))->toBe(600.0);
 });
 
@@ -89,7 +89,7 @@ test('it returns previous cycle comparison', function () {
     $response->assertSuccessful();
     expect((float) $response->json('income'))->toBe(2000.0)
         ->and((float) $response->json('prev_income'))->toBe(1500.0)
-        ->and((float) $response->json('prev_expense'))->toBe(300.0);
+        ->and((float) $response->json('prev_expense'))->toBe(-300.0);
 });
 
 test('it returns daily expense trend', function () {

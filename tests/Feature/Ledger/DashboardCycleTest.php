@@ -44,7 +44,7 @@ test('cycle endpoint supports offset navigation to previous month', function () 
         ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/summary?date_from={$lastStart->toDateString()}&date_to={$lastEnd->toDateString()}")
         ->assertSuccessful()
         ->assertJson([
-            'expense' => 99.0,
+            'expense' => -99.0,
         ]);
 });
 

@@ -55,14 +55,8 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     // Accounts
     Route::get('ledgers/{ledger}/accounts', [AccountController::class, 'index'])
         ->name('ledgers.accounts.index');
-    Route::get('ledgers/{ledger}/accounts/create', [AccountController::class, 'create'])
-        ->name('ledgers.accounts.create');
-    Route::get('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'show'])
-        ->name('ledgers.accounts.show');
     Route::get('ledgers/{ledger}/accounts/{account}/export', [AccountController::class, 'export'])
         ->name('ledgers.accounts.export');
-    Route::get('ledgers/{ledger}/accounts/{account}/edit', [AccountController::class, 'edit'])
-        ->name('ledgers.accounts.edit');
 
     // Categories
     Route::get('ledgers/{ledger}/categories', [CategoryController::class, 'index'])

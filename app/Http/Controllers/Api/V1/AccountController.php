@@ -17,18 +17,20 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AccountController extends Controller
 {
-    public function index(Ledger $ledger, Request $request): AnonymousResourceCollection|JsonResponse
+    public function index(Ledger $ledger, Request $request, TransactionService $txService): AnonymousResourceCollection|JsonResponse
     {
         $this->authorize('view', $ledger);
 
         $showHidden = $request->boolean('show_hidden');
         $grouped = $request->boolean('grouped');
         $withTypeTotals = $request->boolean('with_type_totals');
+        $withStatement = $request->boolean('with_statement');
 
         $accountsQuery = $ledger->accounts()
             ->with('accountType')
@@ -40,6 +42,10 @@ class AccountController extends Controller
         }
 
         $accounts = $accountsQuery->get();
+
+        if ($grouped && $withStatement) {
+            $accounts = $this->attachStatementData($accounts, $txService);
+        }
 
         if (! $grouped) {
             return AccountResource::collection($accounts);
@@ -80,6 +86,55 @@ class AccountController extends Controller
             ->values();
 
         return response()->json(['data' => $groupedData]);
+    }
+
+    /**
+     * Attach statement cycle data to accounts that have a statement_day set.
+     *
+     * @param  Collection<int, Account>  $accounts
+     * @return Collection<int, Account>
+     */
+    private function attachStatementData(Collection $accounts, TransactionService $txService): Collection
+    {
+        $today = CarbonImmutable::today();
+
+        return $accounts->map(function (Account $account) use ($txService, $today): Account {
+            if ($account->statement_day === null) {
+                return $account;
+            }
+
+            [$currentStart, $currentEnd] = $txService->statementCycleBounds($account, $today);
+
+            $previousEnd = $currentStart->subDay();
+            [$previousStart, $calculatedPreviousEnd] = $txService->statementCycleBounds($account, $previousEnd);
+
+            $statementBalance = (float) $account->transactions()
+                ->whereBetween('transaction_date', [$previousStart->toDateString(), $calculatedPreviousEnd->toDateString()])
+                ->sum('amount');
+
+            $currentSpending = (float) $account->transactions()
+                ->whereBetween('transaction_date', [$currentStart->toDateString(), $today->toDateString()])
+                ->sum('amount');
+
+            if ($account->payment_due_day !== null) {
+                $stmtDate = $currentStart->subDay();
+                $dueMonth = $account->payment_due_day >= $account->statement_day
+                    ? $stmtDate
+                    : $stmtDate->addMonthNoOverflow();
+                $paymentDueDate = $dueMonth->setDay(min($account->payment_due_day, $dueMonth->daysInMonth));
+            } else {
+                $paymentDueDate = $currentStart->subDay()->addDays(20);
+            }
+
+            $account->setAttribute('statement_start', $previousStart->toDateString());
+            $account->setAttribute('statement_end', $calculatedPreviousEnd->toDateString());
+            $account->setAttribute('statement_balance', round(abs($statementBalance), 2));
+            $account->setAttribute('current_spending', round(abs($currentSpending), 2));
+            $account->setAttribute('outstanding', round(abs($statementBalance) + abs($currentSpending), 2));
+            $account->setAttribute('payment_due_date', $paymentDueDate->toDateString());
+
+            return $account;
+        });
     }
 
     public function show(Ledger $ledger, Account $account): AccountResource

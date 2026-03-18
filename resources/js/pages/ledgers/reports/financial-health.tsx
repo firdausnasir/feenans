@@ -20,7 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { formatAbsAmount } from '@/lib/format';
+import { formatAbsAmount, formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     index as reportsIndex,
@@ -118,12 +118,12 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
             <Card>
                 <CardContent className="pt-6">
                     <div className="flex items-center gap-2">
-                        <TrendingUp className="size-4 text-green-600 dark:text-green-400" />
+                        <TrendingUp className="size-4 text-foreground" />
                         <p className="text-xs font-medium text-muted-foreground uppercase">
                             Total assets
                         </p>
                     </div>
-                    <p className="mt-2 text-2xl font-semibold text-green-600 tabular-nums dark:text-green-400">
+                    <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
                         {formatAbsAmount(snapshot.assets)}
                     </p>
                 </CardContent>
@@ -154,7 +154,7 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
                     <p
                         className={`mt-2 text-2xl font-semibold tabular-nums ${
                             snapshot.net_worth >= 0
-                                ? 'text-green-600 dark:text-green-400'
+                                ? 'text-foreground'
                                 : 'text-red-500'
                         }`}
                     >
@@ -225,7 +225,7 @@ function NetWorthChart({ data }: { data: NetWorthEntry[] }) {
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAbsAmount(Number(value)),
+                        formatAmount(Number(value)),
                         String(name)
                             .replace('_', ' ')
                             .replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -316,7 +316,7 @@ function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
                         }
 
                         return [
-                            formatAbsAmount(Number(value)),
+                            formatAmount(Number(value)),
                             name.charAt(0).toUpperCase() + name.slice(1),
                         ];
                     }}
@@ -370,17 +370,39 @@ export default function FinancialHealthPage() {
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Reports"
-                        description="Track your net worth, savings rate, and overall financial health."
-                    />
-                    <div className="flex items-center gap-2">
-                        <ReportViewSelect
-                            ledgerId={ledger.id}
-                            currentView="financial-health"
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Heading
+                            title="Reports"
+                            description="Track your net worth, savings rate, and overall financial health."
                         />
-                        <Button variant="outline" size="sm" asChild>
+                        <div className="hidden items-center gap-2 sm:flex">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="financial-health"
+                            />
+                            <Button variant="outline" size="sm" asChild>
+                                <a
+                                    href={`/ledgers/${ledger.id}/reports/export-pdf`}
+                                >
+                                    Export PDF
+                                </a>
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:hidden">
+                        <div className="min-w-0 flex-1">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="financial-health"
+                            />
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-1/4 shrink-0"
+                            asChild
+                        >
                             <a
                                 href={`/ledgers/${ledger.id}/reports/export-pdf`}
                             >

@@ -24,7 +24,8 @@ class BillController extends Controller
         $this->authorize('view', $ledger);
 
         if ($request->boolean('upcoming')) {
-            $groups = $this->billService->getUpcomingBills($ledger);
+            $days = $request->integer('days', 30);
+            $groups = $this->billService->getUpcomingBills($ledger, $days);
 
             return response()->json([
                 'upcoming' => BillResource::collection($groups['upcoming']),

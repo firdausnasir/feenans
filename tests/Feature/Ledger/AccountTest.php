@@ -43,26 +43,6 @@ test('account store rejects an account type from another ledger', function () {
     $response->assertStatus(422)->assertJsonValidationErrors('account_type_id');
 });
 
-test('account show returns 200 with correct component', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create([
-        'name' => 'Savings',
-        'initial_balance' => 500.00,
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.accounts.show', [$ledger, $account]));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
-        ->component('ledgers/accounts/show')
-        ->where('accountId', $account->id)
-    );
-});
-
 test('account update updates the account and redirects', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -103,16 +83,16 @@ test('account destroy deletes account and redirects to index', function () {
     expect(Account::find($account->id))->toBeNull();
 });
 
-test('account show is forbidden for another user', function () {
+test('account index is forbidden for another user', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
     $ledger = Ledger::factory()->for($owner)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    Account::factory()->for($ledger)->for($accountType)->create();
 
     $response = $this
         ->actingAs($other)
-        ->get(route('ledgers.accounts.show', [$ledger, $account]));
+        ->get(route('ledgers.accounts.index', $ledger));
 
     $response->assertForbidden();
 });

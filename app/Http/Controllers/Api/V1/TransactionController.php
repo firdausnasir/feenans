@@ -339,9 +339,9 @@ class TransactionController extends Controller
             ->where('transaction_type', TransactionType::Income->value)
             ->sum('amount');
 
-        $expense = abs((float) (clone $cycleTransactions)
+        $expense = (float) (clone $cycleTransactions)
             ->where('transaction_type', TransactionType::Expense->value)
-            ->sum('amount'));
+            ->sum('amount');
 
         // Previous period: same length period immediately before date_from
         $periodLength = $dateFrom->diffInDays($dateTo);
@@ -355,14 +355,14 @@ class TransactionController extends Controller
             ->where('transaction_type', TransactionType::Income->value)
             ->sum('amount');
 
-        $prevExpense = abs((float) (clone $prevTransactions)
+        $prevExpense = (float) (clone $prevTransactions)
             ->where('transaction_type', TransactionType::Expense->value)
-            ->sum('amount'));
+            ->sum('amount');
 
         return response()->json([
             'income' => round($income, 2),
             'expense' => round($expense, 2),
-            'net' => round($income - $expense, 2),
+            'net' => round($income + $expense, 2),
             'prev_income' => round($prevIncome, 2),
             'prev_expense' => round($prevExpense, 2),
         ]);
@@ -382,8 +382,14 @@ class TransactionController extends Controller
         $dateFromStr = $dateFrom->toDateString();
         $dateToStr = $dateTo->toDateString();
 
-        $dailyTotals = $ledger->transactions()
-            ->whereBetween('transaction_date', [$dateFromStr, $dateToStr])
+        $query = $ledger->transactions()
+            ->whereBetween('transaction_date', [$dateFromStr, $dateToStr]);
+
+        if ($request->boolean('exclude_uncategorized')) {
+            $query->whereNotNull('category_id');
+        }
+
+        $dailyTotals = $query
             ->select(
                 'transaction_date',
                 'transaction_type',

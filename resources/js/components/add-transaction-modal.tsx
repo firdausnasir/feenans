@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { create as accountsCreate } from '@/routes/ledgers/accounts';
+import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
 
 type TransactionMode = 'expense' | 'income' | 'transfer';
@@ -520,7 +520,7 @@ export function AddTransactionModal({
                             </p>
                         </div>
                         <Button asChild>
-                            <Link href={accountsCreate.url(ledger.id)}>
+                            <Link href={accountsIndex.url(ledger.id)}>
                                 Create your first account
                             </Link>
                         </Button>

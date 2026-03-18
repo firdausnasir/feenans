@@ -3,9 +3,9 @@ import {
     ArrowDown,
     ArrowUp,
     BarChart3,
+    ChevronDown,
     Minus,
     SlidersHorizontal,
-    ChevronDown,
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { formatAbsAmount, formatDate } from '@/lib/format';
+import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as reportsIndex } from '@/routes/ledgers/reports';
 import type { BreadcrumbItem } from '@/types';
@@ -403,9 +403,7 @@ function DateRangeSelector({
 
     const [customFrom, setCustomFrom] = useState(filters.date_from);
     const [customTo, setCustomTo] = useState(filters.date_to);
-    const [compareFrom, setCompareFrom] = useState(
-        filters.compare_start ?? '',
-    );
+    const [compareFrom, setCompareFrom] = useState(filters.compare_start ?? '');
     const [compareTo, setCompareTo] = useState(filters.compare_end ?? '');
 
     function applyPreset(preset: Preset) {
@@ -698,7 +696,7 @@ function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAbsAmount(Number(value)),
+                        formatAmount(Number(value)),
                         String(name).charAt(0).toUpperCase() +
                             String(name).slice(1),
                     ]}
@@ -792,7 +790,7 @@ function CategoryBreakdownSection({
                         </Pie>
                         <Tooltip
                             formatter={(value: any) => [
-                                formatAbsAmount(Number(value)),
+                                formatAmount(Number(value)),
                                 'Amount',
                             ]}
                         />
@@ -1101,7 +1099,7 @@ function IncomeCategoryBreakdownSection({
                         </Pie>
                         <Tooltip
                             formatter={(value: any) => [
-                                formatAbsAmount(Number(value)),
+                                formatAmount(Number(value)),
                                 'Amount',
                             ]}
                         />
@@ -1138,7 +1136,7 @@ function IncomeCategoryBreakdownSection({
                                     </span>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3">
-                                    <span className="text-sm text-green-600 tabular-nums dark:text-green-400">
+                                    <span className="text-sm text-foreground tabular-nums">
                                         {formatAbsAmount(item.total)}
                                     </span>
                                     <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
@@ -1185,7 +1183,7 @@ function IncomeCategoryBreakdownSection({
                                             </span>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-right text-green-600 tabular-nums dark:text-green-400">
+                                    <TableCell className="text-right text-foreground tabular-nums">
                                         {formatAbsAmount(item.total)}
                                     </TableCell>
                                     <TableCell className="text-right text-muted-foreground tabular-nums">
@@ -1237,7 +1235,7 @@ function IncomeCategoryBreakdownSection({
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-3">
-                                                            <span className="text-green-600 tabular-nums dark:text-green-400">
+                                                            <span className="text-foreground tabular-nums">
                                                                 {formatAbsAmount(
                                                                     child.total,
                                                                 )}
@@ -1418,7 +1416,7 @@ function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
                                 {weekdayLabels.map((wd) => (
                                     <div
                                         key={wd}
-                                        className="flex h-5 items-center justify-center text-[10px] text-muted-foreground"
+                                        className="flex h-10 items-center justify-center text-[10px] text-muted-foreground"
                                     >
                                         {wd.charAt(0)}
                                     </div>
@@ -1428,15 +1426,15 @@ function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
                                         cell ? (
                                             <div
                                                 key={`${ri}-${ci}`}
-                                                className={`flex h-5 w-full items-center justify-center rounded-sm text-[9px] font-medium ${getIntensity(cell.amount)} ${cell.amount > 0 ? 'text-foreground/70' : 'text-muted-foreground/50'}`}
-                                                title={`${cell.dateStr}: ${formatAbsAmount(cell.amount)}`}
+                                                className={`flex h-10 w-full items-center justify-center rounded-sm text-[12px] font-medium ${getIntensity(cell.amount)} ${cell.amount > 0 ? 'text-foreground/70' : 'text-muted-foreground/50'}`}
+                                                title={`${cell.dateStr}: ${formatAmount(cell.amount)}`}
                                             >
                                                 {cell.day}
                                             </div>
                                         ) : (
                                             <div
                                                 key={`${ri}-${ci}`}
-                                                className="h-5 w-full"
+                                                className="h-10 w-full"
                                             />
                                         ),
                                     ),
@@ -1490,7 +1488,7 @@ function DeltaIndicator({
     return (
         <span
             className={`inline-flex items-center gap-0.5 text-xs font-medium ${
-                isGood ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+                isGood ? 'text-foreground' : 'text-red-500 dark:text-red-400'
             }`}
         >
             {isPositive ? (
@@ -1610,7 +1608,7 @@ function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
                 />
                 <Tooltip
                     formatter={(value: number, name: string) => [
-                        formatAbsAmount(value),
+                        formatAmount(value),
                         name,
                     ]}
                 />
@@ -1901,19 +1899,51 @@ export default function ReportsIndex() {
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Reports"
-                        description="Analyse your finances with detailed breakdowns and trends."
-                    />
-                    <div className="flex items-center gap-2">
-                        <ReportViewSelect
-                            ledgerId={ledger.id}
-                            currentView="income-expense"
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Heading
+                            title="Reports"
+                            description="Analyse your finances with detailed breakdowns and trends."
                         />
+                        <div className="hidden items-center gap-2 sm:flex">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="income-expense"
+                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isExporting}
+                                onClick={() => {
+                                    setIsExporting(true);
+
+                                    const link = document.createElement('a');
+                                    link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
+                                    link.click();
+
+                                    setTimeout(() => {
+                                        setIsExporting(false);
+                                        toast.success(
+                                            'Report exported successfully.',
+                                        );
+                                    }, 2000);
+                                }}
+                            >
+                                {isExporting ? 'Exporting...' : 'Export PDF'}
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:hidden">
+                        <div className="min-w-0 flex-1">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="income-expense"
+                            />
+                        </div>
                         <Button
                             variant="outline"
                             size="sm"
+                            className="w-1/4 shrink-0"
                             disabled={isExporting}
                             onClick={() => {
                                 setIsExporting(true);
@@ -2027,9 +2057,7 @@ export default function ReportsIndex() {
                                 <CardTitle>Expense by payee</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <PayeeBreakdownSection
-                                    data={payeeBreakdown}
-                                />
+                                <PayeeBreakdownSection data={payeeBreakdown} />
                             </CardContent>
                         </Card>
 
@@ -2055,7 +2083,7 @@ export default function ReportsIndex() {
                                 <CardContent>
                                     <PayeeBreakdownSection
                                         data={incomePayeeBreakdown}
-                                        amountClassName="text-green-600 dark:text-green-400"
+                                        amountClassName="text-foreground"
                                     />
                                 </CardContent>
                             </Card>

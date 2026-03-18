@@ -138,9 +138,15 @@ class CategoryController extends Controller
         $dateFromStr = $dateFrom->toDateString();
         $dateToStr = $dateTo->toDateString();
 
-        $topCategories = $ledger->transactions()
+        $query = $ledger->transactions()
             ->whereBetween('transaction_date', [$dateFromStr, $dateToStr])
-            ->where('transaction_type', TransactionType::Expense->value)
+            ->where('transaction_type', TransactionType::Expense->value);
+
+        if ($request->boolean('exclude_uncategorized')) {
+            $query->whereNotNull('category_id');
+        }
+
+        $topCategories = $query
             ->select(
                 'category_id',
                 DB::raw('SUM(amount) as total'),

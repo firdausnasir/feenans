@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { formatAbsAmount, formatDate } from '@/lib/format';
+import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     index as reportsIndex,
@@ -153,7 +153,7 @@ function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAbsAmount(Number(value)),
+                        formatAmount(Number(value)),
                         String(name).charAt(0).toUpperCase() +
                             String(name).slice(1),
                     ]}
@@ -188,7 +188,6 @@ function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
 }
 
 function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
-
     if (bills.length === 0) {
         return (
             <EmptyState
@@ -222,7 +221,7 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                         <span
                             className={`shrink-0 text-sm font-semibold tabular-nums ${
                                 bill.transaction_type === 'income'
-                                    ? 'text-green-600 dark:text-green-400'
+                                    ? 'text-foreground'
                                     : 'text-red-500'
                             }`}
                         >
@@ -257,7 +256,7 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                             <TableCell
                                 className={`text-right font-semibold tabular-nums ${
                                     bill.transaction_type === 'income'
-                                        ? 'text-green-600 dark:text-green-400'
+                                        ? 'text-foreground'
                                         : 'text-red-500'
                                 }`}
                             >
@@ -307,17 +306,39 @@ export default function CashFlowPage() {
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Reports"
-                        description={`Cash flow for ${periodLabel}.`}
-                    />
-                    <div className="flex items-center gap-2">
-                        <ReportViewSelect
-                            ledgerId={ledger.id}
-                            currentView="cash-flow"
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Heading
+                            title="Reports"
+                            description={`Cash flow for ${periodLabel}.`}
                         />
-                        <Button variant="outline" size="sm" asChild>
+                        <div className="hidden items-center gap-2 sm:flex">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="cash-flow"
+                            />
+                            <Button variant="outline" size="sm" asChild>
+                                <a
+                                    href={`/ledgers/${ledger.id}/reports/export-pdf`}
+                                >
+                                    Export PDF
+                                </a>
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:hidden">
+                        <div className="min-w-0 flex-1">
+                            <ReportViewSelect
+                                ledgerId={ledger.id}
+                                currentView="cash-flow"
+                            />
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-1/4 shrink-0"
+                            asChild
+                        >
                             <a
                                 href={`/ledgers/${ledger.id}/reports/export-pdf`}
                             >
@@ -338,7 +359,7 @@ export default function CashFlowPage() {
                                     <p className="text-xs font-medium text-muted-foreground uppercase">
                                         Total inflow
                                     </p>
-                                    <p className="mt-2 text-2xl font-semibold text-green-600 tabular-nums dark:text-green-400">
+                                    <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
                                         {formatAbsAmount(totalIncome)}
                                     </p>
                                 </CardContent>
@@ -361,7 +382,7 @@ export default function CashFlowPage() {
                                     <p
                                         className={`mt-2 text-2xl font-semibold tabular-nums ${
                                             netFlow >= 0
-                                                ? 'text-green-600 dark:text-green-400'
+                                                ? 'text-foreground'
                                                 : 'text-red-500'
                                         }`}
                                     >
