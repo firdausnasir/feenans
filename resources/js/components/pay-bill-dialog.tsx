@@ -1,3 +1,4 @@
+import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { api, ApiError } from '@/lib/api-client';
 import type { Account, Bill } from '@/types';
 
 type PayBillDialogProps = {
@@ -61,7 +61,7 @@ export function PayBillDialog({
     const actionLabel = isIncome ? 'Record Income' : 'Record Payment';
     const successLabel = isIncome ? 'recorded' : 'paid';
 
-    async function handlePay() {
+    function handlePay() {
         if (!bill) {
             return;
         }
@@ -85,24 +85,23 @@ export function PayBillDialog({
             body.date = paymentDate;
         }
 
-        try {
-            await api.post(
-                `/api/v1/ledgers/${ledgerId}/bills/${bill.id}/pay`,
-                { body },
-            );
-            toast.success(`${bill.name} ${successLabel}`);
-            onClose();
-            onSuccess?.();
-        } catch (err) {
-            const message =
-                err instanceof ApiError && err.isValidationError
-                    ? Object.values(err.validationErrors)[0]?.[0] ??
-                      'Validation failed'
-                    : 'Failed to record payment';
-            toast.error(message);
-        } finally {
-            setProcessing(false);
-        }
+        router.post(`/ledgers/${ledgerId}/bills/${bill.id}/pay`, body, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success(`${bill.name} ${successLabel}`);
+                onClose();
+                onSuccess?.();
+            },
+            onError: (errors) => {
+                const firstError = Object.values(errors)[0];
+                toast.error(
+                    typeof firstError === 'string'
+                        ? firstError
+                        : 'Failed to record payment',
+                );
+            },
+            onFinish: () => setProcessing(false),
+        });
     }
 
     return (

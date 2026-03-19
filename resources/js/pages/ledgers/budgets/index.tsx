@@ -1,5 +1,5 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { ExternalLink, PiggyBank } from 'lucide-react';
+import { ExternalLink, Pencil, PiggyBank, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
@@ -27,6 +27,11 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { api, ApiError } from '@/lib/api-client';
@@ -388,54 +393,83 @@ export default function BudgetsIndex() {
                                             </span>
                                         </span>
                                     </div>
-                                    <p className="text-sm text-muted-foreground">
-                                        {budget.percentage >= 100
-                                            ? `Over by ${formatAbsAmount(budget.spent - budget.amount)}`
-                                            : `${formatAbsAmount(budget.remaining)} remaining`}
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleEdit(budget)}
-                                        >
-                                            Edit
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDelete(budget)}
-                                        >
-                                            Delete
-                                        </Button>
-                                        {budget.category_id !== null && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                asChild
-                                            >
-                                                <Link
-                                                    href={transactionsIndex.url(
-                                                        ledger.id,
-                                                        {
-                                                            query: {
-                                                                'category_ids[]':
-                                                                    budget.category_id,
-                                                                date_from:
-                                                                    budget.period_start,
-                                                                date_to:
-                                                                    budget.period_end,
-                                                                'transaction_types[]':
-                                                                    'expense',
-                                                            },
-                                                        },
-                                                    )}
-                                                >
-                                                    <ExternalLink className="size-3.5" />
-                                                    View transactions
-                                                </Link>
-                                            </Button>
-                                        )}
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm text-muted-foreground">
+                                            {budget.percentage >= 100
+                                                ? `Over by ${formatAbsAmount(budget.spent - budget.amount)}`
+                                                : `${formatAbsAmount(budget.remaining)} remaining`}
+                                        </p>
+                                        <div className="flex items-center gap-0.5">
+                                            {budget.category_id !== null && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="size-7"
+                                                            asChild
+                                                        >
+                                                            <Link
+                                                                href={transactionsIndex.url(
+                                                                    ledger.id,
+                                                                    {
+                                                                        query: {
+                                                                            'category_ids[]':
+                                                                                budget.category_id,
+                                                                            date_from:
+                                                                                budget.period_start,
+                                                                            date_to:
+                                                                                budget.period_end,
+                                                                            'transaction_types[]':
+                                                                                'expense',
+                                                                        },
+                                                                    },
+                                                                )}
+                                                            >
+                                                                <ExternalLink className="size-3.5" />
+                                                            </Link>
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        Transactions
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-7"
+                                                        onClick={() =>
+                                                            handleEdit(budget)
+                                                        }
+                                                    >
+                                                        <Pencil className="size-3.5" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    Edit
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-7 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                                                        onClick={() =>
+                                                            handleDelete(budget)
+                                                        }
+                                                    >
+                                                        <Trash2 className="size-3.5" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    Delete
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

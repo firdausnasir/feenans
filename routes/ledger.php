@@ -51,12 +51,32 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.transactions.attachments.show');
     Route::delete('ledgers/{ledger}/transactions/{transaction}/attachments/{attachment}', [AttachmentController::class, 'destroy'])
         ->name('ledgers.transactions.attachments.destroy');
+    Route::put('ledgers/{ledger}/transactions/{transaction}', [TransactionController::class, 'update'])
+        ->name('ledgers.transactions.update');
+    Route::delete('ledgers/{ledger}/transactions/{transaction}', [TransactionController::class, 'destroy'])
+        ->name('ledgers.transactions.destroy');
+    Route::post('ledgers/{ledger}/transactions/bulk-update', [TransactionController::class, 'bulkUpdate'])
+        ->name('ledgers.transactions.bulk-update');
+    Route::post('ledgers/{ledger}/transactions/bulk-destroy', [TransactionController::class, 'bulkDestroy'])
+        ->name('ledgers.transactions.bulk-destroy');
+    Route::post('ledgers/{ledger}/transactions/select-all', [TransactionController::class, 'selectAll'])
+        ->name('ledgers.transactions.select-all');
 
     // Accounts
     Route::get('ledgers/{ledger}/accounts', [AccountController::class, 'index'])
         ->name('ledgers.accounts.index');
     Route::get('ledgers/{ledger}/accounts/{account}/export', [AccountController::class, 'export'])
         ->name('ledgers.accounts.export');
+    Route::post('ledgers/{ledger}/accounts', [AccountController::class, 'store'])
+        ->name('ledgers.accounts.store');
+    Route::put('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'update'])
+        ->name('ledgers.accounts.update');
+    Route::delete('ledgers/{ledger}/accounts/{account}', [AccountController::class, 'destroy'])
+        ->name('ledgers.accounts.destroy');
+    Route::post('ledgers/{ledger}/accounts/reorder', [AccountController::class, 'reorder'])
+        ->name('ledgers.accounts.reorder');
+    Route::post('ledgers/{ledger}/accounts/{account}/adjust-balance', [AccountController::class, 'adjustBalance'])
+        ->name('ledgers.accounts.adjust-balance');
 
     // Categories
     Route::get('ledgers/{ledger}/categories', [CategoryController::class, 'index'])
@@ -70,9 +90,27 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::get('ledgers/{ledger}/bills/{bill}/edit', [BillController::class, 'edit'])
         ->name('ledgers.bills.edit');
 
+    Route::post('ledgers/{ledger}/bills', [BillController::class, 'store'])
+        ->name('ledgers.bills.store');
+    Route::put('ledgers/{ledger}/bills/{bill}', [BillController::class, 'update'])
+        ->name('ledgers.bills.update');
+    Route::delete('ledgers/{ledger}/bills/{bill}', [BillController::class, 'destroy'])
+        ->name('ledgers.bills.destroy');
+    Route::patch('ledgers/{ledger}/bills/{bill}/toggle', [BillController::class, 'toggle'])
+        ->name('ledgers.bills.toggle');
+
+    Route::post('ledgers/{ledger}/bills/{bill}/pay', [BillController::class, 'pay'])
+        ->name('ledgers.bills.pay');
+
     // Payees
     Route::get('ledgers/{ledger}/payees', [PayeeController::class, 'index'])
         ->name('ledgers.payees.index');
+    Route::post('ledgers/{ledger}/payees', [PayeeController::class, 'store'])
+        ->name('ledgers.payees.store');
+    Route::patch('ledgers/{ledger}/payees/{payee}', [PayeeController::class, 'update'])
+        ->name('ledgers.payees.update');
+    Route::delete('ledgers/{ledger}/payees/{payee}', [PayeeController::class, 'destroy'])
+        ->name('ledgers.payees.destroy');
 
     // Tags
     Route::get('ledgers/{ledger}/tags', [TagController::class, 'index'])->name('ledgers.tags.index');

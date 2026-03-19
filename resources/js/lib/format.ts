@@ -72,3 +72,94 @@ export function formatMonthYear(dateStr: string): string {
         month: 'short',
     });
 }
+
+/**
+ * Return a Tailwind text-color class based on the sign of a numeric value.
+ * Negative → red, non-negative → foreground.
+ */
+export function amountColor(value: number): string {
+    return value < 0 ? 'text-red-500 dark:text-red-400' : 'text-foreground';
+}
+
+/**
+ * Describe a recurrence schedule in human-readable form.
+ * Accepts string inputs (from form fields) or numbers.
+ */
+export function describeRecurrence(
+    type: string,
+    interval: string | number,
+    day?: string | number,
+): string {
+    const n =
+        typeof interval === 'number' ? interval : parseInt(interval, 10) || 1;
+    const dayNum =
+        day !== undefined
+            ? typeof day === 'number'
+                ? day
+                : parseInt(day as string, 10)
+            : 0;
+    const dayStr = dayNum ? ` on day ${dayNum}` : '';
+
+    const labels: Record<string, [string, string]> = {
+        daily: ['day', 'days'],
+        weekly: ['week', 'weeks'],
+        monthly: ['month', 'months'],
+        yearly: ['year', 'years'],
+        custom: ['period', 'periods'],
+    };
+
+    const [singular, plural] = labels[type] ?? ['period', 'periods'];
+
+    if (n === 1) {
+        return `Every ${singular}${dayStr}`;
+    }
+
+    return `Every ${n} ${plural}${dayStr}`;
+}
+
+/**
+ * Flatten a parent-child category tree into SearchableSelect options.
+ */
+export function buildCategoryOptions(
+    categories: Array<{
+        id: number;
+        name: string;
+        color: string | null;
+        children?: Array<{ id: number; name: string; color: string | null }>;
+    }>,
+): Array<{
+    value: string;
+    label: string;
+    group?: string;
+    color: string | null;
+}> {
+    return categories.flatMap((parent) => {
+        const hasChildren = (parent.children?.length ?? 0) > 0;
+        const items: Array<{
+            value: string;
+            label: string;
+            group?: string;
+            color: string | null;
+        }> = [
+            {
+                value: String(parent.id),
+                label: hasChildren ? `${parent.name} (general)` : parent.name,
+                group: hasChildren ? parent.name : undefined,
+                color: parent.color,
+            },
+        ];
+
+        if (parent.children) {
+            for (const child of parent.children) {
+                items.push({
+                    value: String(child.id),
+                    label: child.name,
+                    group: parent.name,
+                    color: child.color,
+                });
+            }
+        }
+
+        return items;
+    });
+}

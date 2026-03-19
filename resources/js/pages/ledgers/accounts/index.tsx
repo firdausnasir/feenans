@@ -1,4 +1,4 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     CreditCard,
@@ -40,10 +40,14 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
-import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
+import {
+    amountColor,
+    formatAbsAmount,
+    formatAmount,
+    formatDate,
+} from '@/lib/format';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
@@ -81,8 +85,45 @@ type EditFormData = {
     include_in_totals: boolean;
 };
 
-function amountColor(value: number): string {
-    return value < 0 ? 'text-red-500 dark:text-red-400' : 'text-foreground';
+function NetWorthCards() {
+    const { netWorth } = usePage<{ netWorth: NetWorthData }>().props;
+
+    return (
+        <div className="grid grid-cols-3 gap-3">
+            <Card className="py-3">
+                <CardContent className="px-3">
+                    <p className="text-xs text-muted-foreground">Assets</p>
+                    <p
+                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.assets)}`}
+                    >
+                        {formatAbsAmount(netWorth.assets)}
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card className="py-3">
+                <CardContent className="px-3">
+                    <p className="text-xs text-muted-foreground">Liabilities</p>
+                    <p
+                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(-Math.abs(netWorth.liabilities))}`}
+                    >
+                        {formatAbsAmount(netWorth.liabilities)}
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card className="py-3">
+                <CardContent className="px-3">
+                    <p className="text-xs text-muted-foreground">Net Worth</p>
+                    <p
+                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.net)}`}
+                    >
+                        {formatAbsAmount(netWorth.net)}
+                    </p>
+                </CardContent>
+            </Card>
+        </div>
+    );
 }
 
 // ── Create Account Modal ────────────────────────────────────────────────
@@ -91,21 +132,15 @@ function CreateAccountModal({
     open,
     onOpenChange,
     ledgerId,
+    accountTypes,
     onCreated,
 }: {
     readonly open: boolean;
     readonly onOpenChange: (open: boolean) => void;
     readonly ledgerId: number;
+    readonly accountTypes: AccountType[];
     readonly onCreated: () => void;
 }) {
-    const base = `/api/v1/ledgers/${ledgerId}`;
-
-    const { data: accountTypesResponse, loading: typesLoading } = useApiQuery<{
-        data: AccountType[];
-    }>(open ? `${base}/account-types` : null);
-
-    const accountTypes = accountTypesResponse?.data ?? [];
-
     const [formData, setFormData] = useState({
         account_type_id: '',
         name: '',
@@ -151,8 +186,9 @@ function CreateAccountModal({
         setProcessing(true);
         setErrors({});
 
-        api.post(`${base}/accounts`, {
-            body: {
+        router.post(
+            `/ledgers/${ledgerId}/accounts`,
+            {
                 account_type_id: formData.account_type_id,
                 name: formData.name,
                 color: formData.color,
@@ -165,31 +201,29 @@ function CreateAccountModal({
                     ? { payment_due_day: formData.payment_due_day }
                     : {}),
             },
-        })
-            .then(() => {
-                setProcessing(false);
-                toast.success('Account created');
-                onOpenChange(false);
-                setFormData({
-                    account_type_id: '',
-                    name: '',
-                    color: '#6B7280',
-                    initial_balance: '0',
-                    statement_day: '',
-                    payment_due_day: '',
-                });
-                setDefaultTypeSet(false);
-                onCreated();
-            })
-            .catch((err: unknown) => {
-                setProcessing(false);
-
-                if (err instanceof ApiError && err.isValidationError) {
-                    setErrors(err.validationErrors);
-                } else {
-                    toast.error('Failed to create account');
-                }
-            });
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setProcessing(false);
+                    toast.success('Account created');
+                    onOpenChange(false);
+                    setFormData({
+                        account_type_id: '',
+                        name: '',
+                        color: '#6B7280',
+                        initial_balance: '0',
+                        statement_day: '',
+                        payment_due_day: '',
+                    });
+                    setDefaultTypeSet(false);
+                    onCreated();
+                },
+                onError: (errors) => {
+                    setProcessing(false);
+                    setErrors(mapInertiaErrorsArray(errors));
+                },
+            },
+        );
     }
 
     return (
@@ -202,191 +236,175 @@ function CreateAccountModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                {typesLoading ? (
-                    <div className="space-y-4 py-4">
-                        {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="grid gap-2">
-                                <Skeleton className="h-4 w-24" />
-                                <Skeleton className="h-10 w-full" />
-                            </div>
-                        ))}
+                <form onSubmit={handleSubmit} className="space-y-4 py-2">
+                    <div className="grid gap-2">
+                        <Label htmlFor="create_account_type_id">
+                            Account type
+                        </Label>
+                        <Select
+                            value={formData.account_type_id}
+                            onValueChange={(value) => {
+                                const newType = accountTypes.find(
+                                    (t) => String(t.id) === value,
+                                );
+                                setFormData((prev) => ({
+                                    ...prev,
+                                    account_type_id: value,
+                                    statement_day: newType?.is_credit
+                                        ? prev.statement_day
+                                        : '',
+                                    payment_due_day: newType?.is_credit
+                                        ? prev.payment_due_day
+                                        : '',
+                                }));
+                                setErrors((prev) => {
+                                    const updated = { ...prev };
+                                    delete updated.account_type_id;
+
+                                    return updated;
+                                });
+                            }}
+                        >
+                            <SelectTrigger
+                                id="create_account_type_id"
+                                className="w-full"
+                            >
+                                <SelectValue placeholder="Select a type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {accountTypes.map((accountType) => (
+                                    <SelectItem
+                                        key={accountType.id}
+                                        value={String(accountType.id)}
+                                    >
+                                        {accountType.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.account_type_id?.[0]} />
                     </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="space-y-4 py-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="create_account_type_id">
-                                Account type
-                            </Label>
-                            <Select
-                                value={formData.account_type_id}
-                                onValueChange={(value) => {
-                                    const newType = accountTypes.find(
-                                        (t) => String(t.id) === value,
-                                    );
-                                    setFormData((prev) => ({
-                                        ...prev,
-                                        account_type_id: value,
-                                        statement_day: newType?.is_credit
-                                            ? prev.statement_day
-                                            : '',
-                                        payment_due_day: newType?.is_credit
-                                            ? prev.payment_due_day
-                                            : '',
-                                    }));
-                                    setErrors((prev) => {
-                                        const updated = { ...prev };
-                                        delete updated.account_type_id;
 
-                                        return updated;
-                                    });
-                                }}
-                            >
-                                <SelectTrigger
-                                    id="create_account_type_id"
-                                    className="w-full"
-                                >
-                                    <SelectValue placeholder="Select a type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {accountTypes.map((accountType) => (
-                                        <SelectItem
-                                            key={accountType.id}
-                                            value={String(accountType.id)}
-                                        >
-                                            {accountType.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <InputError message={errors.account_type_id?.[0]} />
-                        </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="create_name">Account name</Label>
+                        <Input
+                            id="create_name"
+                            name="name"
+                            value={formData.name}
+                            onChange={(e) =>
+                                updateField('name', e.target.value)
+                            }
+                            required
+                            placeholder="e.g., Maybank Savings, Cash Wallet"
+                        />
+                        <InputError message={errors.name?.[0]} />
+                    </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="create_name">Account name</Label>
-                            <Input
-                                id="create_name"
-                                name="name"
-                                value={formData.name}
-                                onChange={(e) =>
-                                    updateField('name', e.target.value)
-                                }
-                                required
-                                placeholder="e.g., Maybank Savings, Cash Wallet"
-                            />
-                            <InputError message={errors.name?.[0]} />
-                        </div>
+                    <div className="grid gap-2">
+                        <Label>Color</Label>
+                        <ColorPicker
+                            value={formData.color}
+                            onChange={(color) => updateField('color', color)}
+                        />
+                        <InputError message={errors.color?.[0]} />
+                    </div>
 
-                        <div className="grid gap-2">
-                            <Label>Color</Label>
-                            <ColorPicker
-                                value={formData.color}
-                                onChange={(color) =>
-                                    updateField('color', color)
-                                }
-                            />
-                            <InputError message={errors.color?.[0]} />
-                        </div>
+                    {isCreditCard && (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="create_statement_day">
+                                    Statement day{' '}
+                                    <span className="text-muted-foreground">
+                                        (1-31)
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="create_statement_day"
+                                    name="statement_day"
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="1"
+                                    max="31"
+                                    value={formData.statement_day}
+                                    onChange={(e) =>
+                                        updateField(
+                                            'statement_day',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="e.g. 15"
+                                />
+                                <InputError
+                                    message={errors.statement_day?.[0]}
+                                />
+                            </div>
 
-                        {isCreditCard && (
-                            <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="create_statement_day">
-                                        Statement day{' '}
-                                        <span className="text-muted-foreground">
-                                            (1-31)
-                                        </span>
-                                    </Label>
-                                    <Input
-                                        id="create_statement_day"
-                                        name="statement_day"
-                                        type="number"
-                                        inputMode="decimal"
-                                        min="1"
-                                        max="31"
-                                        value={formData.statement_day}
-                                        onChange={(e) =>
-                                            updateField(
-                                                'statement_day',
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="e.g. 15"
-                                    />
-                                    <InputError
-                                        message={errors.statement_day?.[0]}
-                                    />
-                                </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="create_payment_due_day">
+                                    Payment due day{' '}
+                                    <span className="text-muted-foreground">
+                                        (1-31)
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="create_payment_due_day"
+                                    name="payment_due_day"
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="1"
+                                    max="31"
+                                    value={formData.payment_due_day}
+                                    onChange={(e) =>
+                                        updateField(
+                                            'payment_due_day',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="e.g. 25"
+                                />
+                                <InputError
+                                    message={errors.payment_due_day?.[0]}
+                                />
+                            </div>
+                        </>
+                    )}
 
-                                <div className="grid gap-2">
-                                    <Label htmlFor="create_payment_due_day">
-                                        Payment due day{' '}
-                                        <span className="text-muted-foreground">
-                                            (1-31)
-                                        </span>
-                                    </Label>
-                                    <Input
-                                        id="create_payment_due_day"
-                                        name="payment_due_day"
-                                        type="number"
-                                        inputMode="decimal"
-                                        min="1"
-                                        max="31"
-                                        value={formData.payment_due_day}
-                                        onChange={(e) =>
-                                            updateField(
-                                                'payment_due_day',
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="e.g. 25"
-                                    />
-                                    <InputError
-                                        message={errors.payment_due_day?.[0]}
-                                    />
-                                </div>
-                            </>
-                        )}
+                    <div className="grid gap-2">
+                        <Label htmlFor="create_initial_balance">
+                            Initial balance
+                        </Label>
+                        <Input
+                            id="create_initial_balance"
+                            name="initial_balance"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            value={formData.initial_balance}
+                            onChange={(e) =>
+                                updateField('initial_balance', e.target.value)
+                            }
+                            required
+                        />
+                        <InputError message={errors.initial_balance?.[0]} />
+                        <p className="text-xs text-muted-foreground">
+                            Enter your current account balance. This is your
+                            starting point for tracking.
+                        </p>
+                    </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="create_initial_balance">
-                                Initial balance
-                            </Label>
-                            <Input
-                                id="create_initial_balance"
-                                name="initial_balance"
-                                type="number"
-                                inputMode="decimal"
-                                step="0.01"
-                                value={formData.initial_balance}
-                                onChange={(e) =>
-                                    updateField(
-                                        'initial_balance',
-                                        e.target.value,
-                                    )
-                                }
-                                required
-                            />
-                            <InputError message={errors.initial_balance?.[0]} />
-                            <p className="text-xs text-muted-foreground">
-                                Enter your current account balance. This is your
-                                starting point for tracking.
-                            </p>
-                        </div>
-
-                        <DialogFooter>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => onOpenChange(false)}
-                            >
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={processing}>
-                                {processing ? 'Creating...' : 'Create account'}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                )}
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => onOpenChange(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={processing}>
+                            {processing ? 'Creating...' : 'Create account'}
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     );
@@ -399,22 +417,16 @@ function EditAccountModal({
     open,
     onOpenChange,
     ledgerId,
+    accountTypes,
     onSaved,
 }: {
     readonly account: AccountWithStatement;
     readonly open: boolean;
     readonly onOpenChange: (open: boolean) => void;
     readonly ledgerId: number;
+    readonly accountTypes: AccountType[];
     readonly onSaved: () => void;
 }) {
-    const base = `/api/v1/ledgers/${ledgerId}`;
-
-    const { data: accountTypesResponse, loading: typesLoading } = useApiQuery<{
-        data: AccountType[];
-    }>(open ? `${base}/account-types` : null);
-
-    const accountTypes = accountTypesResponse?.data ?? [];
-
     const [formData, setFormData] = useState<EditFormData>({
         account_type_id: String(account.account_type_id),
         name: account.name,
@@ -464,8 +476,9 @@ function EditAccountModal({
         setProcessing(true);
         setErrors({});
 
-        api.put(`${base}/accounts/${account.id}`, {
-            body: {
+        router.put(
+            `/ledgers/${ledgerId}/accounts/${account.id}`,
+            {
                 account_type_id: formData.account_type_id,
                 name: formData.name,
                 color: formData.color,
@@ -478,59 +491,60 @@ function EditAccountModal({
                     ? formData.payment_due_day || null
                     : null,
             },
-        })
-            .then(() => {
-                setProcessing(false);
-                toast.success('Account updated');
-                onOpenChange(false);
-                onSaved();
-            })
-            .catch((err: unknown) => {
-                setProcessing(false);
-
-                if (err instanceof ApiError && err.isValidationError) {
-                    setErrors(err.validationErrors);
-                } else {
-                    toast.error('Failed to update account');
-                }
-            });
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setProcessing(false);
+                    toast.success('Account updated');
+                    onOpenChange(false);
+                    onSaved();
+                },
+                onError: (errors) => {
+                    setProcessing(false);
+                    setErrors(mapInertiaErrorsArray(errors));
+                },
+            },
+        );
     }
 
     function handleAdjustBalance() {
         setAdjusting(true);
         const diff = parseFloat(newBalance) - currentBalance;
 
-        api.post(`${base}/accounts/${account.id}/adjust-balance`, {
-            body: {
-                amount: diff,
-                description: 'Balance adjustment',
+        router.post(
+            `/ledgers/${ledgerId}/accounts/${account.id}/adjust-balance`,
+            { amount: diff, description: 'Balance adjustment' },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setAdjusting(false);
+                    toast.success('Balance adjusted');
+                    onOpenChange(false);
+                    onSaved();
+                },
+                onError: () => {
+                    setAdjusting(false);
+                    toast.error('Failed to adjust balance');
+                },
             },
-        })
-            .then(() => {
-                setAdjusting(false);
-                toast.success('Balance adjusted');
-                onOpenChange(false);
-                onSaved();
-            })
-            .catch(() => {
-                setAdjusting(false);
-                toast.error('Failed to adjust balance');
-            });
+        );
     }
 
     function handleDelete() {
         setDeleting(true);
-        api.delete(`${base}/accounts/${account.id}`)
-            .then(() => {
+        router.delete(`/ledgers/${ledgerId}/accounts/${account.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
                 toast.success('Account deleted');
                 setShowDeleteConfirm(false);
                 onOpenChange(false);
                 onSaved();
-            })
-            .catch(() => {
+            },
+            onError: () => {
                 setDeleting(false);
                 toast.error('Failed to delete account');
-            });
+            },
+        });
     }
 
     const balanceDiff = parseFloat(newBalance) - currentBalance;
@@ -547,276 +561,253 @@ function EditAccountModal({
                         </DialogDescription>
                     </DialogHeader>
 
-                    {typesLoading ? (
-                        <div className="space-y-4 py-4">
-                            {[1, 2, 3, 4].map((i) => (
-                                <div key={i} className="grid gap-2">
-                                    <Skeleton className="h-4 w-24" />
-                                    <Skeleton className="h-10 w-full" />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <form
-                            onSubmit={handleSubmit}
-                            className="space-y-4 py-2"
-                        >
-                            {/* Account type */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="edit_account_type_id">
-                                    Account type
-                                </Label>
-                                <Select
-                                    value={formData.account_type_id}
-                                    onValueChange={handleAccountTypeChange}
+                    <form onSubmit={handleSubmit} className="space-y-4 py-2">
+                        {/* Account type */}
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit_account_type_id">
+                                Account type
+                            </Label>
+                            <Select
+                                value={formData.account_type_id}
+                                onValueChange={handleAccountTypeChange}
+                            >
+                                <SelectTrigger
+                                    id="edit_account_type_id"
+                                    className="w-full"
                                 >
-                                    <SelectTrigger
-                                        id="edit_account_type_id"
-                                        className="w-full"
-                                    >
-                                        <SelectValue placeholder="Select a type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {accountTypes.map((type) => (
-                                            <SelectItem
-                                                key={type.id}
-                                                value={String(type.id)}
-                                            >
-                                                {type.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError
-                                    message={errors.account_type_id?.[0]}
-                                />
-                            </div>
+                                    <SelectValue placeholder="Select a type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {accountTypes.map((type) => (
+                                        <SelectItem
+                                            key={type.id}
+                                            value={String(type.id)}
+                                        >
+                                            {type.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <InputError message={errors.account_type_id?.[0]} />
+                        </div>
 
-                            {/* Name */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="edit_name">Account name</Label>
-                                <Input
-                                    id="edit_name"
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={(e) =>
-                                        updateField('name', e.target.value)
-                                    }
-                                    required
-                                />
-                                <InputError message={errors.name?.[0]} />
-                            </div>
+                        {/* Name */}
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit_name">Account name</Label>
+                            <Input
+                                id="edit_name"
+                                name="name"
+                                value={formData.name}
+                                onChange={(e) =>
+                                    updateField('name', e.target.value)
+                                }
+                                required
+                            />
+                            <InputError message={errors.name?.[0]} />
+                        </div>
 
-                            {/* Color */}
-                            <div className="grid gap-2">
-                                <Label>Color</Label>
-                                <ColorPicker
-                                    value={formData.color}
-                                    onChange={(color) =>
-                                        updateField('color', color)
-                                    }
-                                />
-                                <InputError message={errors.color?.[0]} />
-                            </div>
+                        {/* Color */}
+                        <div className="grid gap-2">
+                            <Label>Color</Label>
+                            <ColorPicker
+                                value={formData.color}
+                                onChange={(color) =>
+                                    updateField('color', color)
+                                }
+                            />
+                            <InputError message={errors.color?.[0]} />
+                        </div>
 
-                            {/* Initial balance */}
-                            <div className="grid gap-2">
-                                <Label htmlFor="edit_initial_balance">
-                                    Initial balance
-                                </Label>
-                                <Input
-                                    id="edit_initial_balance"
-                                    name="initial_balance"
-                                    type="number"
-                                    inputMode="decimal"
-                                    step="0.01"
-                                    value={formData.initial_balance}
-                                    onChange={(e) =>
-                                        updateField(
-                                            'initial_balance',
-                                            e.target.value,
-                                        )
-                                    }
-                                    required
-                                />
-                                <InputError
-                                    message={errors.initial_balance?.[0]}
-                                />
-                            </div>
+                        {/* Initial balance */}
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit_initial_balance">
+                                Initial balance
+                            </Label>
+                            <Input
+                                id="edit_initial_balance"
+                                name="initial_balance"
+                                type="number"
+                                inputMode="decimal"
+                                step="0.01"
+                                value={formData.initial_balance}
+                                onChange={(e) =>
+                                    updateField(
+                                        'initial_balance',
+                                        e.target.value,
+                                    )
+                                }
+                                required
+                            />
+                            <InputError message={errors.initial_balance?.[0]} />
+                        </div>
 
-                            {/* Statement day (credit only) */}
-                            {effectiveIsCredit && (
-                                <>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="edit_statement_day">
-                                            Statement day{' '}
-                                            <span className="text-muted-foreground">
-                                                (1-31)
-                                            </span>
-                                        </Label>
-                                        <Input
-                                            id="edit_statement_day"
-                                            name="statement_day"
-                                            type="number"
-                                            inputMode="decimal"
-                                            min="1"
-                                            max="31"
-                                            value={formData.statement_day}
-                                            onChange={(e) =>
-                                                updateField(
-                                                    'statement_day',
-                                                    e.target.value,
-                                                )
-                                            }
-                                            placeholder="e.g. 15"
-                                        />
-                                        <InputError
-                                            message={errors.statement_day?.[0]}
-                                        />
-                                    </div>
-
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="edit_payment_due_day">
-                                            Payment due day{' '}
-                                            <span className="text-muted-foreground">
-                                                (1-31)
-                                            </span>
-                                        </Label>
-                                        <Input
-                                            id="edit_payment_due_day"
-                                            name="payment_due_day"
-                                            type="number"
-                                            inputMode="decimal"
-                                            min="1"
-                                            max="31"
-                                            value={formData.payment_due_day}
-                                            onChange={(e) =>
-                                                updateField(
-                                                    'payment_due_day',
-                                                    e.target.value,
-                                                )
-                                            }
-                                            placeholder="e.g. 25"
-                                        />
-                                        <InputError
-                                            message={
-                                                errors.payment_due_day?.[0]
-                                            }
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Include in totals */}
-                            <div className="flex items-center gap-3">
-                                <Checkbox
-                                    id="edit_include_in_totals"
-                                    checked={formData.include_in_totals}
-                                    onCheckedChange={(checked) =>
-                                        updateField(
-                                            'include_in_totals',
-                                            checked === true,
-                                        )
-                                    }
-                                />
-                                <Label htmlFor="edit_include_in_totals">
-                                    Include in totals
-                                </Label>
-                            </div>
-
-                            {/* Adjust balance section */}
-                            <div className="space-y-3 border-t pt-4">
-                                <div>
-                                    <h3 className="text-sm font-medium">
-                                        Adjust balance
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground">
-                                        Set the current balance. An adjustment
-                                        transaction will be created for the
-                                        difference.
-                                    </p>
-                                </div>
-
+                        {/* Statement day (credit only) */}
+                        {effectiveIsCredit && (
+                            <>
                                 <div className="grid gap-2">
-                                    <Label htmlFor="edit_new_balance">
-                                        Current balance:{' '}
-                                        <span className="font-mono">
-                                            {formatAmount(currentBalance)}
+                                    <Label htmlFor="edit_statement_day">
+                                        Statement day{' '}
+                                        <span className="text-muted-foreground">
+                                            (1-31)
                                         </span>
                                     </Label>
                                     <Input
-                                        id="edit_new_balance"
+                                        id="edit_statement_day"
+                                        name="statement_day"
                                         type="number"
                                         inputMode="decimal"
-                                        step="0.01"
-                                        value={newBalance}
+                                        min="1"
+                                        max="31"
+                                        value={formData.statement_day}
                                         onChange={(e) =>
-                                            setNewBalance(e.target.value)
+                                            updateField(
+                                                'statement_day',
+                                                e.target.value,
+                                            )
                                         }
+                                        placeholder="e.g. 15"
+                                    />
+                                    <InputError
+                                        message={errors.statement_day?.[0]}
                                     />
                                 </div>
 
-                                {hasBalanceDiff && (
-                                    <p className="text-xs text-muted-foreground">
-                                        This will create a{' '}
-                                        <span
-                                            className={
-                                                balanceDiff > 0
-                                                    ? 'font-medium text-green-600'
-                                                    : 'font-medium text-red-600'
-                                            }
-                                        >
-                                            {balanceDiff > 0 ? '+' : ''}
-                                            {formatAmount(balanceDiff)}
-                                        </span>{' '}
-                                        {balanceDiff > 0 ? 'income' : 'expense'}{' '}
-                                        adjustment transaction.
-                                    </p>
-                                )}
+                                <div className="grid gap-2">
+                                    <Label htmlFor="edit_payment_due_day">
+                                        Payment due day{' '}
+                                        <span className="text-muted-foreground">
+                                            (1-31)
+                                        </span>
+                                    </Label>
+                                    <Input
+                                        id="edit_payment_due_day"
+                                        name="payment_due_day"
+                                        type="number"
+                                        inputMode="decimal"
+                                        min="1"
+                                        max="31"
+                                        value={formData.payment_due_day}
+                                        onChange={(e) =>
+                                            updateField(
+                                                'payment_due_day',
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="e.g. 25"
+                                    />
+                                    <InputError
+                                        message={errors.payment_due_day?.[0]}
+                                    />
+                                </div>
+                            </>
+                        )}
 
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={
-                                        adjusting ||
-                                        isNaN(parseFloat(newBalance)) ||
-                                        Math.abs(
-                                            parseFloat(newBalance) -
-                                                currentBalance,
-                                        ) < 0.01
-                                    }
-                                    onClick={handleAdjustBalance}
-                                >
-                                    {adjusting
-                                        ? 'Adjusting...'
-                                        : 'Adjust balance'}
-                                </Button>
+                        {/* Include in totals */}
+                        <div className="flex items-center gap-3">
+                            <Checkbox
+                                id="edit_include_in_totals"
+                                checked={formData.include_in_totals}
+                                onCheckedChange={(checked) =>
+                                    updateField(
+                                        'include_in_totals',
+                                        checked === true,
+                                    )
+                                }
+                            />
+                            <Label htmlFor="edit_include_in_totals">
+                                Include in totals
+                            </Label>
+                        </div>
+
+                        {/* Adjust balance section */}
+                        <div className="space-y-3 border-t pt-4">
+                            <div>
+                                <h3 className="text-sm font-medium">
+                                    Adjust balance
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Set the current balance. An adjustment
+                                    transaction will be created for the
+                                    difference.
+                                </p>
                             </div>
 
-                            <DialogFooter className="gap-2 border-t pt-4">
-                                <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                >
-                                    Delete account
-                                </Button>
-                                <div className="flex-1" />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => onOpenChange(false)}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button type="submit" disabled={processing}>
-                                    {processing ? 'Saving...' : 'Save changes'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    )}
+                            <div className="grid gap-2">
+                                <Label htmlFor="edit_new_balance">
+                                    Current balance:{' '}
+                                    <span className="font-mono">
+                                        {formatAmount(currentBalance)}
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="edit_new_balance"
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.01"
+                                    value={newBalance}
+                                    onChange={(e) =>
+                                        setNewBalance(e.target.value)
+                                    }
+                                />
+                            </div>
+
+                            {hasBalanceDiff && (
+                                <p className="text-xs text-muted-foreground">
+                                    This will create a{' '}
+                                    <span
+                                        className={
+                                            balanceDiff > 0
+                                                ? 'font-medium text-green-600'
+                                                : 'font-medium text-red-600'
+                                        }
+                                    >
+                                        {balanceDiff > 0 ? '+' : ''}
+                                        {formatAmount(balanceDiff)}
+                                    </span>{' '}
+                                    {balanceDiff > 0 ? 'income' : 'expense'}{' '}
+                                    adjustment transaction.
+                                </p>
+                            )}
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                    adjusting ||
+                                    isNaN(parseFloat(newBalance)) ||
+                                    Math.abs(
+                                        parseFloat(newBalance) - currentBalance,
+                                    ) < 0.01
+                                }
+                                onClick={handleAdjustBalance}
+                            >
+                                {adjusting ? 'Adjusting...' : 'Adjust balance'}
+                            </Button>
+                        </div>
+
+                        <DialogFooter className="gap-2 border-t pt-4">
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setShowDeleteConfirm(true)}
+                            >
+                                Delete account
+                            </Button>
+                            <div className="flex-1" />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => onOpenChange(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={processing}>
+                                {processing ? 'Saving...' : 'Save changes'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
@@ -858,28 +849,18 @@ function EditAccountModal({
 // ── Main Component ──────────────────────────────────────────────────────
 
 export default function AccountsIndex() {
-    const { currentLedger: ledger } = usePage().props;
-
-    const base = `/api/v1/ledgers/${ledger!.id}`;
-
     const {
-        data: groupsResponse,
-        loading: groupsLoading,
-        refetch: refetchGroups,
-    } = useApiQuery<{ data: AccountGroup[] }>(`${base}/accounts`, {
-        params: {
-            grouped: true,
-            with_type_totals: true,
-            with_statement: true,
-        },
-    });
+        currentLedger: ledger,
+        accounts: accountGroups,
+        accountTypes,
+    } = usePage<{
+        accounts: AccountGroup[];
+        accountTypes: AccountType[];
+    }>().props;
 
-    const { data: netWorthResponse, loading: netWorthLoading } = useApiQuery<{
-        data: NetWorthData;
-    }>(`${base}/net-worth`);
-
-    const accountGroups = groupsResponse?.data ?? [];
-    const netWorth = netWorthResponse?.data ?? null;
+    function refetchData() {
+        router.reload({ only: ['accounts', 'netWorth'] });
+    }
 
     const allAccounts = accountGroups.flatMap((g) => g.accounts);
 
@@ -912,17 +893,19 @@ export default function AccountsIndex() {
         }
 
         setDeleteProcessing(true);
-        api.delete(`${base}/accounts/${deletingAccount.id}`)
-            .then(() => {
+
+        router.delete(`/ledgers/${ledger!.id}/accounts/${deletingAccount.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
                 toast.success('Account deleted');
                 setDeletingAccount(null);
                 setDeleteProcessing(false);
-                refetchGroups();
-            })
-            .catch(() => {
+            },
+            onError: () => {
                 setDeleteProcessing(false);
                 toast.error('Failed to delete account');
-            });
+            },
+        });
     }
 
     function getTransactionsUrl(accountId: number): string {
@@ -997,15 +980,21 @@ export default function AccountsIndex() {
 
         isReorderingRef.current = true;
 
-        api.post(`${base}/accounts/reorder`, { body: { items } })
-            .then(() => {
-                isReorderingRef.current = false;
-                refetchGroups();
-            })
-            .catch(() => {
-                isReorderingRef.current = false;
-                toast.error('Failed to reorder accounts.');
-            });
+        router.post(
+            `/ledgers/${ledger!.id}/accounts/reorder`,
+            { items },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    isReorderingRef.current = false;
+                },
+                onError: () => {
+                    isReorderingRef.current = false;
+                    toast.error('Failed to reorder accounts.');
+                    refetchData();
+                },
+            },
+        );
     }
 
     function handleDragEnd() {
@@ -1241,9 +1230,10 @@ export default function AccountsIndex() {
                 </div>
 
                 {/* Net worth cards - always single row */}
-                <div className="grid grid-cols-3 gap-3">
-                    {netWorthLoading || !netWorth ? (
-                        <>
+                <Deferred
+                    data="netWorth"
+                    fallback={
+                        <div className="grid grid-cols-3 gap-3">
                             {[1, 2, 3].map((i) => (
                                 <Card key={i} className="py-3">
                                     <CardContent className="px-3">
@@ -1252,74 +1242,13 @@ export default function AccountsIndex() {
                                     </CardContent>
                                 </Card>
                             ))}
-                        </>
-                    ) : (
-                        <>
-                            <Card className="py-3">
-                                <CardContent className="px-3">
-                                    <p className="text-xs text-muted-foreground">
-                                        Assets
-                                    </p>
-                                    <p
-                                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.assets)}`}
-                                    >
-                                        {formatAbsAmount(netWorth.assets)}
-                                    </p>
-                                </CardContent>
-                            </Card>
+                        </div>
+                    }
+                >
+                    <NetWorthCards />
+                </Deferred>
 
-                            <Card className="py-3">
-                                <CardContent className="px-3">
-                                    <p className="text-xs text-muted-foreground">
-                                        Liabilities
-                                    </p>
-                                    <p
-                                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(-Math.abs(netWorth.liabilities))}`}
-                                    >
-                                        {formatAbsAmount(netWorth.liabilities)}
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="py-3">
-                                <CardContent className="px-3">
-                                    <p className="text-xs text-muted-foreground">
-                                        Net Worth
-                                    </p>
-                                    <p
-                                        className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.net)}`}
-                                    >
-                                        {formatAbsAmount(netWorth.net)}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        </>
-                    )}
-                </div>
-
-                {/* Loading skeleton for account groups */}
-                {groupsLoading && (
-                    <div className="space-y-6">
-                        {[1, 2].map((i) => (
-                            <section key={i}>
-                                <Skeleton className="mb-3 h-4 w-32" />
-                                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                    {[1, 2, 3].map((j) => (
-                                        <Card key={j} className="py-4">
-                                            <CardContent>
-                                                <Skeleton className="mb-3 h-5 w-40" />
-                                                <Skeleton className="mb-3 h-7 w-28" />
-                                                <Skeleton className="h-3 w-20" />
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-                            </section>
-                        ))}
-                    </div>
-                )}
-
-                {!groupsLoading && allAccounts.length === 0 && (
+                {allAccounts.length === 0 && (
                     <EmptyState
                         icon={<CreditCard className="size-6" />}
                         title="No accounts yet"
@@ -1331,54 +1260,51 @@ export default function AccountsIndex() {
                     />
                 )}
 
-                {!groupsLoading &&
-                    accountGroups.map((group) => {
-                        const color = group.type.color ?? '#6b7280';
-                        const typeAccounts = group.accounts;
+                {accountGroups.map((group) => {
+                    const color = group.type.color ?? '#6b7280';
+                    const typeAccounts = group.accounts;
 
-                        return (
-                            <section key={group.type.id}>
-                                <div className="mb-3 flex items-center gap-2">
-                                    <span
-                                        className="size-3 rounded-full"
-                                        style={{ backgroundColor: color }}
-                                    />
-                                    <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                                        {group.type.name}
-                                    </h2>
-                                </div>
+                    return (
+                        <section key={group.type.id}>
+                            <div className="mb-3 flex items-center gap-2">
+                                <span
+                                    className="size-3 rounded-full"
+                                    style={{ backgroundColor: color }}
+                                />
+                                <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                                    {group.type.name}
+                                </h2>
+                            </div>
 
-                                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                    {typeAccounts.map((account) =>
-                                        renderAccountCard(
-                                            account,
-                                            group.type.id,
-                                            group.type.is_credit,
-                                            typeAccounts,
-                                        ),
-                                    )}
-                                </div>
+                            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                                {typeAccounts.map((account) =>
+                                    renderAccountCard(
+                                        account,
+                                        group.type.id,
+                                        group.type.is_credit,
+                                        typeAccounts,
+                                    ),
+                                )}
+                            </div>
 
-                                {typeAccounts.length > 1 &&
-                                    group.total_balance !== undefined && (
-                                        <div className="mt-3 flex items-center justify-end gap-2 px-1">
-                                            <span className="text-sm font-medium text-muted-foreground">
-                                                Total {group.type.name}:
-                                            </span>
-                                            <span
-                                                className={`text-sm font-semibold tabular-nums ${amountColor(parseFloat(group.total_balance))}`}
-                                            >
-                                                {formatAbsAmount(
-                                                    parseFloat(
-                                                        group.total_balance,
-                                                    ),
-                                                )}
-                                            </span>
-                                        </div>
-                                    )}
-                            </section>
-                        );
-                    })}
+                            {typeAccounts.length > 1 &&
+                                group.total_balance !== undefined && (
+                                    <div className="mt-3 flex items-center justify-end gap-2 px-1">
+                                        <span className="text-sm font-medium text-muted-foreground">
+                                            Total {group.type.name}:
+                                        </span>
+                                        <span
+                                            className={`text-sm font-semibold tabular-nums ${amountColor(parseFloat(group.total_balance))}`}
+                                        >
+                                            {formatAbsAmount(
+                                                parseFloat(group.total_balance),
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
+                        </section>
+                    );
+                })}
             </div>
 
             {/* Create modal */}
@@ -1386,7 +1312,8 @@ export default function AccountsIndex() {
                 open={showCreateModal}
                 onOpenChange={setShowCreateModal}
                 ledgerId={ledger!.id}
-                onCreated={refetchGroups}
+                accountTypes={accountTypes}
+                onCreated={refetchData}
             />
 
             {/* Edit modal */}
@@ -1400,7 +1327,8 @@ export default function AccountsIndex() {
                         }
                     }}
                     ledgerId={ledger!.id}
-                    onSaved={refetchGroups}
+                    accountTypes={accountTypes}
+                    onSaved={refetchData}
                 />
             )}
 

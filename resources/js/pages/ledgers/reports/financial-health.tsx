@@ -1,4 +1,4 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, usePage } from '@inertiajs/react';
 import { BarChart3, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import {
     Area,
@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -52,14 +51,6 @@ type CurrentSnapshot = {
     debt_to_asset_ratio: number;
 };
 
-type FinancialHealthResponse = {
-    data: {
-        net_worth_history: NetWorthEntry[];
-        savings_rate_history: SavingsRateEntry[];
-        current_snapshot: CurrentSnapshot;
-    };
-};
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatMonthLabel(month: string): string {
@@ -68,46 +59,6 @@ function formatMonthLabel(month: string): string {
     const shortMonth = date.toLocaleDateString('en-MY', { month: 'short' });
 
     return `${shortMonth} ${String(year).slice(2)}`;
-}
-
-// ─── Skeleton Components ─────────────────────────────────────────────────────
-
-function FinancialHealthSkeleton() {
-    return (
-        <div className="space-y-6">
-            {/* Snapshot cards skeleton */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                    <Card key={i}>
-                        <CardContent className="pt-6">
-                            <Skeleton className="mb-2 h-3 w-28 rounded" />
-                            <Skeleton className="h-8 w-32 rounded" />
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
-
-            {/* Net worth chart skeleton */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Net worth over time</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Skeleton className="h-[280px] w-full rounded" />
-                </CardContent>
-            </Card>
-
-            {/* Savings rate chart skeleton */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Monthly savings rate</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Skeleton className="h-[280px] w-full rounded" />
-                </CardContent>
-            </Card>
-        </div>
-    );
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -336,16 +287,49 @@ function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function FinancialHealthPage() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
-    const { data: result, loading } = useApiQuery<FinancialHealthResponse>(
-        `${base}/reports/financial-health`,
+function FinancialHealthSkeleton() {
+    return (
+        <div className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-3 w-24 rounded" />
+                            <Skeleton className="h-8 w-32 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Net worth over time</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[280px] w-full rounded" />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Monthly savings rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[280px] w-full rounded" />
+                </CardContent>
+            </Card>
+        </div>
     );
+}
 
-    const health = result?.data;
+export default function FinancialHealthPage() {
+    const { currentLedger, health } = usePage<{
+        health?: {
+            net_worth_history: NetWorthEntry[];
+            savings_rate_history: SavingsRateEntry[];
+            current_snapshot: CurrentSnapshot;
+        };
+    }>().props;
+    const ledger = currentLedger!;
+
     const netWorthHistory = health?.net_worth_history ?? [];
     const savingsRateHistory = health?.savings_rate_history ?? [];
     const currentSnapshot = health?.current_snapshot ?? {
@@ -412,34 +396,30 @@ export default function FinancialHealthPage() {
                     </div>
                 </div>
 
-                {loading ? (
-                    <FinancialHealthSkeleton />
-                ) : (
-                    <>
-                        {/* Current snapshot cards */}
-                        <SnapshotCards snapshot={currentSnapshot} />
+                <Deferred data="health" fallback={<FinancialHealthSkeleton />}>
+                    {/* Current snapshot cards */}
+                    <SnapshotCards snapshot={currentSnapshot} />
 
-                        {/* Net worth history */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Net worth over time</CardTitle>
-                            </CardHeader>
-                            <CardContent className="min-w-0 overflow-hidden">
-                                <NetWorthChart data={netWorthHistory} />
-                            </CardContent>
-                        </Card>
+                    {/* Net worth history */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Net worth over time</CardTitle>
+                        </CardHeader>
+                        <CardContent className="min-w-0 overflow-hidden">
+                            <NetWorthChart data={netWorthHistory} />
+                        </CardContent>
+                    </Card>
 
-                        {/* Savings rate */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Monthly savings rate</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <SavingsRateChart data={savingsRateHistory} />
-                            </CardContent>
-                        </Card>
-                    </>
-                )}
+                    {/* Savings rate */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Monthly savings rate</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <SavingsRateChart data={savingsRateHistory} />
+                        </CardContent>
+                    </Card>
+                </Deferred>
             </div>
         </AppLayout>
     );

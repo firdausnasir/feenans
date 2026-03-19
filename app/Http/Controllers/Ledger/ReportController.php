@@ -21,28 +21,86 @@ class ReportController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/reports/index');
+        $filters = [
+            'date_from' => $request->input('date_from'),
+            'date_to' => $request->input('date_to'),
+            'account_id' => $request->input('account_id'),
+        ];
+
+        // Compute date range cheaply for the filter panel
+        $today = CarbonImmutable::today();
+        $currentCycle = $ledger->cycleBounds($today);
+        $dateFrom = $filters['date_from'] ?? $currentCycle['start']->toDateString();
+        $dateTo = $filters['date_to'] ?? $currentCycle['end']->toDateString();
+        $accountId = $filters['account_id'] ?? null;
+
+        $preset = $this->reportService->detectPreset($ledger, $dateFrom, $dateTo, $today);
+
+        $dateRange = [
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'preset' => $preset,
+            'account_id' => $accountId,
+        ];
+
+        $compareStart = $request->input('compare_start');
+        $compareEnd = $request->input('compare_end');
+
+        return Inertia::render('ledgers/reports/index', [
+            'dateRange' => $dateRange,
+            'allAccounts' => fn () => $ledger->accounts()->orderBy('name')->get(['id', 'name']),
+            'report' => Inertia::defer(function () use ($ledger, $filters, $dateRange, $compareStart, $compareEnd) {
+                $report = $this->reportService->getSpendingReport($ledger, $filters);
+
+                if ($compareStart && $compareEnd) {
+                    $report['comparison'] = $this->reportService->buildComparison(
+                        $ledger,
+                        $dateRange['date_from'],
+                        $dateRange['date_to'],
+                        $compareStart,
+                        $compareEnd,
+                        $dateRange['account_id'],
+                    );
+                }
+
+                return $report;
+            }),
+        ]);
     }
 
     public function financialHealth(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/reports/financial-health');
+        return Inertia::render('ledgers/reports/financial-health', [
+            'health' => Inertia::defer(fn () => $this->reportService->getFinancialHealthReport($ledger)),
+        ]);
     }
 
     public function budgetPerformance(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/reports/budget-performance');
+        $filters = ['period' => $request->input('period')];
+
+        return Inertia::render('ledgers/reports/budget-performance', [
+            'performance' => Inertia::defer(fn () => $this->reportService->getBudgetPerformanceReport($ledger, $filters)),
+        ]);
     }
 
     public function cashFlow(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/reports/cash-flow');
+        $filters = [
+            'date_from' => $request->input('date_from'),
+            'date_to' => $request->input('date_to'),
+            'account_id' => $request->input('account_id'),
+        ];
+
+        return Inertia::render('ledgers/reports/cash-flow', [
+            'cashFlow' => Inertia::defer(fn () => $this->reportService->getCashFlowReport($ledger, $filters)),
+        ]);
     }
 
     public function exportPdf(Request $request, Ledger $ledger): HttpResponse

@@ -3,21 +3,19 @@ import {
     ArrowRightLeft,
     ChevronDown,
     ChevronUp,
-    MoreVertical,
     Paperclip,
 } from 'lucide-react';
 import { useState } from 'react';
 import { TagPill } from '@/components/tag-pill';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { formatAbsAmount, formatDate } from '@/lib/format';
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { amountColor, formatAbsAmount, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
 
@@ -25,6 +23,7 @@ import type { Transaction } from '@/types';
 
 type TransactionCardAction = {
     label: string;
+    icon?: React.ReactNode;
     onClick: () => void;
     variant?: 'default' | 'destructive';
     separator?: boolean;
@@ -46,14 +45,6 @@ type TransactionCardProps = {
     editUrl?: string;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function amountColor(value: number): string {
-    return value < 0
-        ? 'text-red-500 dark:text-red-400'
-        : 'text-foreground';
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TransactionCard({
@@ -68,7 +59,8 @@ export function TransactionCard({
     const [splitsExpanded, setSplitsExpanded] = useState(false);
 
     const isTransfer = transaction.transaction_type === 'transfer';
-    const isSplit = transaction.is_split && (transaction.splits?.length ?? 0) > 0;
+    const isSplit =
+        transaction.is_split && (transaction.splits?.length ?? 0) > 0;
     const hasTags = (transaction.tags?.length ?? 0) > 0;
     const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
     const hasDescription = !!transaction.description;
@@ -131,56 +123,20 @@ export function TransactionCard({
                                 </span>
                             </>
                         ) : (
-                            <span className="truncate text-sm font-semibold italic text-muted-foreground">
+                            <span className="truncate text-sm font-semibold text-muted-foreground italic">
                                 Uncategorized
                             </span>
                         )}
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-1.5">
-                        <span
-                            className={cn(
-                                'text-sm font-bold tabular-nums',
-                                amountColor(amount),
-                            )}
-                        >
-                            {formatAbsAmount(transaction.amount)}
-                        </span>
-
-                        {/* Action menu */}
-                        {actions.length > 0 && (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="relative z-20 flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 data-[state=open]:opacity-100"
-                                    >
-                                        <MoreVertical className="size-4" />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    {actions.map((action, idx) => (
-                                        <span key={action.label}>
-                                            {action.separator && idx > 0 && (
-                                                <DropdownMenuSeparator />
-                                            )}
-                                            <DropdownMenuItem
-                                                className={
-                                                    action.variant ===
-                                                    'destructive'
-                                                        ? 'text-destructive focus:text-destructive'
-                                                        : ''
-                                                }
-                                                onClick={action.onClick}
-                                            >
-                                                {action.label}
-                                            </DropdownMenuItem>
-                                        </span>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                    <span
+                        className={cn(
+                            'shrink-0 text-sm font-bold tabular-nums',
+                            amountColor(amount),
                         )}
-                    </div>
+                    >
+                        {formatAbsAmount(transaction.amount)}
+                    </span>
                 </div>
 
                 {/* Row 2: Payee (skip for transfers) */}
@@ -264,7 +220,9 @@ export function TransactionCard({
                         {splitsExpanded && (
                             <div className="mt-2 space-y-1.5 border-l-2 border-border pl-3">
                                 {transaction.splits!.map((split) => {
-                                    const splitAmount = parseFloat(split.amount);
+                                    const splitAmount = parseFloat(
+                                        split.amount,
+                                    );
 
                                     return (
                                         <div
@@ -323,6 +281,32 @@ export function TransactionCard({
                     </div>
                 )}
             </div>
+
+            {/* Action buttons — vertical strip on the right */}
+            {actions.length > 0 && (
+                <div className="relative z-20 flex shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border px-1.5">
+                    {actions.map((action) => (
+                        <Tooltip key={action.label}>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                        'size-8',
+                                        action.variant === 'destructive'
+                                            ? 'text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300'
+                                            : '',
+                                    )}
+                                    onClick={action.onClick}
+                                >
+                                    {action.icon}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{action.label}</TooltipContent>
+                        </Tooltip>
+                    ))}
+                </div>
+            )}
 
             {/* Click to edit overlay */}
             {editUrl && !selectable && (

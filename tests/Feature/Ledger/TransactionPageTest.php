@@ -18,7 +18,11 @@ test('transaction index page renders the correct component', function () {
 
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/transactions/index')
-        ->has('ledger')
+        ->has('filters')
+        ->has('accounts')
+        ->has('categories')
+        ->has('payees')
+        ->has('tags')
     );
 });
 

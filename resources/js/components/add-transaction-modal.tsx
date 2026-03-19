@@ -1,5 +1,5 @@
 import type { FormDataConvertible, Page } from '@inertiajs/core';
-import { Form, Link } from '@inertiajs/react';
+import { Form, Link, router, usePage } from '@inertiajs/react';
 import confetti from 'canvas-confetti';
 import { CreditCard, Loader2, Paperclip, PlusCircle, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,7 +22,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
@@ -55,76 +54,34 @@ type ModalData = {
     tags: Tag[];
 };
 
-function flattenCategories(
-    categories: (Category & { children?: Category[] })[],
-): Category[] {
-    const result: Category[] = [];
+function useModalData(open: boolean) {
+    const { transactionModalData } = usePage().props;
+    const fetchedRef = useRef(false);
 
-    for (const cat of categories) {
-        const { children, ...parent } = cat;
-        result.push(parent);
-
-        if (children) {
-            for (const child of children) {
-                result.push(child);
-            }
-        }
-    }
-
-    return result;
-}
-
-function useModalData(ledgerId: number, open: boolean) {
-    const [data, setData] = useState<ModalData | null>(null);
-    const [loading, setLoading] = useState(false);
-    const cachedRef = useRef<ModalData | null>(null);
-
-    const fetchData = useCallback(async () => {
-        if (cachedRef.current) {
-            setData(cachedRef.current);
-
+    useEffect(() => {
+        if (!open || transactionModalData || fetchedRef.current) {
             return;
         }
 
-        setLoading(true);
-
-        try {
-            const base = `/api/v1/ledgers/${ledgerId}`;
-
-            const [accounts, categories, payees, tags] = await Promise.all([
-                api.get<{ data: Account[] }>(`${base}/accounts`),
-                api.get<{ data: (Category & { children?: Category[] })[] }>(
-                    `${base}/categories`,
-                ),
-                api.get<{ data: Payee[] }>(`${base}/payees`),
-                api.get<{ data: Tag[] }>(`${base}/tags`),
-            ]);
-
-            const result: ModalData = {
-                accounts: accounts.data ?? [],
-                categories: flattenCategories(categories.data ?? []),
-                payees: payees.data ?? [],
-                tags: tags.data ?? [],
-            };
-
-            cachedRef.current = result;
-            setData(result);
-        } catch {
-            toast.error('Failed to load transaction form data');
-        } finally {
-            setLoading(false);
-        }
-    }, [ledgerId]);
+        fetchedRef.current = true;
+        router.reload({ only: ['transactionModalData'] });
+    }, [open, transactionModalData]);
 
     const invalidateCache = useCallback(() => {
-        cachedRef.current = null;
+        fetchedRef.current = false;
+        router.reload({ only: ['transactionModalData'] });
     }, []);
 
-    useEffect(() => {
-        if (open) {
-            fetchData();
-        }
-    }, [open, fetchData]);
+    const data: ModalData | null = transactionModalData
+        ? {
+              accounts: transactionModalData.accounts ?? [],
+              categories: transactionModalData.categories ?? [],
+              payees: transactionModalData.payees ?? [],
+              tags: transactionModalData.tags ?? [],
+          }
+        : null;
+
+    const loading = open && !transactionModalData;
 
     return { data, loading, invalidateCache };
 }
@@ -164,11 +121,7 @@ export function AddTransactionModal({
         }
     }
 
-    const {
-        data: modalData,
-        loading,
-        invalidateCache,
-    } = useModalData(ledger.id, open);
+    const { data: modalData, loading, invalidateCache } = useModalData(open);
     const accounts = useMemo(() => modalData?.accounts ?? [], [modalData]);
     const categories = useMemo(() => modalData?.categories ?? [], [modalData]);
     const payees = modalData?.payees ?? [];

@@ -1,4 +1,4 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, usePage } from '@inertiajs/react';
 import { AlertTriangle, BarChart3, CheckCircle, XCircle } from 'lucide-react';
 import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -28,13 +27,6 @@ type BudgetStat = {
     percentage: number;
     period: string;
     status: 'good' | 'warning' | 'danger' | 'over';
-};
-
-type BudgetPerformanceResponse = {
-    data: {
-        budget_stats: BudgetStat[];
-        period_label: string;
-    };
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -82,43 +74,6 @@ function StatusIcon({ status }: { status: BudgetStat['status'] }) {
                 <XCircle className="size-4 text-red-600 dark:text-red-400" />
             );
     }
-}
-
-// ─── Skeleton Components ─────────────────────────────────────────────────────
-
-function BudgetPerformanceSkeleton() {
-    return (
-        <div className="space-y-6">
-            {/* Summary cards skeleton */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                    <Card key={i}>
-                        <CardContent className="pt-6">
-                            <Skeleton className="mb-2 h-3 w-24 rounded" />
-                            <Skeleton className="h-8 w-20 rounded" />
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
-
-            {/* Budget cards skeleton */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                    <Card key={i}>
-                        <CardContent className="pt-6">
-                            <Skeleton className="mb-2 h-4 w-32 rounded" />
-                            <Skeleton className="mb-3 h-3 w-16 rounded" />
-                            <Skeleton className="mb-3 h-2 w-full rounded" />
-                            <div className="flex justify-between">
-                                <Skeleton className="h-3 w-20 rounded" />
-                                <Skeleton className="h-3 w-20 rounded" />
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
-        </div>
-    );
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -234,19 +189,46 @@ function BudgetCard({ stat }: { stat: BudgetStat }) {
     );
 }
 
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+function BudgetPerformanceSkeleton() {
+    return (
+        <div className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-2 h-3 w-24 rounded" />
+                            <Skeleton className="h-8 w-32 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                    <Card key={i}>
+                        <CardContent className="pt-6">
+                            <Skeleton className="mb-3 h-4 w-32 rounded" />
+                            <Skeleton className="mb-2 h-2 w-full rounded" />
+                            <Skeleton className="h-3 w-24 rounded" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BudgetPerformancePage() {
-    const { currentLedger } = usePage().props;
+    const { currentLedger, performance } = usePage<{
+        performance?: { budget_stats: BudgetStat[]; period_label: string };
+    }>().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
 
-    const { data: result, loading } = useApiQuery<BudgetPerformanceResponse>(
-        `${base}/reports/budget-performance`,
-    );
-
-    const budgetStats = result?.data?.budget_stats ?? [];
-    const periodLabel = result?.data?.period_label ?? 'current period';
+    const budgetStats = performance?.budget_stats ?? [];
+    const periodLabel = performance?.period_label ?? 'current period';
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -305,31 +287,34 @@ export default function BudgetPerformancePage() {
                     </div>
                 </div>
 
-                {loading ? (
-                    <BudgetPerformanceSkeleton />
-                ) : budgetStats.length === 0 ? (
-                    <Card>
-                        <CardContent className="py-12">
-                            <EmptyState
-                                icon={<BarChart3 className="size-6" />}
-                                title="No active budgets"
-                                description="Create budgets to track your spending against targets."
-                            />
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <>
-                        {/* Summary */}
-                        <BudgetSummary stats={budgetStats} />
+                <Deferred
+                    data="performance"
+                    fallback={<BudgetPerformanceSkeleton />}
+                >
+                    {budgetStats.length === 0 ? (
+                        <Card>
+                            <CardContent className="py-12">
+                                <EmptyState
+                                    icon={<BarChart3 className="size-6" />}
+                                    title="No active budgets"
+                                    description="Create budgets to track your spending against targets."
+                                />
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <>
+                            {/* Summary */}
+                            <BudgetSummary stats={budgetStats} />
 
-                        {/* Budget cards grid */}
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {budgetStats.map((stat) => (
-                                <BudgetCard key={stat.id} stat={stat} />
-                            ))}
-                        </div>
-                    </>
-                )}
+                            {/* Budget cards grid */}
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {budgetStats.map((stat) => (
+                                    <BudgetCard key={stat.id} stat={stat} />
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </Deferred>
             </div>
         </AppLayout>
     );

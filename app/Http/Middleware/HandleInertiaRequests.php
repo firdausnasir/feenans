@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -66,6 +67,39 @@ class HandleInertiaRequests extends Middleware
             'availableLedgers' => $availableLedgers->values(),
             'unread_notifications_count' => $user?->unreadNotifications()->count() ?? 0,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'transactionModalData' => Inertia::optional(function () use ($currentLedger) {
+                if (! $currentLedger) {
+                    return null;
+                }
+
+                $categories = $currentLedger->categories()
+                    ->orderBy('position')
+                    ->get();
+
+                // Build parent-child tree, then flatten for the modal
+                $parentCategories = $categories->whereNull('parent_id')->values();
+                $flatCategories = [];
+
+                foreach ($parentCategories as $parent) {
+                    $flatCategories[] = $parent;
+                    $children = $categories->where('parent_id', $parent->id)->values();
+
+                    foreach ($children as $child) {
+                        $flatCategories[] = $child;
+                    }
+                }
+
+                return [
+                    'accounts' => $currentLedger->accounts()
+                        ->visible()
+                        ->orderBy('position')
+                        ->orderBy('name')
+                        ->get(['id', 'ledger_id', 'name', 'current_balance', 'color']),
+                    'categories' => $flatCategories,
+                    'payees' => $currentLedger->payees()->orderBy('name')->get(),
+                    'tags' => $currentLedger->tags()->orderBy('name')->get(),
+                ];
+            }),
         ];
     }
 }

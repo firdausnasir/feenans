@@ -1,13 +1,9 @@
-import { Head, Link, usePage } from '@inertiajs/react';
-import { Loader2, Pencil, Search, Trash2, Users } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { ExternalLink, Pencil, Search, Trash2, Users } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
-import { TransactionCard } from '@/components/transaction-card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -19,57 +15,135 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api-query';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { BreadcrumbItem, Payee, Transaction } from '@/types';
+import type { BreadcrumbItem, Payee } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 
-type DuplicateGroup = {
-    key: string;
-    payees: PayeeWithCount[];
+type PayeesPageProps = {
+    search: string;
+    payees?: PayeeWithCount[];
 };
-
-type MergeState = {
-    source: PayeeWithCount;
-    target: PayeeWithCount;
-};
-
-function getDuplicateGroups(payees: PayeeWithCount[]): DuplicateGroup[] {
-    const grouped = new Map<string, PayeeWithCount[]>();
-
-    for (const p of payees) {
-        const key = p.name.toLowerCase().trim();
-        const existing = grouped.get(key) ?? [];
-        grouped.set(key, [...existing, p]);
-    }
-
-    return [...grouped.entries()]
-        .filter(([, items]) => items.length > 1)
-        .map(([key, items]) => ({ key, payees: items }));
-}
 
 function PayeesLoadingSkeleton() {
     return (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i}>
-                    <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="flex-1 space-y-2">
-                                <Skeleton className="h-4 w-32" />
-                                <Skeleton className="h-3 w-20" />
-                            </div>
-                            <Skeleton className="h-7 w-7" />
-                            <Skeleton className="h-7 w-7" />
-                        </div>
-                    </CardContent>
-                </Card>
+                <div
+                    key={i}
+                    className="flex items-center rounded-lg border border-border bg-card"
+                >
+                    <div className="flex-1 space-y-1.5 px-3 py-2.5">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-20" />
+                    </div>
+                    <div className="w-10 border-l border-border" />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function PayeesContent({
+    onEdit,
+    onDelete,
+}: {
+    onEdit: (payee: PayeeWithCount) => void;
+    onDelete: (payee: PayeeWithCount) => void;
+}) {
+    const { currentLedger, payees } = usePage<
+        PayeesPageProps & { currentLedger: { id: number } }
+    >().props;
+    const ledgerId = currentLedger!.id;
+    const payeesList = payees ?? [];
+
+    if (payeesList.length === 0) {
+        return (
+            <EmptyState
+                icon={<Users className="size-6" />}
+                title="No payees found"
+                description="Payees will appear here as you create transactions."
+            />
+        );
+    }
+
+    return (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {payeesList.map((payee) => (
+                <div
+                    key={payee.id}
+                    className="group flex rounded-lg border border-border bg-card"
+                >
+                    {/* Content */}
+                    <div className="min-w-0 flex-1 px-3 py-2.5">
+                        <p className="truncate text-sm font-medium">
+                            {payee.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {payee.transactions_count} transaction
+                            {payee.transactions_count !== 1 ? 's' : ''}
+                        </p>
+                    </div>
+
+                    {/* Action strip */}
+                    <div className="flex shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border px-1.5">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-8"
+                                    asChild
+                                >
+                                    <Link
+                                        href={transactionsIndex.url(ledgerId, {
+                                            query: {
+                                                'payee_ids[]': String(payee.id),
+                                            },
+                                        })}
+                                    >
+                                        <ExternalLink className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Transactions</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-8"
+                                    onClick={() => onEdit(payee)}
+                                >
+                                    <Pencil className="size-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-8 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                                    onClick={() => onDelete(payee)}
+                                >
+                                    <Trash2 className="size-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete</TooltipContent>
+                        </Tooltip>
+                    </div>
+                </div>
             ))}
         </div>
     );
@@ -78,700 +152,241 @@ function PayeesLoadingSkeleton() {
 export default function PayeesIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
+    const { search: committedSearch } = usePage<PayeesPageProps>().props;
 
-    const [searchTerm, setSearchTerm] = useState('');
+    const [localSearch, setLocalSearch] = useState(committedSearch);
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [newPayeeName, setNewPayeeName] = useState('');
 
-    const {
-        data: payeesResult,
-        loading,
-        refetch,
-    } = useApiQuery<{ data: PayeeWithCount[] }>(`${base}/payees`, {
-        params: { with_counts: true, search: searchTerm || undefined },
-        deps: [searchTerm],
-    });
-
-    const payees = useMemo(() => payeesResult?.data ?? [], [payeesResult]);
-
-    const [editingId, setEditingId] = useState<number | null>(null);
+    // Edit state
+    const [editingPayee, setEditingPayee] = useState<PayeeWithCount | null>(
+        null,
+    );
     const [editingName, setEditingName] = useState('');
+
+    // Delete state
     const [payeeToDelete, setPayeeToDelete] = useState<PayeeWithCount | null>(
         null,
     );
     const [isDeleting, setIsDeleting] = useState(false);
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [newPayeeName, setNewPayeeName] = useState('');
-    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-    const [mergeState, setMergeState] = useState<MergeState | null>(null);
-    const [isMerging, setIsMerging] = useState(false);
-    const [selectionMode, setSelectionMode] = useState(false);
-
-    // Transaction drill-down state
-    const [selectedPayee, setSelectedPayee] = useState<PayeeWithCount | null>(
-        null,
-    );
-    const [payeeTransactions, setPayeeTransactions] = useState<Transaction[]>(
-        [],
-    );
-    const [loadingTransactions, setLoadingTransactions] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Payees', href: payeesIndex.url(ledger.id) },
     ];
 
-    const selectedPayees = useMemo(
-        () => payees.filter((p) => selectedIds.has(p.id)),
-        [payees, selectedIds],
-    );
-
-    const canMerge = selectedPayees.length === 2;
-
     function handleSearch(value: string) {
-        setSearchTerm(value);
-    }
-
-    function toggleSelection(payeeId: number) {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-
-            if (next.has(payeeId)) {
-                next.delete(payeeId);
-            } else {
-                next.add(payeeId);
-            }
-
-            return next;
+        setLocalSearch(value);
+        router.get(payeesIndex.url(ledger.id), value ? { search: value } : {}, {
+            only: ['payees', 'search'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
         });
     }
 
-    function clearSelection() {
-        setSelectedIds(new Set());
-        setSelectionMode(false);
-    }
+    function handleAddPayee() {
+        const trimmed = newPayeeName.trim();
 
-    function startMerge() {
-        if (!canMerge) {
+        if (!trimmed) {
             return;
         }
 
-        const [first, second] = selectedPayees;
-        setMergeState({ source: first, target: second });
-    }
-
-    function swapMergeDirection() {
-        if (!mergeState) {
-            return;
-        }
-
-        setMergeState({
-            source: mergeState.target,
-            target: mergeState.source,
-        });
-    }
-
-    async function handleMerge() {
-        if (!mergeState) {
-            return;
-        }
-
-        setIsMerging(true);
-
-        try {
-            await api.post(`${base}/payees/merge`, {
-                body: {
-                    source_id: mergeState.source.id,
-                    target_id: mergeState.target.id,
+        router.post(
+            `/ledgers/${ledger.id}/payees`,
+            { name: trimmed },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setNewPayeeName('');
+                    setShowAddForm(false);
+                    toast.success('Payee added');
                 },
-            });
-            toast.success(
-                `Merged "${mergeState.source.name}" into "${mergeState.target.name}"`,
-            );
-            setMergeState(null);
-            clearSelection();
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const message =
-                    errors.source_id?.[0] ??
-                    errors.target_id?.[0] ??
-                    'Failed to merge payees.';
-                toast.error(message);
-            } else {
-                toast.error('Failed to merge payees.');
-            }
-        } finally {
-            setIsMerging(false);
-        }
+                onError: (errors) => {
+                    toast.error(
+                        typeof errors.name === 'string'
+                            ? errors.name
+                            : 'Failed to add payee',
+                    );
+                },
+            },
+        );
     }
 
-    function startEditing(payee: PayeeWithCount, event: React.MouseEvent) {
-        event.stopPropagation();
-        setEditingId(payee.id);
+    function handleStartEdit(payee: PayeeWithCount) {
+        setEditingPayee(payee);
         setEditingName(payee.name);
     }
 
-    function cancelEditing() {
-        setEditingId(null);
-        setEditingName('');
-    }
+    function handleSubmitEdit() {
+        if (!editingPayee) {
+            return;
+        }
 
-    async function submitEdit(payee: PayeeWithCount) {
         const trimmed = editingName.trim();
 
-        if (!trimmed || trimmed === payee.name) {
-            cancelEditing();
+        if (!trimmed || trimmed === editingPayee.name) {
+            setEditingPayee(null);
 
             return;
         }
 
-        try {
-            await api.patch(`${base}/payees/${payee.id}`, {
-                body: { name: trimmed },
-            });
-            setEditingId(null);
-            setEditingName('');
-            toast.success('Payee updated');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const message =
-                    err.validationErrors.name?.[0] ?? 'Failed to update payee.';
-                toast.error(message);
-            } else {
-                toast.error('Failed to update payee.');
-            }
-        }
+        router.patch(
+            `/ledgers/${ledger.id}/payees/${editingPayee.id}`,
+            { name: trimmed },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setEditingPayee(null);
+                    toast.success('Payee updated');
+                },
+                onError: (errors) => {
+                    toast.error(
+                        typeof errors.name === 'string'
+                            ? errors.name
+                            : 'Failed to update payee',
+                    );
+                },
+            },
+        );
     }
 
-    async function handlePayeeClick(payee: PayeeWithCount) {
-        if (selectionMode) {
-            toggleSelection(payee.id);
-
-            return;
-        }
-
-        if (editingId === payee.id) {
-            return;
-        }
-
-        setSelectedPayee(payee);
-        setLoadingTransactions(true);
-        setPayeeTransactions([]);
-
-        try {
-            const data = await api.get<{ data: Transaction[] }>(
-                `${base}/transactions`,
-                { params: { payee_ids: [payee.id], per_page: 20 } },
-            );
-            setPayeeTransactions(data.data ?? []);
-        } catch {
-            setPayeeTransactions([]);
-            toast.error('Failed to load transactions.');
-        } finally {
-            setLoadingTransactions(false);
-        }
-    }
-
-    async function handleDelete() {
+    function handleDelete() {
         if (!payeeToDelete) {
             return;
         }
 
         setIsDeleting(true);
 
-        try {
-            await api.delete(`${base}/payees/${payeeToDelete.id}`);
-            setPayeeToDelete(null);
-            setIsDeleting(false);
-
-            if (selectedPayee?.id === payeeToDelete.id) {
-                setSelectedPayee(null);
-                setPayeeTransactions([]);
-            }
-
-            toast.success('Payee deleted');
-            refetch();
-        } catch {
-            toast.error('Failed to delete payee.');
-            setIsDeleting(false);
-        }
-    }
-
-    async function handleAddPayee() {
-        const trimmed = newPayeeName.trim();
-
-        if (!trimmed) {
-            toast.error('Payee name is required.');
-
-            return;
-        }
-
-        try {
-            await api.post(`${base}/payees`, {
-                body: { name: trimmed },
-            });
-            setNewPayeeName('');
-            setShowAddForm(false);
-            toast.success('Payee added');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const message =
-                    err.validationErrors.name?.[0] ?? 'Failed to add payee.';
-                toast.error(message);
-            } else {
-                toast.error('Failed to add payee.');
-            }
-        }
-    }
-
-    const hasPayees = payees.length > 0 || searchTerm;
-
-    const duplicateGroups = useMemo(() => getDuplicateGroups(payees), [payees]);
-    const duplicateCount = duplicateGroups.reduce(
-        (sum, g) => sum + g.payees.length,
-        0,
-    );
-
-    // Duplicate merge dialog state
-    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
-    const [resolvedKeys, setResolvedKeys] = useState<Set<string>>(new Set());
-    const [groupTargets, setGroupTargets] = useState<Record<string, number>>(
-        {},
-    );
-    const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
-
-    const pendingGroups = duplicateGroups.filter(
-        (g) => !resolvedKeys.has(g.key),
-    );
-
-    function openDuplicateDialog() {
-        setResolvedKeys(new Set());
-
-        const targets: Record<string, number> = {};
-
-        for (const g of duplicateGroups) {
-            const best = [...g.payees].sort(
-                (a, b) => b.transactions_count - a.transactions_count,
-            )[0];
-            targets[g.key] = best.id;
-        }
-
-        setGroupTargets(targets);
-        setShowDuplicateDialog(true);
-    }
-
-    async function handleMergeGroup(group: DuplicateGroup) {
-        const targetId = groupTargets[group.key];
-
-        if (!targetId) {
-            return;
-        }
-
-        const sources = group.payees.filter((p) => p.id !== targetId);
-
-        if (sources.length === 0) {
-            return;
-        }
-
-        setMergingGroupKey(group.key);
-
-        try {
-            for (const source of sources) {
-                await api.post(`${base}/payees/merge`, {
-                    body: { source_id: source.id, target_id: targetId },
-                });
-            }
-
-            const targetName =
-                group.payees.find((p) => p.id === targetId)?.name ?? '';
-            toast.success(
-                `Merged ${sources.length} payee${sources.length > 1 ? 's' : ''} into "${targetName}"`,
-            );
-            setResolvedKeys((prev) => {
-                const next = new Set(prev);
-                next.add(group.key);
-
-                if (next.size >= duplicateGroups.length) {
-                    setShowDuplicateDialog(false);
-                }
-
-                return next;
-            });
-            refetch();
-        } catch {
-            toast.error('Failed to merge payees.');
-        } finally {
-            setMergingGroupKey(null);
-        }
+        router.delete(`/ledgers/${ledger.id}/payees/${payeeToDelete.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setPayeeToDelete(null);
+                setIsDeleting(false);
+                toast.success('Payee deleted');
+            },
+            onError: () => {
+                setIsDeleting(false);
+                toast.error('Failed to delete payee');
+            },
+        });
     }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} payees`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6 lg:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <Heading
                         title="Payees"
                         description="Manage payees for this ledger."
                     />
-
-                    <div className="flex w-full items-center gap-2 sm:w-auto">
-                        {selectionMode && (
-                            <>
-                                {canMerge && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={startMerge}
-                                    >
-                                        Merge Selected
-                                    </Button>
-                                )}
-                                {selectedIds.size > 0 && !canMerge && (
-                                    <span className="text-sm text-muted-foreground">
-                                        Select exactly 2 to merge
-                                    </span>
-                                )}
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={clearSelection}
-                                >
-                                    Cancel
-                                </Button>
-                            </>
-                        )}
-                        {!selectionMode && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectionMode(true)}
-                            >
-                                Select to Merge
-                            </Button>
-                        )}
-                        <Button
-                            type="button"
-                            className="flex-1 sm:flex-initial"
-                            onClick={() => {
-                                setShowAddForm(true);
-                                setNewPayeeName('');
-                            }}
-                        >
-                            Add Payee
-                        </Button>
-                    </div>
+                    <Button
+                        className="w-full sm:w-auto"
+                        onClick={() => {
+                            setShowAddForm(true);
+                            setNewPayeeName('');
+                        }}
+                    >
+                        Add Payee
+                    </Button>
                 </div>
 
-                {/* Search bar */}
-                {hasPayees && (
-                    <div className="relative max-w-sm">
-                        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            placeholder="Search payees..."
-                            value={searchTerm}
-                            onChange={(e) => handleSearch(e.target.value)}
-                            className="pl-9"
-                        />
-                    </div>
-                )}
+                {/* Search bar - full width on mobile */}
+                <div className="relative">
+                    <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder="Search payees..."
+                        value={localSearch}
+                        onChange={(e) => handleSearch(e.target.value)}
+                        className="pl-9"
+                    />
+                </div>
 
-                {/* Duplicate detection banner */}
-                {duplicateGroups.length > 0 && !selectionMode && (
-                    <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2.5">
-                        <p className="flex-1 text-sm text-blue-400">
-                            We found {duplicateGroups.length} group
-                            {duplicateGroups.length > 1 ? 's' : ''} of potential
-                            duplicate payees ({duplicateCount} total).
-                        </p>
+                {/* Inline add form */}
+                {showAddForm && (
+                    <div className="flex items-center gap-2">
+                        <Input
+                            autoFocus
+                            placeholder="Payee name"
+                            value={newPayeeName}
+                            onChange={(e) => setNewPayeeName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    handleAddPayee();
+                                } else if (e.key === 'Escape') {
+                                    setShowAddForm(false);
+                                    setNewPayeeName('');
+                                }
+                            }}
+                            className="h-8 max-w-xs"
+                        />
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleAddPayee}
+                        >
+                            Save
+                        </Button>
                         <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="shrink-0 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                            onClick={openDuplicateDialog}
+                            onClick={() => {
+                                setShowAddForm(false);
+                                setNewPayeeName('');
+                            }}
                         >
-                            Review &amp; Merge
+                            Cancel
                         </Button>
                     </div>
                 )}
 
-                {/* Inline add form */}
-                {showAddForm && (
-                    <Card className="py-3">
-                        <CardContent>
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    autoFocus
-                                    placeholder="Payee name"
-                                    value={newPayeeName}
-                                    onChange={(e) =>
-                                        setNewPayeeName(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleAddPayee();
-                                        } else if (e.key === 'Escape') {
-                                            setShowAddForm(false);
-                                            setNewPayeeName('');
-                                        }
-                                    }}
-                                    className="h-8 max-w-xs"
-                                />
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={handleAddPayee}
-                                >
-                                    Save
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                        setShowAddForm(false);
-                                        setNewPayeeName('');
-                                    }}
-                                >
-                                    Cancel
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {loading ? (
-                    <PayeesLoadingSkeleton />
-                ) : payees.length === 0 && !showAddForm ? (
-                    <EmptyState
-                        icon={<Users className="size-6" />}
-                        title={
-                            searchTerm
-                                ? 'No payees match your search'
-                                : 'No payees yet'
-                        }
-                        description={
-                            searchTerm
-                                ? 'Try a different search term.'
-                                : 'Payees will appear here as you create transactions.'
-                        }
+                {/* Payees list */}
+                <Deferred data="payees" fallback={<PayeesLoadingSkeleton />}>
+                    <PayeesContent
+                        onEdit={handleStartEdit}
+                        onDelete={setPayeeToDelete}
                     />
-                ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {payees.map((payee) => (
-                            <Card
-                                key={payee.id}
-                                className={cn(
-                                    'cursor-pointer transition-shadow hover:shadow-md',
-                                    selectionMode &&
-                                        selectedIds.has(payee.id) &&
-                                        'bg-accent/50 ring-2 ring-primary',
-                                )}
-                                onClick={() => handlePayeeClick(payee)}
-                            >
-                                <CardContent className="flex items-center justify-between p-4">
-                                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                                        {selectionMode && (
-                                            <div
-                                                onClick={(e) =>
-                                                    e.stopPropagation()
-                                                }
-                                            >
-                                                <Checkbox
-                                                    checked={selectedIds.has(
-                                                        payee.id,
-                                                    )}
-                                                    onCheckedChange={() =>
-                                                        toggleSelection(
-                                                            payee.id,
-                                                        )
-                                                    }
-                                                    aria-label={`Select ${payee.name}`}
-                                                />
-                                            </div>
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                            {editingId === payee.id ? (
-                                                <div
-                                                    className="flex items-center gap-2"
-                                                    onClick={(e) =>
-                                                        e.stopPropagation()
-                                                    }
-                                                >
-                                                    <Input
-                                                        autoFocus
-                                                        value={editingName}
-                                                        onChange={(e) =>
-                                                            setEditingName(
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        onKeyDown={(e) => {
-                                                            if (
-                                                                e.key ===
-                                                                'Enter'
-                                                            ) {
-                                                                submitEdit(
-                                                                    payee,
-                                                                );
-                                                            } else if (
-                                                                e.key ===
-                                                                'Escape'
-                                                            ) {
-                                                                cancelEditing();
-                                                            }
-                                                        }}
-                                                        className="h-7 text-sm"
-                                                    />
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        className="h-7 px-2 text-xs"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            submitEdit(payee);
-                                                        }}
-                                                    >
-                                                        Save
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-7 px-2 text-xs"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            cancelEditing();
-                                                        }}
-                                                    >
-                                                        Cancel
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <p className="truncate font-medium">
-                                                        {payee.name}
-                                                    </p>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        {
-                                                            payee.transactions_count
-                                                        }{' '}
-                                                        transaction
-                                                        {payee.transactions_count !==
-                                                        1
-                                                            ? 's'
-                                                            : ''}
-                                                    </p>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {editingId !== payee.id && (
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="size-7"
-                                                onClick={(e) =>
-                                                    startEditing(payee, e)
-                                                }
-                                                title="Rename"
-                                            >
-                                                <Pencil className="size-3.5" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="size-7 text-destructive hover:text-destructive"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setPayeeToDelete(payee);
-                                                }}
-                                                title="Delete"
-                                            >
-                                                <Trash2 className="size-3.5" />
-                                            </Button>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                )}
+                </Deferred>
             </div>
 
-            {/* Transaction drill-down modal */}
+            {/* Edit dialog */}
             <Dialog
-                open={selectedPayee !== null}
+                open={editingPayee !== null}
                 onOpenChange={(open) => {
                     if (!open) {
-                        setSelectedPayee(null);
-                        setPayeeTransactions([]);
+                        setEditingPayee(null);
                     }
                 }}
             >
-                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{selectedPayee?.name}</DialogTitle>
-                        <DialogDescription>
-                            Recent transactions for this payee.
-                        </DialogDescription>
+                        <DialogTitle>Edit payee</DialogTitle>
                     </DialogHeader>
-
-                    <div className="space-y-2">
-                        {loadingTransactions ? (
-                            <div className="flex items-center justify-center py-8">
-                                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : payeeTransactions.length === 0 ? (
-                            <p className="py-6 text-center text-sm text-muted-foreground">
-                                No transactions found.
-                            </p>
-                        ) : (
-                            <>
-                                {payeeTransactions.map((txn) => (
-                                    <TransactionCard
-                                        key={txn.id}
-                                        transaction={txn}
-                                    />
-                                ))}
-                                <div className="pt-2 text-center">
-                                    <Button
-                                        type="button"
-                                        variant="link"
-                                        size="sm"
-                                        asChild
-                                    >
-                                        <Link
-                                            href={transactionsIndex.url(
-                                                ledger.id,
-                                                {
-                                                    query: {
-                                                        'payee_ids[]': String(
-                                                            selectedPayee?.id ??
-                                                                '',
-                                                        ),
-                                                    },
-                                                },
-                                            )}
-                                        >
-                                            View all transactions
-                                        </Link>
-                                    </Button>
-                                </div>
-                            </>
-                        )}
+                    <div className="py-4">
+                        <Input
+                            autoFocus
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    handleSubmitEdit();
+                                }
+                            }}
+                            placeholder="Payee name"
+                        />
                     </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setEditingPayee(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSubmitEdit}>Save</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -795,16 +410,13 @@ export default function PayeesIndex() {
                                     <>
                                         {' '}
                                         This payee has{' '}
-                                        <strong>
-                                            {payeeToDelete.transactions_count}{' '}
-                                            {payeeToDelete.transactions_count ===
-                                            1
-                                                ? 'transaction'
-                                                : 'transactions'}
-                                        </strong>
-                                        . The transactions will not be deleted
-                                        but will no longer be associated with a
-                                        payee.
+                                        {payeeToDelete.transactions_count}{' '}
+                                        transaction
+                                        {payeeToDelete.transactions_count !== 1
+                                            ? 's'
+                                            : ''}
+                                        . The payee will be unlinked from those
+                                        transactions.
                                     </>
                                 )}
                         </DialogDescription>
@@ -812,12 +424,7 @@ export default function PayeesIndex() {
                     <DialogFooter>
                         <Button
                             variant="outline"
-                            onClick={() => {
-                                if (!isDeleting) {
-                                    setPayeeToDelete(null);
-                                }
-                            }}
-                            disabled={isDeleting}
+                            onClick={() => setPayeeToDelete(null)}
                         >
                             Cancel
                         </Button>
@@ -829,215 +436,6 @@ export default function PayeesIndex() {
                             {isDeleting ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Merge confirmation dialog */}
-            <Dialog
-                open={mergeState !== null}
-                onOpenChange={(open) => {
-                    if (!open && !isMerging) {
-                        setMergeState(null);
-                    }
-                }}
-            >
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Merge payees</DialogTitle>
-                        <DialogDescription>
-                            All{' '}
-                            <strong>
-                                {mergeState?.source.transactions_count ?? 0}
-                            </strong>{' '}
-                            {(mergeState?.source.transactions_count ?? 0) === 1
-                                ? 'transaction'
-                                : 'transactions'}{' '}
-                            from <strong>{mergeState?.source.name}</strong> will
-                            be reassigned to{' '}
-                            <strong>{mergeState?.target.name}</strong>, and{' '}
-                            <strong>{mergeState?.source.name}</strong> will be
-                            deleted.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={swapMergeDirection}
-                            disabled={isMerging}
-                        >
-                            Swap Direction
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                if (!isMerging) {
-                                    setMergeState(null);
-                                }
-                            }}
-                            disabled={isMerging}
-                        >
-                            Cancel
-                        </Button>
-                        <Button onClick={handleMerge} disabled={isMerging}>
-                            {isMerging ? 'Merging...' : 'Merge'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Duplicate merge workflow dialog */}
-            <Dialog
-                open={showDuplicateDialog}
-                onOpenChange={(open) => {
-                    if (!open && !mergingGroupKey) {
-                        setShowDuplicateDialog(false);
-                    }
-                }}
-            >
-                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Merge duplicate payees</DialogTitle>
-                        <DialogDescription>
-                            {pendingGroups.length === 0
-                                ? 'All duplicates have been merged!'
-                                : `${pendingGroups.length} group${pendingGroups.length > 1 ? 's' : ''} remaining. Select the payee to keep for each group.`}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {pendingGroups.length === 0 ? (
-                        <div className="py-4 text-center">
-                            <Button
-                                onClick={() => setShowDuplicateDialog(false)}
-                            >
-                                Done
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="space-y-6 py-2">
-                            {pendingGroups.map((group) => {
-                                const targetId = groupTargets[group.key];
-                                const isGroupMerging =
-                                    mergingGroupKey === group.key;
-                                const isPair = group.payees.length === 2;
-
-                                return (
-                                    <div
-                                        key={group.key}
-                                        className="rounded-lg border p-4"
-                                    >
-                                        <p className="mb-3 text-sm font-medium">
-                                            &ldquo;{group.key}&rdquo;
-                                            <span className="ml-1 text-xs text-muted-foreground">
-                                                ({group.payees.length} payees)
-                                            </span>
-                                        </p>
-
-                                        <div className="space-y-2">
-                                            {group.payees.map((p) => (
-                                                <label
-                                                    key={p.id}
-                                                    className={cn(
-                                                        'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
-                                                        targetId === p.id
-                                                            ? 'border-primary bg-primary/5'
-                                                            : 'border-border hover:bg-muted/50',
-                                                    )}
-                                                >
-                                                    <input
-                                                        type="radio"
-                                                        name={`target-${group.key}`}
-                                                        value={p.id}
-                                                        checked={
-                                                            targetId === p.id
-                                                        }
-                                                        onChange={() =>
-                                                            setGroupTargets(
-                                                                (prev) => ({
-                                                                    ...prev,
-                                                                    [group.key]:
-                                                                        p.id,
-                                                                }),
-                                                            )
-                                                        }
-                                                        className="accent-primary"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <span className="text-sm font-medium">
-                                                            {p.name}
-                                                        </span>
-                                                        <span className="ml-2 text-xs text-muted-foreground">
-                                                            {
-                                                                p.transactions_count
-                                                            }{' '}
-                                                            transaction
-                                                            {p.transactions_count !==
-                                                            1
-                                                                ? 's'
-                                                                : ''}
-                                                        </span>
-                                                    </div>
-                                                    {targetId === p.id && (
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className="text-xs"
-                                                        >
-                                                            Keep
-                                                        </Badge>
-                                                    )}
-                                                </label>
-                                            ))}
-                                        </div>
-
-                                        {isPair && (
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const other =
-                                                            group.payees.find(
-                                                                (p) =>
-                                                                    p.id !==
-                                                                    targetId,
-                                                            );
-
-                                                        if (other) {
-                                                            setGroupTargets(
-                                                                (prev) => ({
-                                                                    ...prev,
-                                                                    [group.key]:
-                                                                        other.id,
-                                                                }),
-                                                            );
-                                                        }
-                                                    }}
-                                                    disabled={isGroupMerging}
-                                                >
-                                                    Swap direction
-                                                </Button>
-                                            </div>
-                                        )}
-
-                                        <div className="mt-3 flex justify-end">
-                                            <Button
-                                                size="sm"
-                                                onClick={() =>
-                                                    handleMergeGroup(group)
-                                                }
-                                                disabled={
-                                                    !targetId || isGroupMerging
-                                                }
-                                            >
-                                                {isGroupMerging
-                                                    ? 'Merging...'
-                                                    : 'Merge this group'}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
                 </DialogContent>
             </Dialog>
         </AppLayout>

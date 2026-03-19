@@ -1,4 +1,4 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import {
     ArrowDown,
     ArrowUp,
@@ -46,7 +46,6 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -147,29 +146,26 @@ type ComparisonData = {
     summary: ComparisonSummary;
 };
 
-type SpendingReportResponse = {
-    data: {
-        monthly_trends: MonthlyTrend[];
-        category_breakdown: CategoryBreakdownResponse;
-        payee_breakdown: PayeeBreakdownItem[];
-        income_category_breakdown: CategoryBreakdownResponse;
-        income_payee_breakdown: PayeeBreakdownItem[];
-        spending_heatmap: HeatmapDay[];
-        summary: {
-            total_income: number;
-            total_expense: number;
-            net: number;
-            transaction_count: number;
-        };
-        date_range: {
-            date_from: string;
-            date_to: string;
-            preset: string;
-            account_id: string | null;
-        };
-        all_accounts: ReportAccount[];
-        comparison: ComparisonData | null;
+type SpendingReport = {
+    monthly_trends: MonthlyTrend[];
+    category_breakdown: CategoryBreakdownResponse;
+    payee_breakdown: PayeeBreakdownItem[];
+    income_category_breakdown: CategoryBreakdownResponse;
+    income_payee_breakdown: PayeeBreakdownItem[];
+    spending_heatmap: HeatmapDay[];
+    summary: {
+        total_income: number;
+        total_expense: number;
+        net: number;
+        transaction_count: number;
     };
+    date_range: {
+        date_from: string;
+        date_to: string;
+        preset: string;
+        account_id: string | null;
+    };
+    comparison: ComparisonData | null;
 };
 
 type Filters = {
@@ -344,41 +340,6 @@ const CHART_COLORS = [
 
 function getCategoryColor(color: string | null, index: number): string {
     return color ?? CHART_COLORS[index % CHART_COLORS.length];
-}
-
-// ─── Skeleton Components ─────────────────────────────────────────────────────
-
-function ChartSkeleton() {
-    return (
-        <div className="space-y-3">
-            <Skeleton className="h-[250px] w-full rounded" />
-        </div>
-    );
-}
-
-function TableSkeleton({ rows = 5 }: { rows?: number }) {
-    return (
-        <div className="space-y-2">
-            {Array.from({ length: rows }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full rounded" />
-            ))}
-        </div>
-    );
-}
-
-function SummaryCardsSkeleton() {
-    return (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i}>
-                    <CardContent className="pt-6">
-                        <Skeleton className="mb-2 h-3 w-24 rounded" />
-                        <Skeleton className="h-8 w-32 rounded" />
-                    </CardContent>
-                </Card>
-            ))}
-        </div>
-    );
 }
 
 // ─── Components ───────────────────────────────────────────────────────────────
@@ -1817,52 +1778,24 @@ function buildSummarySentence(summary: ComparisonSummary): string | null {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-function computeDefaultDates(cycleStartDay: number): {
-    date_from: string;
-    date_to: string;
-} {
-    const today = new Date();
-    const { start, end } = getCycleBounds(today, cycleStartDay);
-
-    return {
-        date_from: toDateString(start),
-        date_to: toDateString(end),
-    };
-}
-
 export default function ReportsIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
-    const defaultDates = computeDefaultDates(ledger.cycle_start_day);
-
-    const [filters, setFilters] = useState<Filters>({
-        date_from: defaultDates.date_from,
-        date_to: defaultDates.date_to,
-        preset: 'this_month',
-        account_id: null,
-        compare_start: null,
-        compare_end: null,
-    });
+    const { dateRange, allAccounts, report } = usePage<{
+        dateRange: {
+            date_from: string;
+            date_to: string;
+            preset: string;
+            account_id: string | null;
+        };
+        allAccounts: ReportAccount[];
+        report?: SpendingReport;
+    }>().props;
 
     const [compareEnabled, setCompareEnabled] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
 
-    const apiParams: Record<string, string | null | undefined> = {
-        date_from: filters.date_from || undefined,
-        date_to: filters.date_to || undefined,
-        account_id: filters.account_id || undefined,
-        compare_start: filters.compare_start || undefined,
-        compare_end: filters.compare_end || undefined,
-    };
-
-    const { data: result, loading } = useApiQuery<SpendingReportResponse>(
-        `${base}/reports/spending`,
-        { params: apiParams, deps: [filters] },
-    );
-
-    const report = result?.data ?? null;
+    // Derived from deferred report (safe defaults)
     const monthlyTrend = report?.monthly_trends ?? [];
     const categoryBreakdown = report?.category_breakdown ?? {
         items: [],
@@ -1875,17 +1808,38 @@ export default function ReportsIndex() {
     };
     const incomePayeeBreakdown = report?.income_payee_breakdown ?? [];
     const spendingHeatmap = report?.spending_heatmap ?? [];
-    const allAccounts = report?.all_accounts ?? [];
     const comparison = report?.comparison ?? null;
-    const dateRange = report?.date_range ?? {
-        date_from: filters.date_from,
-        date_to: filters.date_to,
-        preset: filters.preset,
-        account_id: filters.account_id,
+
+    const filters: Filters = {
+        date_from: dateRange.date_from,
+        date_to: dateRange.date_to,
+        preset: dateRange.preset,
+        account_id: dateRange.account_id,
+        compare_start: comparison?.compare_period.from ?? null,
+        compare_end: comparison?.compare_period.to ?? null,
     };
 
     const handleFiltersChange = (newFilters: Partial<Filters>) => {
-        setFilters((prev) => ({ ...prev, ...newFilters }));
+        const merged = { ...filters, ...newFilters };
+
+        router.get(
+            reportsIndex.url(ledger.id),
+            Object.fromEntries(
+                Object.entries({
+                    date_from: merged.date_from,
+                    date_to: merged.date_to,
+                    account_id: merged.account_id,
+                    compare_start: merged.compare_start,
+                    compare_end: merged.compare_end,
+                }).filter(([, v]) => v != null && v !== ''),
+            ),
+            {
+                only: ['report', 'dateRange'],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
     };
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -1978,37 +1932,32 @@ export default function ReportsIndex() {
                     onFiltersChange={handleFiltersChange}
                 />
 
-                {loading ? (
-                    <div className="space-y-6">
-                        <SummaryCardsSkeleton />
-                        <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+                {/* Content */}
+                <Deferred
+                    data="report"
+                    fallback={
+                        <div className="space-y-6">
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {[1, 2, 3].map((i) => (
+                                    <Card key={i}>
+                                        <CardContent className="pt-6">
+                                            <Skeleton className="mb-2 h-3 w-24 rounded" />
+                                            <Skeleton className="h-8 w-32 rounded" />
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Monthly trend</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <ChartSkeleton />
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Expense by category</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <TableSkeleton />
+                                    <Skeleton className="h-[250px] w-full rounded" />
                                 </CardContent>
                             </Card>
                         </div>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Expense by payee</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <TableSkeleton />
-                            </CardContent>
-                        </Card>
-                    </div>
-                ) : (
+                    }
+                >
                     <>
                         {/* Period comparison */}
                         {compareEnabled && comparison && (
@@ -2099,7 +2048,7 @@ export default function ReportsIndex() {
                             </CardContent>
                         </Card>
                     </>
-                )}
+                </Deferred>
             </div>
         </AppLayout>
     );

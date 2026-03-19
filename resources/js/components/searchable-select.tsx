@@ -146,7 +146,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
                 );
             }
 
-            if (selected.length <= 2) {
+            if (selected.length <= 1) {
                 return (
                     <span className="flex items-center gap-1 truncate">
                         {selected.map((val) => {

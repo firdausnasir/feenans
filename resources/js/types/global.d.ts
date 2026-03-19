@@ -1,5 +1,5 @@
 import type { User } from '@/types/auth';
-import type { Ledger } from '@/types/ledger';
+import type { Account, Category, Ledger, Payee, Tag } from '@/types/ledger';
 
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
@@ -19,6 +19,12 @@ declare module '@inertiajs/core' {
             >;
             unread_notifications_count: number;
             sidebarOpen: boolean;
+            transactionModalData?: {
+                accounts: Account[];
+                categories: Category[];
+                payees: Payee[];
+                tags: Tag[];
+            } | null;
             [key: string]: unknown;
         };
     }

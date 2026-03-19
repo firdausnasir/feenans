@@ -1,4 +1,4 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     Bell,
@@ -51,9 +51,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api } from '@/lib/api-client';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
@@ -110,6 +108,18 @@ type CycleResponse = {
     offset: number;
 };
 
+type DashboardProps = {
+    cycle: CycleResponse;
+    summary: Summary;
+    accounts: AccountGroup[];
+    dailyTrend?: DailyTrend[];
+    topCategories?: TopCategory[];
+    recentTransactions?: Transaction[];
+    uncategorizedCount?: number;
+    upcomingBills?: UpcomingBills;
+    topBudgets?: BudgetStat[];
+};
+
 const CHART_COLORS = [
     'var(--color-chart-1)',
     'var(--color-chart-2)',
@@ -160,120 +170,70 @@ function relativeDate(dateStr: string): string {
 
 export default function LedgerDashboard() {
     const { currentLedger: ledger } = usePage().props;
-    const base = `/api/v1/ledgers/${ledger!.id}`;
+    const {
+        cycle,
+        summary,
+        accounts,
+        dailyTrend,
+        topCategories,
+        recentTransactions,
+        uncategorizedCount,
+        upcomingBills,
+        topBudgets,
+    } = usePage<DashboardProps>().props;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger!.name, href: dashboard.url(ledger!.id) },
     ];
 
-    const [cycleOffset, setCycleOffset] = useState(0);
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
     const [uncategorizedDismissed, setUncategorizedDismissed] = useState(false);
     const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
 
-    const { data: cycle } = useApiQuery<CycleResponse>(`${base}/cycle`, {
-        params: { offset: cycleOffset },
-        deps: [cycleOffset],
-    });
-
-    const dateParams = cycle
-        ? { date_from: cycle.cycle_start, date_to: cycle.cycle_end }
-        : {};
-
-    const { data: summary, loading: summaryLoading } = useApiQuery<Summary>(
-        cycle ? `${base}/transactions/summary` : null,
-        { params: dateParams, deps: [cycle] },
-    );
-
-    const { data: accountsResponse, loading: accountsLoading } = useApiQuery<{
-        data: AccountGroup[];
-    }>(`${base}/accounts`, {
-        params: { grouped: true, with_type_totals: true },
-    });
-
-    const { data: recentTxResponse, loading: recentTxLoading } = useApiQuery<{
-        data: Transaction[];
-    }>(cycle ? `${base}/transactions` : null, {
-        params: { ...dateParams, per_page: 10 },
-        deps: [cycle],
-    });
-
-    const { data: dailyTrendResponse, loading: dailyTrendLoading } =
-        useApiQuery<{ data: DailyTrend[] }>(
-            cycle ? `${base}/transactions/daily-trend` : null,
-            {
-                params: { ...dateParams, exclude_uncategorized: true },
-                deps: [cycle],
-            },
-        );
-
-    const { data: topCategoriesResponse, loading: topCategoriesLoading } =
-        useApiQuery<{ data: TopCategory[] }>(
-            cycle ? `${base}/categories/top-spending` : null,
-            {
-                params: {
-                    ...dateParams,
-                    limit: 5,
-                    exclude_uncategorized: true,
-                },
-                deps: [cycle],
-            },
-        );
-
-    const { data: uncategorizedResponse } = useApiQuery<{ count: number }>(
-        cycle ? `${base}/transactions/uncategorized-count` : null,
-        { params: dateParams, deps: [cycle] },
-    );
-
-    const { data: upcomingBillsResponse, loading: billsLoading } =
-        useApiQuery<UpcomingBills>(`${base}/bills`, {
-            params: { upcoming: true, days: 3 },
-        });
-
-    const { data: topBudgetsResponse, loading: budgetsLoading } = useApiQuery<{
-        data: BudgetStat[];
-    }>(`${base}/budgets`, {
-        params: { with_stats: true, top: 3 },
-    });
-
-    // ── Derived values ─────────────────────────────────────────────────────
-    const accounts = accountsResponse?.data ?? [];
-    const recentTransactions = recentTxResponse?.data ?? [];
-    const dailyExpenseTrend = dailyTrendResponse?.data ?? [];
-    const topCategories = topCategoriesResponse?.data ?? [];
-    const uncategorizedCount = uncategorizedResponse?.count ?? 0;
-    const upcomingBills: UpcomingBills = {
-        upcoming: upcomingBillsResponse?.upcoming ?? [],
-        due: upcomingBillsResponse?.due ?? [],
-        missed: upcomingBillsResponse?.missed ?? [],
+    // Derived values with safe defaults for deferred props
+    const accountGroups = accounts ?? [];
+    const dailyExpenseTrend = dailyTrend ?? [];
+    const topCats = topCategories ?? [];
+    const recentTxs = recentTransactions ?? [];
+    const uncatCount = uncategorizedCount ?? 0;
+    const bills: UpcomingBills = {
+        upcoming: upcomingBills?.upcoming ?? [],
+        due: upcomingBills?.due ?? [],
+        missed: upcomingBills?.missed ?? [],
     };
-    const topBudgets = topBudgetsResponse?.data ?? [];
-    const flatAccounts = accounts.flatMap((g) => g.accounts);
-    const cycleDates = cycle
-        ? { start: cycle.cycle_start, end: cycle.cycle_end }
-        : null;
+    const budgets = topBudgets ?? [];
+    const flatAccounts = accountGroups.flatMap((g) => g.accounts);
+    const cycleDates = { start: cycle.cycle_start, end: cycle.cycle_end };
 
     const hasAnyBills =
-        upcomingBills.due.length > 0 ||
-        upcomingBills.upcoming.length > 0 ||
-        upcomingBills.missed.length > 0;
+        bills.due.length > 0 ||
+        bills.upcoming.length > 0 ||
+        bills.missed.length > 0;
 
-    const isEmpty =
-        !accountsLoading &&
-        !recentTxLoading &&
-        accounts.length === 0 &&
-        recentTransactions.length === 0;
+    const isEmpty = accountGroups.length === 0;
 
-    function handlePayBill(bill: Bill) {
-        setPayingBill(bill);
-    }
-
-    function navigateCycle(offset: number) {
-        setCycleOffset(offset);
+    function navigateCycle(newOffset: number) {
+        router.get(
+            dashboard.url(ledger!.id),
+            { offset: newOffset },
+            {
+                only: [
+                    'cycle',
+                    'summary',
+                    'dailyTrend',
+                    'topCategories',
+                    'recentTransactions',
+                    'uncategorizedCount',
+                ],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
     }
 
     const categoryChartConfig: ChartConfig = Object.fromEntries(
-        topCategories.map((cat, index) => [
+        topCats.map((cat, index) => [
             cat.name,
             {
                 label: cat.name,
@@ -282,7 +242,7 @@ export default function LedgerDashboard() {
         ]),
     );
 
-    const categoryChartData = topCategories.map((cat, index) => ({
+    const categoryChartData = topCats.map((cat, index) => ({
         name: cat.name,
         total: cat.total,
         fill: cat.color ?? CHART_COLORS[index % CHART_COLORS.length],
@@ -291,17 +251,20 @@ export default function LedgerDashboard() {
     function handleLoadSampleData() {
         setIsLoadingSampleData(true);
 
-        api.post(storeSampleData.url(ledger!.id))
-            .then(() => {
-                toast.success('Sample data loaded successfully.');
-                window.location.reload();
-            })
-            .catch(() => {
-                toast.error('Failed to load sample data.');
-            })
-            .finally(() => {
-                setIsLoadingSampleData(false);
-            });
+        router.post(
+            storeSampleData.url(ledger!.id),
+            {},
+            {
+                onSuccess: () => {
+                    toast.success('Sample data loaded successfully.');
+                    setIsLoadingSampleData(false);
+                },
+                onError: () => {
+                    toast.error('Failed to load sample data.');
+                    setIsLoadingSampleData(false);
+                },
+            },
+        );
     }
 
     return (
@@ -324,28 +287,24 @@ export default function LedgerDashboard() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
-                            onClick={() => navigateCycle(cycleOffset - 1)}
+                            onClick={() => navigateCycle(cycle.offset - 1)}
                         >
                             <ChevronLeft className="size-4" />
                         </Button>
-                        {cycleDates ? (
-                            <p className="text-xs whitespace-nowrap text-muted-foreground">
-                                <Calendar className="mr-1 inline size-3" />
-                                {formatDate(cycleDates.start)} &ndash;{' '}
-                                {formatDate(cycleDates.end)}
-                            </p>
-                        ) : (
-                            <Skeleton className="h-4 w-28" />
-                        )}
+                        <p className="text-xs whitespace-nowrap text-muted-foreground">
+                            <Calendar className="mr-1 inline size-3" />
+                            {formatDate(cycleDates.start)} &ndash;{' '}
+                            {formatDate(cycleDates.end)}
+                        </p>
                         <Button
                             variant="ghost"
                             size="icon"
                             className="size-6"
-                            onClick={() => navigateCycle(cycleOffset + 1)}
+                            onClick={() => navigateCycle(cycle.offset + 1)}
                         >
                             <ChevronRight className="size-4" />
                         </Button>
-                        {cycleOffset !== 0 && (
+                        {cycle.offset !== 0 && (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -395,56 +354,41 @@ export default function LedgerDashboard() {
                 )}
 
                 {/* Uncategorized alert */}
-                {uncategorizedCount > 0 && !uncategorizedDismissed && (
-                    <div className="flex items-center gap-3 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-sm dark:border-amber-600 dark:bg-amber-950/40">
-                        <AlertTriangle className="size-4 shrink-0 text-amber-500" />
-                        <span className="flex-1">
-                            You have{' '}
-                            <span className="font-bold text-amber-700 tabular-nums dark:text-amber-300">
-                                {uncategorizedCount}
-                            </span>{' '}
-                            uncategorized transaction(s)
-                        </span>
-                        <Link
-                            href={transactionsIndex.url(ledger!.id, {
-                                query: { uncategorized: '1' },
-                            })}
-                            className="font-medium underline underline-offset-2"
-                        >
-                            Review
-                        </Link>
-                        <button
-                            onClick={() => setUncategorizedDismissed(true)}
-                            className="text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            <X className="size-4" />
-                        </button>
-                    </div>
-                )}
+                <Deferred data="uncategorizedCount" fallback={null}>
+                    <UncategorizedAlert
+                        count={uncatCount}
+                        dismissed={uncategorizedDismissed}
+                        ledgerId={ledger!.id}
+                        onDismiss={() => setUncategorizedDismissed(true)}
+                    />
+                </Deferred>
 
                 {/* Upcoming Recurring */}
-                {billsLoading ? (
-                    <Card className="p-0">
-                        <CardContent className="p-3">
-                            <div className="flex items-center gap-2 pb-2">
-                                <Bell className="size-4 text-muted-foreground" />
-                                <Skeleton className="h-4 w-36" />
-                            </div>
-                            <div className="space-y-1">
-                                {[1, 2].map((i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center justify-between rounded-lg px-3 py-2"
-                                    >
-                                        <Skeleton className="h-4 w-28" />
-                                        <Skeleton className="h-7 w-24" />
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    hasAnyBills && (
+                <Deferred
+                    data="upcomingBills"
+                    fallback={
+                        <Card className="p-0">
+                            <CardContent className="p-3">
+                                <div className="flex items-center gap-2 pb-2">
+                                    <Bell className="size-4 text-muted-foreground" />
+                                    <Skeleton className="h-4 w-36" />
+                                </div>
+                                <div className="space-y-1">
+                                    {[1, 2].map((i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center justify-between rounded-lg px-3 py-2"
+                                        >
+                                            <Skeleton className="h-4 w-28" />
+                                            <Skeleton className="h-7 w-24" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    }
+                >
+                    {hasAnyBills && (
                         <Card className="p-0">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
@@ -454,111 +398,96 @@ export default function LedgerDashboard() {
                                     </span>
                                 </div>
                                 <div className="space-y-1">
-                                    {upcomingBills.missed.map((bill) => (
+                                    {bills.missed.map((bill) => (
                                         <UpcomingBillRow
                                             key={`missed-${bill.id}`}
                                             bill={bill}
                                             status="missed"
-                                            onPay={handlePayBill}
+                                            onPay={setPayingBill}
                                         />
                                     ))}
-                                    {upcomingBills.due.map((bill) => (
+                                    {bills.due.map((bill) => (
                                         <UpcomingBillRow
                                             key={`due-${bill.id}`}
                                             bill={bill}
                                             status="due"
-                                            onPay={handlePayBill}
+                                            onPay={setPayingBill}
                                         />
                                     ))}
-                                    {upcomingBills.upcoming.map((bill) => (
+                                    {bills.upcoming.map((bill) => (
                                         <UpcomingBillRow
                                             key={`upcoming-${bill.id}`}
                                             bill={bill}
                                             status="upcoming"
-                                            onPay={handlePayBill}
+                                            onPay={setPayingBill}
                                         />
                                     ))}
                                 </div>
                             </CardContent>
                         </Card>
-                    )
-                )}
+                    )}
+                </Deferred>
 
                 {/* KPI Cards - Income, Expense, Net in one row */}
                 <div className="grid grid-cols-3 gap-3">
-                    {summaryLoading || !summary || !cycleDates ? (
-                        <>
-                            {[1, 2, 3].map((i) => (
-                                <Card key={i} className="py-3">
-                                    <CardContent className="px-3">
-                                        <Skeleton className="mb-1 h-3 w-12" />
-                                        <Skeleton className="h-5 w-20" />
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </>
-                    ) : (
-                        <>
-                            <Link
-                                href={transactionsIndex.url(ledger!.id, {
-                                    query: {
-                                        'transaction_types[]': 'income',
-                                        date_from: cycleDates.start,
-                                        date_to: cycleDates.end,
-                                    },
-                                })}
-                                className="block"
+                    <Link
+                        href={transactionsIndex.url(ledger!.id, {
+                            query: {
+                                'transaction_types[]': 'income',
+                                date_from: cycleDates.start,
+                                date_to: cycleDates.end,
+                            },
+                        })}
+                        className="block"
+                    >
+                        <Card className="py-3 transition-colors hover:bg-muted/30">
+                            <CardContent className="px-3">
+                                <span className="text-xs text-muted-foreground">
+                                    Income
+                                </span>
+                                <p
+                                    className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.income)}`}
+                                >
+                                    {formatAbsAmount(summary.income)}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Link
+                        href={transactionsIndex.url(ledger!.id, {
+                            query: {
+                                'transaction_types[]': 'expense',
+                                date_from: cycleDates.start,
+                                date_to: cycleDates.end,
+                            },
+                        })}
+                        className="block"
+                    >
+                        <Card className="py-3 transition-colors hover:bg-muted/30">
+                            <CardContent className="px-3">
+                                <span className="text-xs text-muted-foreground">
+                                    Expense
+                                </span>
+                                <p
+                                    className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.expense)}`}
+                                >
+                                    {formatAbsAmount(summary.expense)}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Card className="py-3">
+                        <CardContent className="px-3">
+                            <span className="text-xs text-muted-foreground">
+                                Net
+                            </span>
+                            <p
+                                className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.net)}`}
                             >
-                                <Card className="py-3 transition-colors hover:bg-muted/30">
-                                    <CardContent className="px-3">
-                                        <span className="text-xs text-muted-foreground">
-                                            Income
-                                        </span>
-                                        <p
-                                            className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.income)}`}
-                                        >
-                                            {formatAbsAmount(summary.income)}
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                            <Link
-                                href={transactionsIndex.url(ledger!.id, {
-                                    query: {
-                                        'transaction_types[]': 'expense',
-                                        date_from: cycleDates.start,
-                                        date_to: cycleDates.end,
-                                    },
-                                })}
-                                className="block"
-                            >
-                                <Card className="py-3 transition-colors hover:bg-muted/30">
-                                    <CardContent className="px-3">
-                                        <span className="text-xs text-muted-foreground">
-                                            Expense
-                                        </span>
-                                        <p
-                                            className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.expense)}`}
-                                        >
-                                            {formatAbsAmount(summary.expense)}
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                            <Card className="py-3">
-                                <CardContent className="px-3">
-                                    <span className="text-xs text-muted-foreground">
-                                        Net
-                                    </span>
-                                    <p
-                                        className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.net)}`}
-                                    >
-                                        {formatAbsAmount(summary.net)}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        </>
-                    )}
+                                {formatAbsAmount(summary.net)}
+                            </p>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Expense Trend */}
@@ -570,83 +499,86 @@ export default function LedgerDashboard() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        {dailyTrendLoading ? (
-                            <Skeleton className="h-[280px] w-full" />
-                        ) : dailyExpenseTrend.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No expense data this cycle.
-                            </p>
-                        ) : (
-                            <ChartContainer
-                                config={expenseChartConfig}
-                                className="h-[280px] w-full"
-                            >
-                                <AreaChart
-                                    data={dailyExpenseTrend}
-                                    accessibilityLayer
+                        <Deferred
+                            data="dailyTrend"
+                            fallback={<Skeleton className="h-[280px] w-full" />}
+                        >
+                            {dailyExpenseTrend.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No expense data this cycle.
+                                </p>
+                            ) : (
+                                <ChartContainer
+                                    config={expenseChartConfig}
+                                    className="h-[280px] w-full"
                                 >
-                                    <CartesianGrid
-                                        strokeDasharray="3 3"
-                                        vertical={false}
-                                    />
-                                    <XAxis
-                                        dataKey="date"
-                                        tickLine={false}
-                                        axisLine={false}
-                                        fontSize={12}
-                                        tickFormatter={formatChartDate}
-                                    />
-                                    <YAxis
-                                        tickLine={false}
-                                        axisLine={false}
-                                        fontSize={12}
-                                        width={60}
-                                        tickFormatter={(v) => `RM${v}`}
-                                    />
-                                    <ChartTooltip
-                                        content={
-                                            <ChartTooltipContent
-                                                labelFormatter={(value) =>
-                                                    formatChartDate(
-                                                        String(value),
-                                                    )
-                                                }
-                                                formatter={(value) =>
-                                                    `RM${Number(value).toLocaleString()}`
-                                                }
-                                            />
-                                        }
-                                    />
-                                    <defs>
-                                        <linearGradient
-                                            id="expenseGradient"
-                                            x1="0"
-                                            y1="0"
-                                            x2="0"
-                                            y2="1"
-                                        >
-                                            <stop
-                                                offset="5%"
-                                                stopColor="oklch(0.637 0.237 25.331)"
-                                                stopOpacity={0.3}
-                                            />
-                                            <stop
-                                                offset="95%"
-                                                stopColor="oklch(0.637 0.237 25.331)"
-                                                stopOpacity={0}
-                                            />
-                                        </linearGradient>
-                                    </defs>
-                                    <Area
-                                        dataKey="expense"
-                                        type="monotone"
-                                        stroke="oklch(0.637 0.237 25.331)"
-                                        fill="url(#expenseGradient)"
-                                        strokeWidth={2}
-                                    />
-                                </AreaChart>
-                            </ChartContainer>
-                        )}
+                                    <AreaChart
+                                        data={dailyExpenseTrend}
+                                        accessibilityLayer
+                                    >
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            vertical={false}
+                                        />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            tickFormatter={formatChartDate}
+                                        />
+                                        <YAxis
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            width={60}
+                                            tickFormatter={(v) => `RM${v}`}
+                                        />
+                                        <ChartTooltip
+                                            content={
+                                                <ChartTooltipContent
+                                                    labelFormatter={(value) =>
+                                                        formatChartDate(
+                                                            String(value),
+                                                        )
+                                                    }
+                                                    formatter={(value) =>
+                                                        `RM${Number(value).toLocaleString()}`
+                                                    }
+                                                />
+                                            }
+                                        />
+                                        <defs>
+                                            <linearGradient
+                                                id="expenseGradient"
+                                                x1="0"
+                                                y1="0"
+                                                x2="0"
+                                                y2="1"
+                                            >
+                                                <stop
+                                                    offset="5%"
+                                                    stopColor="oklch(0.637 0.237 25.331)"
+                                                    stopOpacity={0.3}
+                                                />
+                                                <stop
+                                                    offset="95%"
+                                                    stopColor="oklch(0.637 0.237 25.331)"
+                                                    stopOpacity={0}
+                                                />
+                                            </linearGradient>
+                                        </defs>
+                                        <Area
+                                            dataKey="expense"
+                                            type="monotone"
+                                            stroke="oklch(0.637 0.237 25.331)"
+                                            fill="url(#expenseGradient)"
+                                            strokeWidth={2}
+                                        />
+                                    </AreaChart>
+                                </ChartContainer>
+                            )}
+                        </Deferred>
                     </CardContent>
                 </Card>
 
@@ -660,74 +592,83 @@ export default function LedgerDashboard() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            {topCategoriesLoading ? (
-                                <Skeleton className="h-[280px] w-full" />
-                            ) : topCategories.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    No categorized expenses this cycle.
-                                </p>
-                            ) : (
-                                <ChartContainer
-                                    config={categoryChartConfig}
-                                    className="h-[280px] w-full"
-                                >
-                                    <BarChart
-                                        data={categoryChartData}
-                                        layout="vertical"
-                                        accessibilityLayer
+                            <Deferred
+                                data="topCategories"
+                                fallback={
+                                    <Skeleton className="h-[280px] w-full" />
+                                }
+                            >
+                                {topCats.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                        No categorized expenses this cycle.
+                                    </p>
+                                ) : (
+                                    <ChartContainer
+                                        config={categoryChartConfig}
+                                        className="h-[280px] w-full"
                                     >
-                                        <CartesianGrid
-                                            strokeDasharray="3 3"
-                                            horizontal={false}
-                                        />
-                                        <YAxis
-                                            dataKey="name"
-                                            type="category"
-                                            tickLine={false}
-                                            axisLine={false}
-                                            fontSize={12}
-                                            width={100}
-                                        />
-                                        <XAxis
-                                            type="number"
-                                            tickLine={false}
-                                            axisLine={false}
-                                            fontSize={12}
-                                        />
-                                        <ChartTooltip
-                                            content={<ChartTooltipContent />}
-                                        />
-                                        <Bar
-                                            dataKey="total"
-                                            radius={[0, 4, 4, 0]}
-                                            className="cursor-pointer"
-                                            onClick={(data) => {
-                                                const cat = topCategories.find(
-                                                    (c) => c.name === data.name,
-                                                );
-
-                                                if (cat?.id && cycleDates) {
-                                                    router.visit(
-                                                        transactionsIndex.url(
-                                                            ledger!.id,
-                                                            {
-                                                                query: {
-                                                                    'category_ids[]':
-                                                                        cat.id,
-                                                                    date_from:
-                                                                        cycleDates.start,
-                                                                    date_to:
-                                                                        cycleDates.end,
-                                                                },
-                                                            },
-                                                        ),
-                                                    );
+                                        <BarChart
+                                            data={categoryChartData}
+                                            layout="vertical"
+                                            accessibilityLayer
+                                        >
+                                            <CartesianGrid
+                                                strokeDasharray="3 3"
+                                                horizontal={false}
+                                            />
+                                            <YAxis
+                                                dataKey="name"
+                                                type="category"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                fontSize={12}
+                                                width={100}
+                                            />
+                                            <XAxis
+                                                type="number"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                fontSize={12}
+                                            />
+                                            <ChartTooltip
+                                                content={
+                                                    <ChartTooltipContent />
                                                 }
-                                            }}
-                                        />
-                                    </BarChart>
-                                </ChartContainer>
-                            )}
+                                            />
+                                            <Bar
+                                                dataKey="total"
+                                                radius={[0, 4, 4, 0]}
+                                                className="cursor-pointer"
+                                                onClick={(data) => {
+                                                    const cat = topCats.find(
+                                                        (c) =>
+                                                            c.name ===
+                                                            data.name,
+                                                    );
+
+                                                    if (cat?.id) {
+                                                        router.visit(
+                                                            transactionsIndex.url(
+                                                                ledger!.id,
+                                                                {
+                                                                    query: {
+                                                                        'category_ids[]':
+                                                                            cat.id,
+                                                                        date_from:
+                                                                            cycleDates.start,
+                                                                        date_to:
+                                                                            cycleDates.end,
+                                                                    },
+                                                                },
+                                                            ),
+                                                        );
+                                                    }
+                                                }}
+                                            />
+                                        </BarChart>
+                                    </ChartContainer>
+                                )}
+                            </Deferred>
                         </CardContent>
                     </Card>
 
@@ -740,147 +681,124 @@ export default function LedgerDashboard() {
                             </div>
                         </CardHeader>
                         <CardContent className="overflow-y-auto">
-                            {accountsLoading ? (
-                                <div className="space-y-5">
-                                    {[1, 2].map((i) => (
-                                        <div key={i}>
-                                            <Skeleton className="mb-2 h-3 w-20" />
-                                            <div className="space-y-1">
-                                                {[1, 2].map((j) => (
-                                                    <div
-                                                        key={j}
-                                                        className="flex items-center justify-between px-3 py-2"
-                                                    >
-                                                        <Skeleton className="h-4 w-28" />
-                                                        <Skeleton className="h-4 w-16" />
-                                                    </div>
-                                                ))}
-                                            </div>
+                            <div className="space-y-4">
+                                {accountGroups.map((group) => (
+                                    <div key={group.type.id}>
+                                        <div className="mb-1.5">
+                                            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                                {group.type.name}
+                                            </span>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {accounts.map((group) => (
-                                        <div key={group.type.id}>
-                                            <div className="mb-1.5">
-                                                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                                                    {group.type.name}
-                                                </span>
-                                            </div>
-                                            <div className="space-y-0.5">
-                                                {group.accounts.map(
-                                                    (account) => {
-                                                        const balance =
-                                                            parseFloat(
-                                                                String(
-                                                                    account.current_balance ??
-                                                                        account.initial_balance ??
-                                                                        '0',
-                                                                ),
-                                                            );
+                                        <div className="space-y-0.5">
+                                            {group.accounts.map((account) => {
+                                                const balance = parseFloat(
+                                                    String(
+                                                        account.current_balance ??
+                                                            account.initial_balance ??
+                                                            '0',
+                                                    ),
+                                                );
 
-                                                        return (
-                                                            <Link
-                                                                key={account.id}
-                                                                href={transactionsIndex.url(
-                                                                    ledger!.id,
-                                                                    {
-                                                                        query: {
-                                                                            'account_ids[]':
-                                                                                String(
-                                                                                    account.id,
-                                                                                ),
-                                                                        },
-                                                                    },
-                                                                )}
-                                                                className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors hover:bg-muted/50"
-                                                            >
-                                                                <span className="inline-flex items-center gap-1.5 text-sm">
-                                                                    {account.color && (
-                                                                        <span
-                                                                            className="inline-block size-2 shrink-0 rounded-full"
-                                                                            style={{
-                                                                                backgroundColor:
-                                                                                    account.color,
-                                                                            }}
-                                                                        />
-                                                                    )}
-                                                                    {
-                                                                        account.name
-                                                                    }
-                                                                </span>
-                                                                {balance < 0 ? (
-                                                                    <Tooltip>
-                                                                        <TooltipTrigger
-                                                                            asChild
-                                                                        >
-                                                                            <span className="text-sm font-medium text-red-500 tabular-nums dark:text-red-400">
-                                                                                {formatAbsAmount(
-                                                                                    balance,
-                                                                                )}
-                                                                            </span>
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent>
-                                                                            <p>
-                                                                                Negative
-                                                                                balance
-                                                                                &mdash;
-                                                                                expenses
-                                                                                exceed
-                                                                                the
-                                                                                initial
-                                                                                balance.
-                                                                            </p>
-                                                                        </TooltipContent>
-                                                                    </Tooltip>
-                                                                ) : (
-                                                                    <span className="text-sm font-medium tabular-nums">
+                                                return (
+                                                    <Link
+                                                        key={account.id}
+                                                        href={transactionsIndex.url(
+                                                            ledger!.id,
+                                                            {
+                                                                query: {
+                                                                    'account_ids[]':
+                                                                        String(
+                                                                            account.id,
+                                                                        ),
+                                                                },
+                                                            },
+                                                        )}
+                                                        className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors hover:bg-muted/50"
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5 text-sm">
+                                                            {account.color && (
+                                                                <span
+                                                                    className="inline-block size-2 shrink-0 rounded-full"
+                                                                    style={{
+                                                                        backgroundColor:
+                                                                            account.color,
+                                                                    }}
+                                                                />
+                                                            )}
+                                                            {account.name}
+                                                        </span>
+                                                        {balance < 0 ? (
+                                                            <Tooltip>
+                                                                <TooltipTrigger
+                                                                    asChild
+                                                                >
+                                                                    <span className="text-sm font-medium text-red-500 tabular-nums dark:text-red-400">
                                                                         {formatAbsAmount(
                                                                             balance,
                                                                         )}
                                                                     </span>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>
+                                                                        Negative
+                                                                        balance
+                                                                        &mdash;
+                                                                        expenses
+                                                                        exceed
+                                                                        the
+                                                                        initial
+                                                                        balance.
+                                                                    </p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        ) : (
+                                                            <span className="text-sm font-medium tabular-nums">
+                                                                {formatAbsAmount(
+                                                                    balance,
                                                                 )}
-                                                            </Link>
-                                                        );
-                                                    },
-                                                )}
-                                            </div>
+                                                            </span>
+                                                        )}
+                                                    </Link>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
-                                    {accounts.length === 0 && (
-                                        <p className="text-sm text-muted-foreground">
-                                            No accounts yet.
-                                        </p>
-                                    )}
-                                </div>
-                            )}
+                                    </div>
+                                ))}
+                                {accountGroups.length === 0 && (
+                                    <p className="text-sm text-muted-foreground">
+                                        No accounts yet.
+                                    </p>
+                                )}
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
 
                 {/* Budget Progress */}
-                {budgetsLoading ? (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Budget Progress</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {[1, 2, 3].map((i) => (
-                                    <div key={i} className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <Skeleton className="h-4 w-24" />
-                                            <Skeleton className="h-3 w-20" />
+                <Deferred
+                    data="topBudgets"
+                    fallback={
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Budget Progress</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4">
+                                    {[1, 2, 3].map((i) => (
+                                        <div key={i} className="space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <Skeleton className="h-4 w-24" />
+                                                <Skeleton className="h-3 w-20" />
+                                            </div>
+                                            <Skeleton className="h-2 w-full" />
                                         </div>
-                                        <Skeleton className="h-2 w-full" />
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    topBudgets.length > 0 && (
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    }
+                >
+                    {budgets.length > 0 && (
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center justify-between">
@@ -896,7 +814,7 @@ export default function LedgerDashboard() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {topBudgets.map((budget) => (
+                                    {budgets.map((budget) => (
                                         <div
                                             key={budget.id}
                                             className="space-y-1.5"
@@ -929,8 +847,8 @@ export default function LedgerDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
-                    )
-                )}
+                    )}
+                </Deferred>
 
                 {/* Recent Transactions */}
                 <Card>
@@ -945,109 +863,116 @@ export default function LedgerDashboard() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {recentTxLoading ? (
-                            <div className="space-y-3">
-                                {[1, 2, 3, 4, 5].map((i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center justify-between py-2"
-                                    >
-                                        <div className="space-y-1.5">
-                                            <Skeleton className="h-4 w-40" />
-                                            <Skeleton className="h-3 w-24" />
-                                        </div>
-                                        <Skeleton className="h-4 w-16" />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : recentTransactions.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No recent transactions.
-                            </p>
-                        ) : (
-                            <>
-                                {/* Mobile cards */}
-                                <div className="divide-y sm:hidden">
-                                    {recentTransactions.map((transaction) => {
-                                        const amount = parseFloat(
-                                            transaction.amount,
-                                        );
-                                        const label =
-                                            transaction.payee?.name ??
-                                            transaction.description ??
-                                            'Transaction';
-
-                                        return (
-                                            <div
-                                                key={transaction.id}
-                                                className="cursor-pointer rounded-2xl border-b-2 p-3 transition-colors hover:bg-muted/50"
-                                                onClick={() =>
-                                                    router.visit(
-                                                        transactionEdit.url({
-                                                            ledger: ledger!.id,
-                                                            transaction:
-                                                                transaction.id,
-                                                        }),
-                                                    )
-                                                }
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <p className="truncate text-sm font-medium">
-                                                        {label}
-                                                    </p>
-                                                    <span
-                                                        className={`shrink-0 text-sm font-semibold tabular-nums ${amountColor(amount)}`}
-                                                    >
-                                                        {formatAbsAmount(
-                                                            amount,
-                                                        )}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                                    {transaction.category
-                                                        ?.name ??
-                                                        'Uncategorized'}
-                                                </p>
-                                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                                    {formatDate(
-                                                        transaction.transaction_date,
-                                                    )}
-                                                    {transaction.account?.name
-                                                        ? ` · ${transaction.account.name}`
-                                                        : ''}
-                                                </p>
+                        <Deferred
+                            data="recentTransactions"
+                            fallback={
+                                <div className="space-y-3">
+                                    {[1, 2, 3, 4, 5].map((i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center justify-between py-2"
+                                        >
+                                            <div className="space-y-1.5">
+                                                <Skeleton className="h-4 w-40" />
+                                                <Skeleton className="h-3 w-24" />
                                             </div>
-                                        );
-                                    })}
+                                            <Skeleton className="h-4 w-16" />
+                                        </div>
+                                    ))}
                                 </div>
+                            }
+                        >
+                            {recentTxs.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No recent transactions.
+                                </p>
+                            ) : (
+                                <>
+                                    {/* Mobile cards */}
+                                    <div className="divide-y sm:hidden">
+                                        {recentTxs.map((transaction) => {
+                                            const amount = parseFloat(
+                                                transaction.amount,
+                                            );
+                                            const label =
+                                                transaction.payee?.name ??
+                                                transaction.description ??
+                                                'Transaction';
 
-                                {/* Desktop table */}
-                                <Table className="hidden sm:table">
-                                    <TableHeader>
-                                        <TableRow className="text-xs text-muted-foreground">
-                                            <TableHead className="pr-4">
-                                                Date
-                                            </TableHead>
-                                            <TableHead className="pr-4">
-                                                Payee
-                                            </TableHead>
-                                            <TableHead className="pr-4">
-                                                Description
-                                            </TableHead>
-                                            <TableHead className="hidden pr-4 md:table-cell">
-                                                Account
-                                            </TableHead>
-                                            <TableHead className="hidden pr-4 lg:table-cell">
-                                                Category
-                                            </TableHead>
-                                            <TableHead className="text-right">
-                                                Amount
-                                            </TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {recentTransactions.map(
-                                            (transaction) => {
+                                            return (
+                                                <div
+                                                    key={transaction.id}
+                                                    className="cursor-pointer rounded-2xl border-b-2 p-3 transition-colors hover:bg-muted/50"
+                                                    onClick={() =>
+                                                        router.visit(
+                                                            transactionEdit.url(
+                                                                {
+                                                                    ledger: ledger!
+                                                                        .id,
+                                                                    transaction:
+                                                                        transaction.id,
+                                                                },
+                                                            ),
+                                                        )
+                                                    }
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <p className="truncate text-sm font-medium">
+                                                            {label}
+                                                        </p>
+                                                        <span
+                                                            className={`shrink-0 text-sm font-semibold tabular-nums ${amountColor(amount)}`}
+                                                        >
+                                                            {formatAbsAmount(
+                                                                amount,
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                                        {transaction.category
+                                                            ?.name ??
+                                                            'Uncategorized'}
+                                                    </p>
+                                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                                        {formatDate(
+                                                            transaction.transaction_date,
+                                                        )}
+                                                        {transaction.account
+                                                            ?.name
+                                                            ? ` · ${transaction.account.name}`
+                                                            : ''}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Desktop table */}
+                                    <Table className="hidden sm:table">
+                                        <TableHeader>
+                                            <TableRow className="text-xs text-muted-foreground">
+                                                <TableHead className="pr-4">
+                                                    Date
+                                                </TableHead>
+                                                <TableHead className="pr-4">
+                                                    Payee
+                                                </TableHead>
+                                                <TableHead className="pr-4">
+                                                    Description
+                                                </TableHead>
+                                                <TableHead className="hidden pr-4 md:table-cell">
+                                                    Account
+                                                </TableHead>
+                                                <TableHead className="hidden pr-4 lg:table-cell">
+                                                    Category
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Amount
+                                                </TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {recentTxs.map((transaction) => {
                                                 const amount = parseFloat(
                                                     transaction.amount,
                                                 );
@@ -1106,12 +1031,12 @@ export default function LedgerDashboard() {
                                                         </TableCell>
                                                     </TableRow>
                                                 );
-                                            },
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </>
-                        )}
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </>
+                            )}
+                        </Deferred>
                     </CardContent>
                 </Card>
             </div>
@@ -1123,6 +1048,49 @@ export default function LedgerDashboard() {
                 onClose={() => setPayingBill(null)}
             />
         </AppLayout>
+    );
+}
+
+function UncategorizedAlert({
+    count,
+    dismissed,
+    ledgerId,
+    onDismiss,
+}: {
+    count: number;
+    dismissed: boolean;
+    ledgerId: number;
+    onDismiss: () => void;
+}) {
+    if (count === 0 || dismissed) {
+        return null;
+    }
+
+    return (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-sm dark:border-amber-600 dark:bg-amber-950/40">
+            <AlertTriangle className="size-4 shrink-0 text-amber-500" />
+            <span className="flex-1">
+                You have{' '}
+                <span className="font-bold text-amber-700 tabular-nums dark:text-amber-300">
+                    {count}
+                </span>{' '}
+                uncategorized transaction(s)
+            </span>
+            <Link
+                href={transactionsIndex.url(ledgerId, {
+                    query: { uncategorized: '1' },
+                })}
+                className="font-medium underline underline-offset-2"
+            >
+                Review
+            </Link>
+            <button
+                onClick={onDismiss}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+                <X className="size-4" />
+            </button>
+        </div>
     );
 }
 

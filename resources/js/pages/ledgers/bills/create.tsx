@@ -2,6 +2,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { store as storeRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -18,10 +19,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
+import { buildCategoryOptions, describeRecurrence } from '@/lib/format';
+import { mapInertiaErrors } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     create as createRoute,
@@ -51,69 +51,21 @@ type FormData = {
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
 
-function describeRecurrence(
-    type: string,
-    interval: string,
-    day: string,
-): string {
-    const n = parseInt(interval, 10) || 1;
-    const dayNum = parseInt(day, 10);
-    const dayStr = dayNum ? ` on day ${dayNum}` : '';
-
-    const labels: Record<string, [string, string]> = {
-        daily: ['day', 'days'],
-        weekly: ['week', 'weeks'],
-        monthly: ['month', 'months'],
-        yearly: ['year', 'years'],
-        custom: ['period', 'periods'],
-    };
-
-    const [singular, plural] = labels[type] ?? ['period', 'periods'];
-
-    if (n === 1) {
-        return `Every ${singular}${dayStr}`;
-    }
-
-    return `Every ${n} ${plural}${dayStr}`;
-}
-
-function FormSkeleton() {
-    return (
-        <div className="space-y-6 rounded-xl border border-sidebar-border/70 p-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="grid gap-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-10 w-full" />
-                </div>
-            ))}
-        </div>
-    );
-}
-
 export default function CreateBill() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
 
-    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
-        data: Account[];
-    }>(`${base}/accounts`, { params: { visible: true } });
-    const { data: categoriesResult, loading: categoriesLoading } =
-        useApiQuery<{ data: Category[] }>(`${base}/categories`);
-    const { data: payeesResult, loading: payeesLoading } = useApiQuery<{
-        data: Payee[];
-    }>(`${base}/payees`);
+    const { accounts, categories, payees } = usePage<{
+        accounts: Account[];
+        categories: Category[];
+        payees: Payee[];
+    }>().props;
 
-    const accounts = accountsResult?.data ?? [];
-    const categories = categoriesResult?.data ?? [];
-    const payees = payeesResult?.data ?? [];
-    const lookupLoading = accountsLoading || categoriesLoading || payeesLoading;
-
-    const [data, setFormData] = useState<FormData>({
+    const [data, setFormData] = useState<FormData>(() => ({
         name: '',
         transaction_type: 'expense',
         amount: '',
-        account_id: '',
+        account_id: accounts.length > 0 ? String(accounts[0].id) : '',
         category_id: '',
         payee_id: '',
         recurrence_type: 'monthly',
@@ -124,7 +76,7 @@ export default function CreateBill() {
         end_type: 'never',
         end_date: '',
         end_after_occurrences: '',
-    });
+    }));
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
 
@@ -146,11 +98,6 @@ export default function CreateBill() {
         });
     }
 
-    // Set default account_id when accounts load
-    if (accounts.length > 0 && !data.account_id) {
-        setFormData((prev) => ({ ...prev, account_id: String(accounts[0].id) }));
-    }
-
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         {
@@ -160,54 +107,40 @@ export default function CreateBill() {
         { title: 'New', href: createRoute.url(ledger.id) },
     ];
 
-    async function submit(e: FormEvent) {
+    function submit(e: FormEvent) {
         e.preventDefault();
         setProcessing(true);
         setErrors({});
 
-        try {
-            await api.post(`${base}/bills`, {
-                body: {
-                    name: data.name,
-                    transaction_type: data.transaction_type,
-                    amount: data.amount,
-                    account_id: data.account_id,
-                    category_id: data.category_id || null,
-                    payee_id: data.payee_id || null,
-                    recurrence_type: data.recurrence_type,
-                    recurrence_interval: data.recurrence_interval,
-                    recurrence_day: data.recurrence_day || null,
-                    next_due_date: data.next_due_date,
-                    auto_create: data.auto_create,
-                    end_type: data.end_type,
-                    end_date: data.end_date || null,
-                    end_after_occurrences:
-                        data.end_after_occurrences || null,
-                },
-            });
-            toast.success('Recurring transaction created');
-            router.visit(billsIndex.url(ledger.id));
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const validationErrors = err.validationErrors;
-                const mapped: FormErrors = {};
+        const formPayload = {
+            name: data.name,
+            transaction_type: data.transaction_type,
+            amount: data.amount,
+            account_id: data.account_id,
+            category_id: data.category_id || null,
+            payee_id: data.payee_id || null,
+            recurrence_type: data.recurrence_type,
+            recurrence_interval: data.recurrence_interval,
+            recurrence_day: data.recurrence_day || null,
+            next_due_date: data.next_due_date,
+            auto_create: data.auto_create,
+            end_type: data.end_type,
+            end_date: data.end_date || null,
+            end_after_occurrences: data.end_after_occurrences || null,
+        };
 
-                for (const [key, messages] of Object.entries(validationErrors)) {
-                    mapped[key as keyof FormData] = messages[0];
-                }
-
-                setErrors(mapped);
-                const firstError = Object.values(validationErrors)[0]?.[0];
-
-                if (firstError) {
-                    toast.error(firstError);
-                }
-            } else {
-                toast.error('Failed to create recurring transaction');
-            }
-        } finally {
-            setProcessing(false);
-        }
+        router.post(storeRoute.url(ledger.id), formPayload, {
+            onSuccess: () => {
+                toast.success('Recurring transaction created');
+            },
+            onError: (errs) => {
+                setErrors(mapInertiaErrors<FormErrors>(errs));
+                setProcessing(false);
+            },
+            onFinish: () => {
+                setProcessing(false);
+            },
+        });
     }
 
     return (
@@ -220,391 +153,338 @@ export default function CreateBill() {
                     description="Set up a recurring expense or income for this ledger."
                 />
 
-                {lookupLoading ? (
-                    <FormSkeleton />
-                ) : (
-                    <form
-                        onSubmit={submit}
-                        className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
-                    >
-                        {/* Name */}
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Name</Label>
-                            <Input
-                                id="name"
-                                name="name"
-                                value={data.name}
-                                onChange={(e) =>
-                                    setData('name', e.target.value)
-                                }
-                                required
-                                autoFocus
-                            />
-                            <InputError message={errors.name} />
-                        </div>
+                <form
+                    onSubmit={submit}
+                    className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
+                >
+                    {/* Name */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={data.name}
+                            onChange={(e) => setData('name', e.target.value)}
+                            required
+                            autoFocus
+                        />
+                        <InputError message={errors.name} />
+                    </div>
 
-                        {/* Transaction type */}
+                    {/* Transaction type */}
+                    <div className="grid gap-2">
+                        <Label>Type</Label>
+                        <Select
+                            value={data.transaction_type}
+                            onValueChange={(value) =>
+                                setData('transaction_type', value)
+                            }
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="expense">Expense</SelectItem>
+                                <SelectItem value="income">Income</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.transaction_type} />
+                    </div>
+
+                    {/* Amount */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="amount">Amount (RM)</Label>
+                        <Input
+                            id="amount"
+                            name="amount"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            min="0.01"
+                            value={data.amount}
+                            onChange={(e) => setData('amount', e.target.value)}
+                            required
+                        />
+                        <InputError message={errors.amount} />
+                    </div>
+
+                    {/* Account */}
+                    <div className="grid gap-2">
+                        <Label>Account</Label>
+                        <SearchableSelect
+                            options={accounts.map((account) => ({
+                                value: String(account.id),
+                                label: account.name,
+                                color: account.color,
+                            }))}
+                            value={data.account_id || null}
+                            onValueChange={(value) =>
+                                setData('account_id', value ?? '')
+                            }
+                            placeholder="Select account"
+                            searchPlaceholder="Search accounts..."
+                        />
+                        <InputError message={errors.account_id} />
+                    </div>
+
+                    {/* Category — grouped by parent */}
+                    <div className="grid gap-2">
+                        <Label>
+                            Category{' '}
+                            <span className="text-muted-foreground">
+                                (optional)
+                            </span>
+                        </Label>
+                        <SearchableSelect
+                            options={buildCategoryOptions(categories)}
+                            value={data.category_id || null}
+                            onValueChange={(value) =>
+                                setData('category_id', value ?? '')
+                            }
+                            placeholder="No category"
+                            searchPlaceholder="Search categories..."
+                            allOption="No category"
+                        />
+                        <InputError message={errors.category_id} />
+                    </div>
+
+                    {/* Payee */}
+                    <div className="grid gap-2">
+                        <Label>
+                            Payee{' '}
+                            <span className="text-muted-foreground">
+                                (optional)
+                            </span>
+                        </Label>
+                        <SearchableSelect
+                            options={payees.map((payee) => ({
+                                value: String(payee.id),
+                                label: payee.name,
+                            }))}
+                            value={data.payee_id || null}
+                            onValueChange={(value) =>
+                                setData('payee_id', value ?? '')
+                            }
+                            placeholder="No payee"
+                            searchPlaceholder="Search payees..."
+                            allOption="No payee"
+                        />
+                        <InputError message={errors.payee_id} />
+                    </div>
+
+                    {/* Recurrence */}
+                    <div className="grid gap-4 sm:grid-cols-2">
                         <div className="grid gap-2">
-                            <Label>Type</Label>
+                            <Label>Recurrence type</Label>
                             <Select
-                                value={data.transaction_type}
-                                onValueChange={(value) =>
-                                    setData('transaction_type', value)
+                                value={data.recurrence_type}
+                                onValueChange={(val) =>
+                                    setData(
+                                        'recurrence_type',
+                                        val as RecurrenceType,
+                                    )
                                 }
                             >
                                 <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select type" />
+                                    <SelectValue placeholder="Select recurrence" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="expense">
-                                        Expense
+                                    <SelectItem value="daily">Daily</SelectItem>
+                                    <SelectItem value="weekly">
+                                        Weekly
                                     </SelectItem>
-                                    <SelectItem value="income">
-                                        Income
+                                    <SelectItem value="monthly">
+                                        Monthly
+                                    </SelectItem>
+                                    <SelectItem value="yearly">
+                                        Yearly
+                                    </SelectItem>
+                                    <SelectItem value="custom">
+                                        Custom
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
-                            <InputError message={errors.transaction_type} />
+                            <InputError message={errors.recurrence_type} />
                         </div>
 
-                        {/* Amount */}
                         <div className="grid gap-2">
-                            <Label htmlFor="amount">Amount (RM)</Label>
+                            <Label htmlFor="recurrence_interval">
+                                Every (interval)
+                            </Label>
                             <Input
-                                id="amount"
-                                name="amount"
+                                id="recurrence_interval"
+                                name="recurrence_interval"
                                 type="number"
                                 inputMode="decimal"
-                                step="0.01"
-                                min="0.01"
-                                value={data.amount}
+                                min="1"
+                                value={data.recurrence_interval}
                                 onChange={(e) =>
-                                    setData('amount', e.target.value)
+                                    setData(
+                                        'recurrence_interval',
+                                        e.target.value,
+                                    )
                                 }
                                 required
                             />
-                            <InputError message={errors.amount} />
+                            <InputError message={errors.recurrence_interval} />
                         </div>
+                    </div>
 
-                        {/* Account */}
-                        <div className="grid gap-2">
-                            <Label>Account</Label>
-                            <SearchableSelect
-                                options={accounts.map((account) => ({
-                                    value: String(account.id),
-                                    label: account.name,
-                                    color: account.color,
-                                }))}
-                                value={data.account_id || null}
-                                onValueChange={(value) =>
-                                    setData('account_id', value ?? '')
-                                }
-                                placeholder="Select account"
-                                searchPlaceholder="Search accounts..."
-                            />
-                            <InputError message={errors.account_id} />
-                        </div>
-
-                        {/* Category — grouped by parent */}
+                    {/* Recurrence day — relevant for monthly/yearly/custom */}
+                    {(data.recurrence_type === 'monthly' ||
+                        data.recurrence_type === 'yearly' ||
+                        data.recurrence_type === 'custom') && (
                         <div className="grid gap-2">
                             <Label>
-                                Category{' '}
+                                Day of month{' '}
                                 <span className="text-muted-foreground">
-                                    (optional)
+                                    (required)
                                 </span>
                             </Label>
-                            <SearchableSelect
-                                options={categories.flatMap((parent) => {
-                                    const items = [
-                                        {
-                                            value: String(parent.id),
-                                            label:
-                                                parent.children &&
-                                                parent.children.length > 0
-                                                    ? `${parent.name} (general)`
-                                                    : parent.name,
-                                            group:
-                                                parent.children &&
-                                                parent.children.length > 0
-                                                    ? parent.name
-                                                    : undefined,
-                                            color: parent.color,
-                                        },
-                                    ];
-
-                                    if (parent.children) {
-                                        parent.children.forEach((child) => {
-                                            items.push({
-                                                value: String(child.id),
-                                                label: child.name,
-                                                group: parent.name,
-                                                color: child.color,
-                                            });
-                                        });
-                                    }
-
-                                    return items;
-                                })}
-                                value={data.category_id || null}
-                                onValueChange={(value) =>
-                                    setData('category_id', value ?? '')
-                                }
-                                placeholder="No category"
-                                searchPlaceholder="Search categories..."
-                                allOption="No category"
-                            />
-                            <InputError message={errors.category_id} />
-                        </div>
-
-                        {/* Payee */}
-                        <div className="grid gap-2">
-                            <Label>
-                                Payee{' '}
-                                <span className="text-muted-foreground">
-                                    (optional)
-                                </span>
-                            </Label>
-                            <SearchableSelect
-                                options={payees.map((payee) => ({
-                                    value: String(payee.id),
-                                    label: payee.name,
-                                }))}
-                                value={data.payee_id || null}
-                                onValueChange={(value) =>
-                                    setData('payee_id', value ?? '')
-                                }
-                                placeholder="No payee"
-                                searchPlaceholder="Search payees..."
-                                allOption="No payee"
-                            />
-                            <InputError message={errors.payee_id} />
-                        </div>
-
-                        {/* Recurrence */}
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                                <Label>Recurrence type</Label>
-                                <Select
-                                    value={data.recurrence_type}
-                                    onValueChange={(val) =>
-                                        setData(
-                                            'recurrence_type',
-                                            val as RecurrenceType,
-                                        )
-                                    }
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select recurrence" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="daily">
-                                            Daily
-                                        </SelectItem>
-                                        <SelectItem value="weekly">
-                                            Weekly
-                                        </SelectItem>
-                                        <SelectItem value="monthly">
-                                            Monthly
-                                        </SelectItem>
-                                        <SelectItem value="yearly">
-                                            Yearly
-                                        </SelectItem>
-                                        <SelectItem value="custom">
-                                            Custom
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.recurrence_type} />
+                            <div className="grid grid-cols-7 gap-1">
+                                {Array.from(
+                                    { length: 31 },
+                                    (_, i) => i + 1,
+                                ).map((day) => (
+                                    <button
+                                        key={day}
+                                        type="button"
+                                        className={`flex h-9 w-full items-center justify-center rounded-md text-sm transition-colors ${
+                                            data.recurrence_day === String(day)
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'hover:bg-accent hover:text-accent-foreground'
+                                        }`}
+                                        onClick={() =>
+                                            setData(
+                                                'recurrence_day',
+                                                String(day),
+                                            )
+                                        }
+                                    >
+                                        {day}
+                                    </button>
+                                ))}
                             </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="recurrence_interval">
-                                    Every (interval)
-                                </Label>
-                                <Input
-                                    id="recurrence_interval"
-                                    name="recurrence_interval"
-                                    type="number"
-                                    inputMode="decimal"
-                                    min="1"
-                                    value={data.recurrence_interval}
-                                    onChange={(e) =>
-                                        setData(
-                                            'recurrence_interval',
-                                            e.target.value,
-                                        )
-                                    }
-                                    required
-                                />
-                                <InputError
-                                    message={errors.recurrence_interval}
-                                />
-                            </div>
+                            <InputError message={errors.recurrence_day} />
                         </div>
+                    )}
 
-                        {/* Recurrence day — relevant for monthly/yearly/custom */}
-                        {(data.recurrence_type === 'monthly' ||
-                            data.recurrence_type === 'yearly' ||
-                            data.recurrence_type === 'custom') && (
-                            <div className="grid gap-2">
-                                <Label>
-                                    Day of month{' '}
-                                    <span className="text-muted-foreground">
-                                        (required)
-                                    </span>
-                                </Label>
-                                <div className="grid grid-cols-7 gap-1">
-                                    {Array.from(
-                                        { length: 31 },
-                                        (_, i) => i + 1,
-                                    ).map((day) => (
-                                        <button
-                                            key={day}
-                                            type="button"
-                                            className={`flex h-9 w-full items-center justify-center rounded-md text-sm transition-colors ${
-                                                data.recurrence_day ===
-                                                String(day)
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'hover:bg-accent hover:text-accent-foreground'
-                                            }`}
-                                            onClick={() =>
-                                                setData(
-                                                    'recurrence_day',
-                                                    String(day),
-                                                )
-                                            }
-                                        >
-                                            {day}
-                                        </button>
-                                    ))}
-                                </div>
-                                <InputError message={errors.recurrence_day} />
-                            </div>
+                    {/* Recurrence preview */}
+                    <p className="text-sm text-muted-foreground italic">
+                        {describeRecurrence(
+                            data.recurrence_type,
+                            data.recurrence_interval,
+                            data.recurrence_day,
                         )}
+                    </p>
 
-                        {/* Recurrence preview */}
-                        <p className="text-sm text-muted-foreground italic">
-                            {describeRecurrence(
-                                data.recurrence_type,
-                                data.recurrence_interval,
-                                data.recurrence_day,
-                            )}
-                        </p>
+                    {/* Next due date */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="next_due_date">Next due date</Label>
+                        <DatePicker
+                            id="next_due_date"
+                            name="next_due_date"
+                            value={data.next_due_date}
+                            onChange={(date) => setData('next_due_date', date)}
+                        />
+                        <InputError message={errors.next_due_date} />
+                    </div>
 
-                        {/* Next due date */}
+                    {/* Auto-create */}
+                    <div className="flex items-center gap-3">
+                        <Checkbox
+                            id="auto_create"
+                            checked={data.auto_create}
+                            onCheckedChange={(checked) =>
+                                setData('auto_create', checked === true)
+                            }
+                        />
+                        <Label htmlFor="auto_create">
+                            Auto-create transaction when due
+                        </Label>
+                    </div>
+
+                    {/* End type */}
+                    <div className="grid gap-2">
+                        <Label>End</Label>
+                        <RadioGroup
+                            value={data.end_type}
+                            onValueChange={(val) =>
+                                setData('end_type', val as EndType)
+                            }
+                        >
+                            <div className="flex items-center gap-2">
+                                <RadioGroupItem
+                                    value="never"
+                                    id="end_type_never"
+                                />
+                                <Label htmlFor="end_type_never">Never</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <RadioGroupItem
+                                    value="on_date"
+                                    id="end_type_on_date"
+                                />
+                                <Label htmlFor="end_type_on_date">
+                                    On date
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <RadioGroupItem
+                                    value="after_occurrences"
+                                    id="end_type_after_occurrences"
+                                />
+                                <Label htmlFor="end_type_after_occurrences">
+                                    After occurrences
+                                </Label>
+                            </div>
+                        </RadioGroup>
+                        <InputError message={errors.end_type} />
+                    </div>
+
+                    {/* End date */}
+                    {data.end_type === 'on_date' && (
                         <div className="grid gap-2">
-                            <Label htmlFor="next_due_date">Next due date</Label>
+                            <Label htmlFor="end_date">End date</Label>
                             <DatePicker
-                                id="next_due_date"
-                                name="next_due_date"
-                                value={data.next_due_date}
-                                onChange={(date) =>
-                                    setData('next_due_date', date)
-                                }
+                                id="end_date"
+                                name="end_date"
+                                value={data.end_date}
+                                onChange={(date) => setData('end_date', date)}
                             />
-                            <InputError message={errors.next_due_date} />
+                            <InputError message={errors.end_date} />
                         </div>
+                    )}
 
-                        {/* Auto-create */}
-                        <div className="flex items-center gap-3">
-                            <Checkbox
-                                id="auto_create"
-                                checked={data.auto_create}
-                                onCheckedChange={(checked) =>
-                                    setData('auto_create', checked === true)
-                                }
-                            />
-                            <Label htmlFor="auto_create">
-                                Auto-create transaction when due
-                            </Label>
-                        </div>
-
-                        {/* End type */}
+                    {/* End after occurrences */}
+                    {data.end_type === 'after_occurrences' && (
                         <div className="grid gap-2">
-                            <Label>End</Label>
-                            <RadioGroup
-                                value={data.end_type}
-                                onValueChange={(val) =>
-                                    setData('end_type', val as EndType)
+                            <Label htmlFor="end_after_occurrences">
+                                End after occurrences
+                            </Label>
+                            <Input
+                                id="end_after_occurrences"
+                                name="end_after_occurrences"
+                                type="number"
+                                inputMode="decimal"
+                                min="1"
+                                value={data.end_after_occurrences}
+                                onChange={(e) =>
+                                    setData(
+                                        'end_after_occurrences',
+                                        e.target.value,
+                                    )
                                 }
-                            >
-                                <div className="flex items-center gap-2">
-                                    <RadioGroupItem
-                                        value="never"
-                                        id="end_type_never"
-                                    />
-                                    <Label htmlFor="end_type_never">
-                                        Never
-                                    </Label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <RadioGroupItem
-                                        value="on_date"
-                                        id="end_type_on_date"
-                                    />
-                                    <Label htmlFor="end_type_on_date">
-                                        On date
-                                    </Label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <RadioGroupItem
-                                        value="after_occurrences"
-                                        id="end_type_after_occurrences"
-                                    />
-                                    <Label htmlFor="end_type_after_occurrences">
-                                        After occurrences
-                                    </Label>
-                                </div>
-                            </RadioGroup>
-                            <InputError message={errors.end_type} />
+                                required
+                            />
+                            <InputError
+                                message={errors.end_after_occurrences}
+                            />
                         </div>
+                    )}
 
-                        {/* End date */}
-                        {data.end_type === 'on_date' && (
-                            <div className="grid gap-2">
-                                <Label htmlFor="end_date">End date</Label>
-                                <DatePicker
-                                    id="end_date"
-                                    name="end_date"
-                                    value={data.end_date}
-                                    onChange={(date) =>
-                                        setData('end_date', date)
-                                    }
-                                />
-                                <InputError message={errors.end_date} />
-                            </div>
-                        )}
-
-                        {/* End after occurrences */}
-                        {data.end_type === 'after_occurrences' && (
-                            <div className="grid gap-2">
-                                <Label htmlFor="end_after_occurrences">
-                                    End after occurrences
-                                </Label>
-                                <Input
-                                    id="end_after_occurrences"
-                                    name="end_after_occurrences"
-                                    type="number"
-                                    inputMode="decimal"
-                                    min="1"
-                                    value={data.end_after_occurrences}
-                                    onChange={(e) =>
-                                        setData(
-                                            'end_after_occurrences',
-                                            e.target.value,
-                                        )
-                                    }
-                                    required
-                                />
-                                <InputError
-                                    message={errors.end_after_occurrences}
-                                />
-                            </div>
-                        )}
-
-                        <Button disabled={processing}>Create</Button>
-                    </form>
-                )}
+                    <Button disabled={processing}>Create</Button>
+                </form>
             </div>
         </AppLayout>
     );

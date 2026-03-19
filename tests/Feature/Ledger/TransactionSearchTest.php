@@ -120,6 +120,6 @@ test('transaction index page renders without data props', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/transactions/index')
-        ->has('ledger')
+        ->has('filters')
     );
 });
