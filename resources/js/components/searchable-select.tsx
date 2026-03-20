@@ -256,10 +256,9 @@ export function SearchableSelect(props: SearchableSelectProps) {
                 </Button>
             </PopoverTrigger>
             <PopoverContent
-                className="w-[--radix-popover-trigger-width] p-0"
+                className="w-[--radix-popover-trigger-width] touch-auto p-0"
                 align="start"
                 sideOffset={4}
-                onWheel={(e) => e.stopPropagation()}
             >
                 <Command>
                     <CommandInput
