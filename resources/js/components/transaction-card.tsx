@@ -43,6 +43,8 @@ type TransactionCardProps = {
     runningBalance?: number | null;
     /** Edit URL for the transaction */
     editUrl?: string;
+    /** Callback when attachment icon is clicked */
+    onAttachmentClick?: () => void;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -55,6 +57,7 @@ export function TransactionCard({
     actions = [],
     runningBalance = null,
     editUrl,
+    onAttachmentClick,
 }: TransactionCardProps) {
     const [splitsExpanded, setSplitsExpanded] = useState(false);
 
@@ -62,7 +65,9 @@ export function TransactionCard({
     const isSplit =
         transaction.is_split && (transaction.splits?.length ?? 0) > 0;
     const hasTags = (transaction.tags?.length ?? 0) > 0;
-    const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
+    const hasAttachments =
+        (transaction.attachments?.length ?? 0) > 0 ||
+        (transaction.attachments_count ?? 0) > 0;
     const hasDescription = !!transaction.description;
     const amount = parseFloat(transaction.amount);
 
@@ -184,8 +189,18 @@ export function TransactionCard({
                                 )}
                             </div>
                         )}
-                        {hasAttachments && (
-                            <Paperclip className="size-3.5 text-muted-foreground" />
+                        {hasAttachments && onAttachmentClick && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAttachmentClick();
+                                }}
+                                className="rounded p-0.5 hover:bg-muted"
+                                aria-label="View attachments"
+                            >
+                                <Paperclip className="size-3.5 text-muted-foreground" />
+                            </button>
                         )}
                     </div>
                 </div>

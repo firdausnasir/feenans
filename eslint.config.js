@@ -102,6 +102,7 @@ export default [
                 'error',
                 ...paddingAroundControl,
             ],
+            'react-hooks/set-state-in-effect': 'off',
         },
     },
     {

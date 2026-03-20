@@ -51,6 +51,8 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
         ->name('ledgers.transactions.store');
     Route::get('ledgers/{ledger}/transactions/{transaction}/edit', [TransactionController::class, 'edit'])
         ->name('ledgers.transactions.edit');
+    Route::get('ledgers/{ledger}/transactions/{transaction}/attachments', [AttachmentController::class, 'index'])
+        ->name('ledgers.transactions.attachments.index');
     Route::post('ledgers/{ledger}/transactions/{transaction}/attachments', [AttachmentController::class, 'store'])
         ->name('ledgers.transactions.attachments.store');
     Route::get('ledgers/{ledger}/transactions/{transaction}/attachments/{attachment}', [AttachmentController::class, 'show'])

@@ -94,6 +94,7 @@ export function AddTransactionModal({
     initialData,
     onTransactionAdded,
     onModalClosed,
+    modal = false,
 }: {
     ledger: Ledger;
     defaultAccountId?: number;
@@ -102,6 +103,7 @@ export function AddTransactionModal({
     initialData?: DuplicateData | null;
     onTransactionAdded?: () => void;
     onModalClosed?: () => void;
+    modal?: boolean;
 }) {
     const isControlled = externalOpen !== undefined;
     const [internalOpen, setInternalOpen] = useState(false);
@@ -480,7 +482,7 @@ export function AddTransactionModal({
     }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} modal={modal} onOpenChange={setOpen}>
             {!isControlled && (
                 <DialogTrigger asChild>
                     <Button className="w-full gap-2 sm:w-auto">

@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
 function Dialog({
+  modal = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  return <DialogPrimitive.Root data-slot="dialog" modal={modal} {...props} />
 }
 
 function DialogTrigger({
@@ -39,7 +40,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props}
@@ -57,7 +58,7 @@ function DialogContent({
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm animate-in fade-in-0" />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

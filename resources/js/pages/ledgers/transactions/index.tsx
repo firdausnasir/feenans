@@ -60,6 +60,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useAttachments } from '@/hooks/use-attachments';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -567,7 +568,7 @@ function EditTransactionModal({
     }
 
     return (
-        <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <Dialog open modal onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Edit Transaction</DialogTitle>
@@ -1418,6 +1419,10 @@ export default function TransactionsIndex() {
     const [duplicateTransaction, setDuplicateTransaction] =
         useState<DuplicateData | null>(null);
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [attachmentModalTransaction, setAttachmentModalTransaction] =
+        useState<Transaction | null>(null);
+    const { attachments: modalAttachments, loading: loadingAttachments } =
+        useAttachments(ledger.id, attachmentModalTransaction);
 
     // Filter panel open/closed
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -1951,6 +1956,9 @@ export default function TransactionsIndex() {
                                 Category
                             </TableHead>
                             <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="w-16 text-center">
+                                Files
+                            </TableHead>
                             <TableHead className="w-8"></TableHead>
                         </TableRow>
                     </TableHeader>
@@ -2001,6 +2009,25 @@ export default function TransactionsIndex() {
                                         className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
                                     >
                                         {formatAbsAmount(amount)}
+                                    </TableCell>
+                                    <TableCell
+                                        className="text-center"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {(tx.attachments_count ?? 0) > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setAttachmentModalTransaction(
+                                                        tx,
+                                                    )
+                                                }
+                                                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                                            >
+                                                <Paperclip className="size-3" />
+                                                {tx.attachments_count}
+                                            </button>
+                                        )}
                                     </TableCell>
                                     <TableCell
                                         onClick={(e) => e.stopPropagation()}
@@ -2081,6 +2108,9 @@ export default function TransactionsIndex() {
                             }
                             onSelectChange={(c) => handleSelectOne(tx.id, c)}
                             runningBalance={runningBalances?.get(tx.id) ?? null}
+                            onAttachmentClick={() =>
+                                setAttachmentModalTransaction(tx)
+                            }
                             actions={[
                                 {
                                     label: 'Edit',
@@ -2509,6 +2539,7 @@ export default function TransactionsIndex() {
             {/* Single delete confirmation */}
             <Dialog
                 open={deleteConfirmTransaction !== null}
+                modal
                 onOpenChange={(open) =>
                     !open && setDeleteConfirmTransaction(null)
                 }
@@ -2550,11 +2581,88 @@ export default function TransactionsIndex() {
                     }
                 }}
                 initialData={duplicateTransaction}
+                modal
             />
+
+            {/* Attachment viewer modal */}
+            <Dialog
+                open={attachmentModalTransaction !== null}
+                modal
+                onOpenChange={(open) =>
+                    !open && setAttachmentModalTransaction(null)
+                }
+            >
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Attachments</DialogTitle>
+                        <DialogDescription>
+                            {attachmentModalTransaction?.description ||
+                                'Transaction'}{' '}
+                            ·{' '}
+                            {formatAbsAmount(
+                                attachmentModalTransaction?.amount || '0',
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-4">
+                        {loadingAttachments ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            </div>
+                        ) : modalAttachments.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No attachments for this transaction.
+                            </p>
+                        ) : (
+                            modalAttachments.map((attachment) => (
+                                <div
+                                    key={attachment.id}
+                                    className="flex items-center justify-between rounded-lg border border-border p-3"
+                                >
+                                    <div className="min-w-0">
+                                        <a
+                                            href={attachment.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block truncate text-sm font-medium hover:underline"
+                                        >
+                                            {attachment.filename}
+                                        </a>
+                                        <p className="text-xs text-muted-foreground">
+                                            {(attachment.size / 1024).toFixed(
+                                                0,
+                                            )}{' '}
+                                            KB
+                                        </p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" asChild>
+                                        <a
+                                            href={attachment.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            View
+                                        </a>
+                                    </Button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setAttachmentModalTransaction(null)}
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Bulk delete confirmation */}
             <Dialog
                 open={showBulkDeleteConfirm}
+                modal
                 onOpenChange={(open) =>
                     !open && setShowBulkDeleteConfirm(false)
                 }

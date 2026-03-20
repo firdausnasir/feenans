@@ -28,6 +28,7 @@ class TransactionResource extends JsonResource
             'transaction_date' => $this->transaction_date?->toDateString(),
             'transfer_pair_id' => $this->transfer_pair_id,
             'is_split' => $this->splits_count > 0 || ($this->relationLoaded('splits') && $this->splits->isNotEmpty()),
+            'attachments_count' => $this->whenCounted('attachments'),
             'account' => new AccountResource($this->whenLoaded('account')),
             'category' => new CategoryResource($this->whenLoaded('category')),
             'payee' => new PayeeResource($this->whenLoaded('payee')),

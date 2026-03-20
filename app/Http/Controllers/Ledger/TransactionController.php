@@ -52,6 +52,7 @@ class TransactionController extends Controller
                 $query = $ledger->transactions()
                     ->with(['account', 'category', 'payee', 'tags', 'transferPair'])
                     ->withCount('splits')
+                    ->withCount('attachments')
                     ->orderByDesc('transaction_date')
                     ->orderByDesc('id');
 

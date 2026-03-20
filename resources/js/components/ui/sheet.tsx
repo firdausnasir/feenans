@@ -4,8 +4,11 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  modal = false,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  return <SheetPrimitive.Root data-slot="sheet" modal={modal} {...props} />
 }
 
 function SheetTrigger({
@@ -34,7 +37,7 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80 backdrop-blur-sm",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80",
         className
       )}
       {...props}
@@ -52,7 +55,7 @@ function SheetContent({
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm animate-in fade-in-0" />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(

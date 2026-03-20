@@ -8,6 +8,7 @@ use App\Http\Resources\AttachmentResource;
 use App\Models\Attachment;
 use App\Models\Ledger;
 use App\Models\Transaction;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +16,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
+    public function index(Ledger $ledger, Transaction $transaction): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        $attachments = $transaction->attachments()->with('transaction')->get();
+
+        return response()->json([
+            'attachments' => AttachmentResource::collection($attachments)->resolve(),
+        ]);
+    }
+
     public function store(StoreAttachmentRequest $request, Ledger $ledger, Transaction $transaction): RedirectResponse
     {
         $this->authorize('view', $ledger);

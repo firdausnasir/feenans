@@ -99,6 +99,7 @@ export type Transaction = {
     attachments?: Attachment[];
     splits?: TransactionSplit[];
     is_split?: boolean;
+    attachments_count?: number;
 };
 
 export type DashboardSummary = {
