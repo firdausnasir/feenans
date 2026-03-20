@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 
 // ─── Import Mappings ────────────────────────────────────────────────
 
@@ -293,7 +294,15 @@ test('create page renders successfully', function () {
         ->get(route('ledgers.import.create', $ledger));
 
     $response->assertOk();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/import/index')
+        ->missing('accounts')
+        ->missing('importHistory')
+        ->missing('savedMappings')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('accounts')
+            ->has('importHistory')
+            ->has('savedMappings')
+        )
     );
 });

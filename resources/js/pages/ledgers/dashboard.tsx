@@ -446,7 +446,7 @@ export default function LedgerDashboard() {
                                     Income
                                 </span>
                                 <p
-                                    className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.income)}`}
+                                    className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.income)}`}
                                 >
                                     {formatAbsAmount(summary.income)}
                                 </p>
@@ -469,7 +469,7 @@ export default function LedgerDashboard() {
                                     Expense
                                 </span>
                                 <p
-                                    className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.expense)}`}
+                                    className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.expense)}`}
                                 >
                                     {formatAbsAmount(summary.expense)}
                                 </p>
@@ -482,7 +482,7 @@ export default function LedgerDashboard() {
                                 Net
                             </span>
                             <p
-                                className={`text-base font-bold tabular-nums sm:text-lg md:text-xl ${amountColor(summary.net)}`}
+                                className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.net)}`}
                             >
                                 {formatAbsAmount(summary.net)}
                             </p>

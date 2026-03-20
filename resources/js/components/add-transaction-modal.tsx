@@ -1,5 +1,5 @@
-import type { FormDataConvertible, Page } from '@inertiajs/core';
-import { Form, Link, router, usePage } from '@inertiajs/react';
+import type { Page } from '@inertiajs/core';
+import { Link, router, usePage } from '@inertiajs/react';
 import confetti from 'canvas-confetti';
 import { CreditCard, Loader2, Paperclip, PlusCircle, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -381,19 +381,35 @@ export function AddTransactionModal({
         }, 0);
     }
 
-    const transformWithFiles = useCallback(
-        (data: Record<string, FormDataConvertible>) => {
-            if (pendingFiles.length > 0) {
-                return {
-                    ...data,
-                    attachments: pendingFiles as unknown as FormDataConvertible,
-                };
-            }
+    const [processing, setProcessing] = useState(false);
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-            return data;
-        },
-        [pendingFiles],
-    );
+    function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setProcessing(true);
+        setFormErrors({});
+
+        const formData = new FormData(e.target as HTMLFormElement);
+
+        // Append files manually since the hidden file input has no name
+        for (const file of pendingFiles) {
+            formData.append('attachments[]', file);
+        }
+
+        router.post(TransactionController.store.url(ledger.id), formData, {
+            forceFormData: true,
+            onSuccess: handleSuccess,
+            onError: (errors) => {
+                setFormErrors(errors);
+                const firstError = Object.values(errors)[0];
+
+                if (firstError) {
+                    toast.error(String(firstError));
+                }
+            },
+            onFinish: () => setProcessing(false),
+        });
+    }
 
     function handleSuccess(page: Page) {
         const flash = page.props.flash as {
@@ -479,722 +495,676 @@ export function AddTransactionModal({
                         </Button>
                     </div>
                 ) : (
-                    <Form
-                        action={TransactionController.store.url(ledger.id)}
-                        method="post"
-                        className="space-y-6"
-                        transform={transformWithFiles}
-                        onSuccess={handleSuccess}
-                        onError={(errors) => {
-                            const firstError = Object.values(errors)[0];
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <>
+                            <div className="grid grid-cols-3 gap-1">
+                                {(
+                                    ['expense', 'income', 'transfer'] as const
+                                ).map((type) => (
+                                    <Button
+                                        key={type}
+                                        type="button"
+                                        variant={
+                                            mode === type
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        className="capitalize"
+                                        onClick={() => setMode(type)}
+                                    >
+                                        {type}
+                                    </Button>
+                                ))}
+                            </div>
 
-                            if (firstError) {
-                                toast.error(String(firstError));
-                            }
-                        }}
-                    >
-                        {({ errors, processing }) => (
-                            <>
-                                <div className="grid grid-cols-3 gap-1">
-                                    {(
-                                        [
-                                            'expense',
-                                            'income',
-                                            'transfer',
-                                        ] as const
-                                    ).map((type) => (
-                                        <Button
-                                            key={type}
-                                            type="button"
-                                            variant={
-                                                mode === type
-                                                    ? 'default'
-                                                    : 'outline'
+                            <input
+                                type="hidden"
+                                name="transaction_type"
+                                value={mode}
+                            />
+
+                            {isSplitTransaction && mode !== 'transfer'
+                                ? splitRows.map((split, index) => (
+                                      <div key={split.id}>
+                                          <input
+                                              type="hidden"
+                                              name={`splits[${index}][amount]`}
+                                              value={split.amount}
+                                          />
+                                          <input
+                                              type="hidden"
+                                              name={`splits[${index}][category_id]`}
+                                              value={split.category_id}
+                                          />
+                                          <input
+                                              type="hidden"
+                                              name={`splits[${index}][payee_id]`}
+                                              value={split.payee_id}
+                                          />
+                                          <input
+                                              type="hidden"
+                                              name={`splits[${index}][description]`}
+                                              value={split.description}
+                                          />
+                                      </div>
+                                  ))
+                                : null}
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="amount">Amount</Label>
+                                <div className="relative">
+                                    <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                                        {ledger.currency_code}
+                                    </span>
+                                    <Input
+                                        id="amount"
+                                        name="amount"
+                                        ref={amountInputRef}
+                                        type="number"
+                                        inputMode="decimal"
+                                        step="0.01"
+                                        min="0.01"
+                                        autoFocus
+                                        required
+                                        className="pl-14"
+                                        value={amount}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+
+                                            if (
+                                                value !== '' &&
+                                                Number(value) < 0
+                                            ) {
+                                                return;
                                             }
-                                            className="capitalize"
-                                            onClick={() => setMode(type)}
-                                        >
-                                            {type}
-                                        </Button>
-                                    ))}
+
+                                            setAmount(value);
+                                        }}
+                                    />
                                 </div>
+                                <InputError message={formErrors.amount} />
+                            </div>
 
-                                <input
-                                    type="hidden"
-                                    name="transaction_type"
-                                    value={mode}
-                                />
-
-                                {isSplitTransaction && mode !== 'transfer'
-                                    ? splitRows.map((split, index) => (
-                                          <div key={split.id}>
-                                              <input
-                                                  type="hidden"
-                                                  name={`splits[${index}][amount]`}
-                                                  value={split.amount}
-                                              />
-                                              <input
-                                                  type="hidden"
-                                                  name={`splits[${index}][category_id]`}
-                                                  value={split.category_id}
-                                              />
-                                              <input
-                                                  type="hidden"
-                                                  name={`splits[${index}][payee_id]`}
-                                                  value={split.payee_id}
-                                              />
-                                              <input
-                                                  type="hidden"
-                                                  name={`splits[${index}][description]`}
-                                                  value={split.description}
-                                              />
-                                          </div>
-                                      ))
-                                    : null}
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="account_id">Account</Label>
+                                    <input
+                                        type="hidden"
+                                        name="account_id"
+                                        value={accountId}
+                                    />
+                                    <SearchableSelect
+                                        options={accounts.map((account) => ({
+                                            value: String(account.id),
+                                            label: account.name,
+                                            color: account.color,
+                                        }))}
+                                        value={accountId || null}
+                                        onValueChange={
+                                            handleSourceAccountChange
+                                        }
+                                        placeholder="Select account"
+                                        searchPlaceholder="Search accounts..."
+                                    />
+                                    <InputError
+                                        message={formErrors.account_id}
+                                    />
+                                </div>
 
                                 <div className="grid gap-2">
-                                    <Label htmlFor="amount">Amount</Label>
-                                    <div className="relative">
-                                        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
-                                            {ledger.currency_code}
-                                        </span>
-                                        <Input
-                                            id="amount"
-                                            name="amount"
-                                            ref={amountInputRef}
-                                            type="number"
-                                            inputMode="decimal"
-                                            step="0.01"
-                                            min="0.01"
-                                            autoFocus
-                                            required
-                                            className="pl-14"
-                                            value={amount}
-                                            onChange={(event) => {
-                                                const value =
-                                                    event.target.value;
-
-                                                if (
-                                                    value !== '' &&
-                                                    Number(value) < 0
-                                                ) {
-                                                    return;
-                                                }
-
-                                                setAmount(value);
-                                            }}
-                                        />
-                                    </div>
-                                    <InputError message={errors.amount} />
+                                    <Label htmlFor="transaction_date">
+                                        Date
+                                    </Label>
+                                    <DatePicker
+                                        id="transaction_date"
+                                        name="transaction_date"
+                                        value={transactionDate}
+                                        onChange={(date) =>
+                                            setTransactionDate(date)
+                                        }
+                                    />
+                                    <InputError
+                                        message={formErrors.transaction_date}
+                                    />
                                 </div>
+                            </div>
 
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="account_id">
-                                            Account
-                                        </Label>
-                                        <input
-                                            type="hidden"
-                                            name="account_id"
-                                            value={accountId}
-                                        />
-                                        <SearchableSelect
-                                            options={accounts.map(
-                                                (account) => ({
-                                                    value: String(account.id),
-                                                    label: account.name,
-                                                    color: account.color,
-                                                }),
-                                            )}
-                                            value={accountId || null}
-                                            onValueChange={
-                                                handleSourceAccountChange
-                                            }
-                                            placeholder="Select account"
-                                            searchPlaceholder="Search accounts..."
-                                        />
-                                        <InputError
-                                            message={errors.account_id}
-                                        />
-                                    </div>
-
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="transaction_date">
-                                            Date
-                                        </Label>
-                                        <DatePicker
-                                            id="transaction_date"
-                                            name="transaction_date"
-                                            value={transactionDate}
-                                            onChange={(date) =>
-                                                setTransactionDate(date)
-                                            }
-                                        />
-                                        <InputError
-                                            message={errors.transaction_date}
-                                        />
-                                    </div>
+                            {mode === 'transfer' ? (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="to_account_id">
+                                        Destination account
+                                    </Label>
+                                    <input
+                                        type="hidden"
+                                        name="to_account_id"
+                                        value={toAccountId}
+                                    />
+                                    <SearchableSelect
+                                        options={accounts
+                                            .filter(
+                                                (a) =>
+                                                    String(a.id) !== accountId,
+                                            )
+                                            .map((account) => ({
+                                                value: String(account.id),
+                                                label: account.name,
+                                                color: account.color,
+                                            }))}
+                                        value={toAccountId || null}
+                                        onValueChange={(v) =>
+                                            setToAccountId(v ?? '')
+                                        }
+                                        placeholder="Select destination"
+                                        searchPlaceholder="Search accounts..."
+                                    />
+                                    <InputError
+                                        message={formErrors.to_account_id}
+                                    />
                                 </div>
-
-                                {mode === 'transfer' ? (
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="to_account_id">
-                                            Destination account
-                                        </Label>
-                                        <input
-                                            type="hidden"
-                                            name="to_account_id"
-                                            value={toAccountId}
-                                        />
-                                        <SearchableSelect
-                                            options={accounts
-                                                .filter(
-                                                    (a) =>
-                                                        String(a.id) !==
-                                                        accountId,
-                                                )
-                                                .map((account) => ({
-                                                    value: String(account.id),
-                                                    label: account.name,
-                                                    color: account.color,
-                                                }))}
-                                            value={toAccountId || null}
-                                            onValueChange={(v) =>
-                                                setToAccountId(v ?? '')
-                                            }
-                                            placeholder="Select destination"
-                                            searchPlaceholder="Search accounts..."
-                                        />
-                                        <InputError
-                                            message={errors.to_account_id}
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between rounded-lg border border-dashed border-border px-4 py-3">
-                                            <div>
-                                                <Label htmlFor="split-toggle">
-                                                    Split transaction
-                                                </Label>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Break this transaction into
-                                                    multiple category lines.
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                id="split-toggle"
-                                                checked={isSplitTransaction}
-                                                onCheckedChange={
-                                                    setIsSplitTransaction
-                                                }
-                                            />
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between rounded-lg border border-dashed border-border px-4 py-3">
+                                        <div>
+                                            <Label htmlFor="split-toggle">
+                                                Split transaction
+                                            </Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                Break this transaction into
+                                                multiple category lines.
+                                            </p>
                                         </div>
+                                        <Switch
+                                            id="split-toggle"
+                                            checked={isSplitTransaction}
+                                            onCheckedChange={
+                                                setIsSplitTransaction
+                                            }
+                                        />
+                                    </div>
 
-                                        {!isSplitTransaction && (
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                {/* Category — grouped by parent */}
-                                                <div className="grid gap-2">
-                                                    <Label htmlFor="category_id">
-                                                        Category
-                                                    </Label>
-                                                    <input
-                                                        type="hidden"
-                                                        name="category_id"
-                                                        value={categoryId}
-                                                    />
-                                                    <SearchableSelect
-                                                        options={
-                                                            categoryOptions
-                                                        }
-                                                        value={
-                                                            categoryId || null
-                                                        }
-                                                        onValueChange={(v) =>
-                                                            setCategoryId(
-                                                                v ?? '',
-                                                            )
-                                                        }
-                                                        placeholder="No category"
-                                                        searchPlaceholder="Search categories..."
-                                                        allOption="No category"
-                                                    />
-                                                    <InputError
-                                                        message={
-                                                            errors.category_id
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Payee — searchable combobox with inline creation */}
-                                                <div className="grid gap-2">
-                                                    <Label>Payee</Label>
-
-                                                    <input
-                                                        type="hidden"
-                                                        name="payee_id"
-                                                        value={selectedPayeeId}
-                                                    />
-                                                    <input
-                                                        type="hidden"
-                                                        name="new_payee_name"
-                                                        value={
-                                                            newPayeeNameForSubmit
-                                                        }
-                                                    />
-
-                                                    <SearchableSelect
-                                                        options={payees.map(
-                                                            (payee) => ({
-                                                                value: String(
-                                                                    payee.id,
-                                                                ),
-                                                                label: payee.name,
-                                                            }),
-                                                        )}
-                                                        value={
-                                                            selectedPayeeId ||
-                                                            (newPayeeNameForSubmit
-                                                                ? `new:${newPayeeNameForSubmit}`
-                                                                : null)
-                                                        }
-                                                        onValueChange={(v) => {
-                                                            setSelectedPayeeId(
-                                                                v ?? '',
-                                                            );
-                                                            setNewPayeeNameForSubmit(
-                                                                '',
-                                                            );
-                                                        }}
-                                                        placeholder="No payee"
-                                                        searchPlaceholder="Search payees..."
-                                                        allOption="No payee"
-                                                        creatable
-                                                        onCreate={(name) => {
-                                                            setSelectedPayeeId(
-                                                                '',
-                                                            );
-                                                            setNewPayeeNameForSubmit(
-                                                                name,
-                                                            );
-                                                        }}
-                                                        createLabel={
-                                                            newPayeeNameForSubmit
-                                                                ? `${newPayeeNameForSubmit} (new)`
-                                                                : undefined
-                                                        }
-                                                    />
-
-                                                    <InputError
-                                                        message={
-                                                            errors.payee_id ??
-                                                            errors.new_payee_name
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {isSplitTransaction && (
-                                            <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <Label>
-                                                            Split lines
-                                                        </Label>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Total allocated:{' '}
-                                                            {splitTotal.toFixed(
-                                                                2,
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={addSplitRow}
-                                                    >
-                                                        Add split
-                                                    </Button>
-                                                </div>
-
-                                                <div className="space-y-3">
-                                                    {splitRows.map(
-                                                        (split, index) => (
-                                                            <div
-                                                                key={split.id}
-                                                                className="space-y-3 rounded-lg border p-3"
-                                                            >
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-sm font-medium">
-                                                                        Split{' '}
-                                                                        {index +
-                                                                            1}
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        disabled={
-                                                                            splitRows.length <=
-                                                                            2
-                                                                        }
-                                                                        className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-                                                                        onClick={() =>
-                                                                            removeSplitRow(
-                                                                                split.id,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        <X className="size-4" />
-                                                                    </button>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div className="grid gap-1">
-                                                                        <Label className="text-xs">
-                                                                            Amount
-                                                                        </Label>
-                                                                        <Input
-                                                                            type="number"
-                                                                            inputMode="decimal"
-                                                                            step="0.01"
-                                                                            min="0.01"
-                                                                            value={
-                                                                                split.amount
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) => {
-                                                                                const value =
-                                                                                    e
-                                                                                        .target
-                                                                                        .value;
-
-                                                                                if (
-                                                                                    value !==
-                                                                                        '' &&
-                                                                                    Number(
-                                                                                        value,
-                                                                                    ) <
-                                                                                        0
-                                                                                ) {
-                                                                                    return;
-                                                                                }
-
-                                                                                updateSplitRow(
-                                                                                    split.id,
-                                                                                    'amount',
-                                                                                    value,
-                                                                                );
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="grid gap-1">
-                                                                        <Label className="text-xs">
-                                                                            Category
-                                                                        </Label>
-                                                                        <SearchableSelect
-                                                                            options={
-                                                                                categoryOptions
-                                                                            }
-                                                                            value={
-                                                                                split.category_id ||
-                                                                                null
-                                                                            }
-                                                                            onValueChange={(
-                                                                                value,
-                                                                            ) =>
-                                                                                updateSplitRow(
-                                                                                    split.id,
-                                                                                    'category_id',
-                                                                                    value ??
-                                                                                        '',
-                                                                                )
-                                                                            }
-                                                                            placeholder="No category"
-                                                                            searchPlaceholder="Search categories..."
-                                                                            allOption="No category"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div className="grid gap-1">
-                                                                        <Label className="text-xs">
-                                                                            Payee
-                                                                        </Label>
-                                                                        <SearchableSelect
-                                                                            options={payees.map(
-                                                                                (
-                                                                                    payee,
-                                                                                ) => ({
-                                                                                    value: String(
-                                                                                        payee.id,
-                                                                                    ),
-                                                                                    label: payee.name,
-                                                                                }),
-                                                                            )}
-                                                                            value={
-                                                                                split.payee_id ||
-                                                                                null
-                                                                            }
-                                                                            onValueChange={(
-                                                                                value,
-                                                                            ) =>
-                                                                                updateSplitRow(
-                                                                                    split.id,
-                                                                                    'payee_id',
-                                                                                    value ??
-                                                                                        '',
-                                                                                )
-                                                                            }
-                                                                            placeholder="No payee"
-                                                                            searchPlaceholder="Search payees..."
-                                                                            allOption="No payee"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="grid gap-1">
-                                                                        <Label className="text-xs">
-                                                                            Description
-                                                                        </Label>
-                                                                        <Input
-                                                                            value={
-                                                                                split.description
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) =>
-                                                                                updateSplitRow(
-                                                                                    split.id,
-                                                                                    'description',
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                )
-                                                                            }
-                                                                            placeholder="Optional split detail"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ),
-                                                    )}
-                                                </div>
-
-                                                <div className="flex items-center justify-between rounded-lg bg-background px-3 py-2 text-sm">
-                                                    <span className="text-muted-foreground">
-                                                        Remaining to allocate
-                                                    </span>
-                                                    <span
-                                                        className={cn(
-                                                            'font-medium tabular-nums',
-                                                            splitRemainder === 0
-                                                                ? 'text-green-600'
-                                                                : 'text-amber-600',
-                                                        )}
-                                                    >
-                                                        {splitRemainder.toFixed(
-                                                            2,
-                                                        )}
-                                                    </span>
-                                                </div>
+                                    {!isSplitTransaction && (
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {/* Category — grouped by parent */}
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="category_id">
+                                                    Category
+                                                </Label>
+                                                <input
+                                                    type="hidden"
+                                                    name="category_id"
+                                                    value={categoryId}
+                                                />
+                                                <SearchableSelect
+                                                    options={categoryOptions}
+                                                    value={categoryId || null}
+                                                    onValueChange={(v) =>
+                                                        setCategoryId(v ?? '')
+                                                    }
+                                                    placeholder="No category"
+                                                    searchPlaceholder="Search categories..."
+                                                    allOption="No category"
+                                                />
                                                 <InputError
-                                                    message={errors.splits}
+                                                    message={
+                                                        formErrors.category_id
+                                                    }
                                                 />
                                             </div>
-                                        )}
-                                    </div>
-                                )}
 
-                                <div className="grid gap-2">
-                                    <Label htmlFor="description">
-                                        Description
-                                    </Label>
-                                    <Input
-                                        key={`desc-${duplicateDate ?? 'default'}-${formResetKey}`}
-                                        id="description"
-                                        name="description"
-                                        defaultValue={
-                                            initialData?.description ?? ''
-                                        }
-                                        placeholder="Coffee, salary, or transfer note"
-                                    />
-                                    <InputError message={errors.description} />
-                                </div>
+                                            {/* Payee — searchable combobox with inline creation */}
+                                            <div className="grid gap-2">
+                                                <Label>Payee</Label>
 
-                                <div className="grid gap-2">
-                                    <Label htmlFor="notes">Notes</Label>
-                                    <Input
-                                        key={`notes-${duplicateDate ?? 'default'}-${formResetKey}`}
-                                        id="notes"
-                                        name="notes"
-                                        defaultValue={initialData?.notes ?? ''}
-                                        placeholder="Optional details"
-                                    />
-                                    <InputError message={errors.notes} />
-                                </div>
+                                                <input
+                                                    type="hidden"
+                                                    name="payee_id"
+                                                    value={selectedPayeeId}
+                                                />
+                                                <input
+                                                    type="hidden"
+                                                    name="new_payee_name"
+                                                    value={
+                                                        newPayeeNameForSubmit
+                                                    }
+                                                />
 
-                                {/* Attachments */}
-                                <div className="grid gap-2">
-                                    <Label>Attachments</Label>
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        multiple
-                                        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const newFiles = Array.from(
-                                                e.target.files ?? [],
-                                            );
-                                            setPendingFiles((prev) => [
-                                                ...prev,
-                                                ...newFiles,
-                                            ]);
-                                        }}
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-fit gap-1.5"
-                                        onClick={() => {
-                                            if (fileInputRef.current) {
-                                                fileInputRef.current.value = '';
-                                            }
+                                                <SearchableSelect
+                                                    options={payees.map(
+                                                        (payee) => ({
+                                                            value: String(
+                                                                payee.id,
+                                                            ),
+                                                            label: payee.name,
+                                                        }),
+                                                    )}
+                                                    value={
+                                                        selectedPayeeId ||
+                                                        (newPayeeNameForSubmit
+                                                            ? `new:${newPayeeNameForSubmit}`
+                                                            : null)
+                                                    }
+                                                    onValueChange={(v) => {
+                                                        setSelectedPayeeId(
+                                                            v ?? '',
+                                                        );
+                                                        setNewPayeeNameForSubmit(
+                                                            '',
+                                                        );
+                                                    }}
+                                                    placeholder="No payee"
+                                                    searchPlaceholder="Search payees..."
+                                                    allOption="No payee"
+                                                    creatable
+                                                    onCreate={(name) => {
+                                                        setSelectedPayeeId('');
+                                                        setNewPayeeNameForSubmit(
+                                                            name,
+                                                        );
+                                                    }}
+                                                    createLabel={
+                                                        newPayeeNameForSubmit
+                                                            ? `${newPayeeNameForSubmit} (new)`
+                                                            : undefined
+                                                    }
+                                                />
 
-                                            fileInputRef.current?.click();
-                                        }}
-                                    >
-                                        <Paperclip className="size-3.5" />
-                                        Attach files
-                                    </Button>
-                                    <p className="text-xs text-muted-foreground">
-                                        Max 5 MB per file. PDF, JPG, PNG, GIF,
-                                        WebP accepted.
-                                    </p>
-                                    {pendingFiles.length > 0 && (
-                                        <div className="space-y-1.5">
-                                            {pendingFiles.map((file, index) => (
-                                                <div
-                                                    key={`${file.name}-${index}`}
-                                                    className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm"
-                                                >
-                                                    <span className="min-w-0 truncate">
-                                                        {file.name}{' '}
-                                                        <span className="text-muted-foreground">
-                                                            (
-                                                            {(
-                                                                file.size / 1024
-                                                            ).toFixed(0)}{' '}
-                                                            KB)
-                                                        </span>
-                                                    </span>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="ml-2 size-6 shrink-0 p-0"
-                                                        onClick={() => {
-                                                            setPendingFiles(
-                                                                (prev) =>
-                                                                    prev.filter(
-                                                                        (
-                                                                            _,
-                                                                            i,
-                                                                        ) =>
-                                                                            i !==
-                                                                            index,
-                                                                    ),
-                                                            );
-                                                        }}
-                                                    >
-                                                        <X className="size-3.5" />
-                                                    </Button>
-                                                </div>
-                                            ))}
+                                                <InputError
+                                                    message={
+                                                        errors.payee_id ??
+                                                        errors.new_payee_name
+                                                    }
+                                                />
+                                            </div>
                                         </div>
                                     )}
-                                    <InputError
-                                        message={errors['attachments']}
-                                    />
-                                    <InputError
-                                        message={errors['attachments.0']}
-                                    />
-                                </div>
 
-                                {tags.length > 0 && (
-                                    <div className="grid gap-2">
-                                        <Label>Tags</Label>
-                                        {selectedTagIds.map((id) => (
-                                            <input
-                                                key={id}
-                                                type="hidden"
-                                                name="tag_ids[]"
-                                                value={id}
-                                            />
-                                        ))}
-                                        <div className="flex flex-wrap gap-2">
-                                            {tags.map((tag) => (
-                                                <label
-                                                    key={tag.id}
-                                                    className="flex cursor-pointer items-center gap-1.5"
+                                    {isSplitTransaction && (
+                                        <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <Label>Split lines</Label>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Total allocated:{' '}
+                                                        {splitTotal.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={addSplitRow}
                                                 >
-                                                    <Checkbox
-                                                        checked={selectedTagIds.includes(
-                                                            tag.id,
-                                                        )}
-                                                        onCheckedChange={(
-                                                            checked,
-                                                        ) =>
-                                                            setSelectedTagIds(
-                                                                (prev) =>
-                                                                    checked ===
-                                                                    true
-                                                                        ? [
-                                                                              ...prev,
-                                                                              tag.id,
-                                                                          ]
-                                                                        : prev.filter(
-                                                                              (
-                                                                                  id,
-                                                                              ) =>
-                                                                                  id !==
-                                                                                  tag.id,
-                                                                          ),
-                                                            )
-                                                        }
-                                                    />
-                                                    <TagPill tag={tag} />
-                                                </label>
-                                            ))}
+                                                    Add split
+                                                </Button>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {splitRows.map(
+                                                    (split, index) => (
+                                                        <div
+                                                            key={split.id}
+                                                            className="space-y-3 rounded-lg border p-3"
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-sm font-medium">
+                                                                    Split{' '}
+                                                                    {index + 1}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={
+                                                                        splitRows.length <=
+                                                                        2
+                                                                    }
+                                                                    className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                                                    onClick={() =>
+                                                                        removeSplitRow(
+                                                                            split.id,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <X className="size-4" />
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <div className="grid gap-1">
+                                                                    <Label className="text-xs">
+                                                                        Amount
+                                                                    </Label>
+                                                                    <Input
+                                                                        type="number"
+                                                                        inputMode="decimal"
+                                                                        step="0.01"
+                                                                        min="0.01"
+                                                                        value={
+                                                                            split.amount
+                                                                        }
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) => {
+                                                                            const value =
+                                                                                e
+                                                                                    .target
+                                                                                    .value;
+
+                                                                            if (
+                                                                                value !==
+                                                                                    '' &&
+                                                                                Number(
+                                                                                    value,
+                                                                                ) <
+                                                                                    0
+                                                                            ) {
+                                                                                return;
+                                                                            }
+
+                                                                            updateSplitRow(
+                                                                                split.id,
+                                                                                'amount',
+                                                                                value,
+                                                                            );
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                                <div className="grid gap-1">
+                                                                    <Label className="text-xs">
+                                                                        Category
+                                                                    </Label>
+                                                                    <SearchableSelect
+                                                                        options={
+                                                                            categoryOptions
+                                                                        }
+                                                                        value={
+                                                                            split.category_id ||
+                                                                            null
+                                                                        }
+                                                                        onValueChange={(
+                                                                            value,
+                                                                        ) =>
+                                                                            updateSplitRow(
+                                                                                split.id,
+                                                                                'category_id',
+                                                                                value ??
+                                                                                    '',
+                                                                            )
+                                                                        }
+                                                                        placeholder="No category"
+                                                                        searchPlaceholder="Search categories..."
+                                                                        allOption="No category"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <div className="grid gap-1">
+                                                                    <Label className="text-xs">
+                                                                        Payee
+                                                                    </Label>
+                                                                    <SearchableSelect
+                                                                        options={payees.map(
+                                                                            (
+                                                                                payee,
+                                                                            ) => ({
+                                                                                value: String(
+                                                                                    payee.id,
+                                                                                ),
+                                                                                label: payee.name,
+                                                                            }),
+                                                                        )}
+                                                                        value={
+                                                                            split.payee_id ||
+                                                                            null
+                                                                        }
+                                                                        onValueChange={(
+                                                                            value,
+                                                                        ) =>
+                                                                            updateSplitRow(
+                                                                                split.id,
+                                                                                'payee_id',
+                                                                                value ??
+                                                                                    '',
+                                                                            )
+                                                                        }
+                                                                        placeholder="No payee"
+                                                                        searchPlaceholder="Search payees..."
+                                                                        allOption="No payee"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid gap-1">
+                                                                    <Label className="text-xs">
+                                                                        Description
+                                                                    </Label>
+                                                                    <Input
+                                                                        value={
+                                                                            split.description
+                                                                        }
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) =>
+                                                                            updateSplitRow(
+                                                                                split.id,
+                                                                                'description',
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            )
+                                                                        }
+                                                                        placeholder="Optional split detail"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center justify-between rounded-lg bg-background px-3 py-2 text-sm">
+                                                <span className="text-muted-foreground">
+                                                    Remaining to allocate
+                                                </span>
+                                                <span
+                                                    className={cn(
+                                                        'font-medium tabular-nums',
+                                                        splitRemainder === 0
+                                                            ? 'text-green-600'
+                                                            : 'text-amber-600',
+                                                    )}
+                                                >
+                                                    {splitRemainder.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <InputError
+                                                message={formErrors.splits}
+                                            />
                                         </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="description">Description</Label>
+                                <Input
+                                    key={`desc-${duplicateDate ?? 'default'}-${formResetKey}`}
+                                    id="description"
+                                    name="description"
+                                    defaultValue={
+                                        initialData?.description ?? ''
+                                    }
+                                    placeholder="Coffee, salary, or transfer note"
+                                />
+                                <InputError message={formErrors.description} />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="notes">Notes</Label>
+                                <Input
+                                    key={`notes-${duplicateDate ?? 'default'}-${formResetKey}`}
+                                    id="notes"
+                                    name="notes"
+                                    defaultValue={initialData?.notes ?? ''}
+                                    placeholder="Optional details"
+                                />
+                                <InputError message={formErrors.notes} />
+                            </div>
+
+                            {/* Attachments */}
+                            <div className="grid gap-2">
+                                <Label>Attachments</Label>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    multiple
+                                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const newFiles = Array.from(
+                                            e.target.files ?? [],
+                                        );
+                                        setPendingFiles((prev) => [
+                                            ...prev,
+                                            ...newFiles,
+                                        ]);
+                                    }}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-fit gap-1.5"
+                                    onClick={() => {
+                                        if (fileInputRef.current) {
+                                            fileInputRef.current.value = '';
+                                        }
+
+                                        fileInputRef.current?.click();
+                                    }}
+                                >
+                                    <Paperclip className="size-3.5" />
+                                    Attach files
+                                </Button>
+                                <p className="text-xs text-muted-foreground">
+                                    Max 5 MB per file. PDF, JPG, PNG, GIF, WebP
+                                    accepted.
+                                </p>
+                                {pendingFiles.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        {pendingFiles.map((file, index) => (
+                                            <div
+                                                key={`${file.name}-${index}`}
+                                                className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm"
+                                            >
+                                                <span className="min-w-0 truncate">
+                                                    {file.name}{' '}
+                                                    <span className="text-muted-foreground">
+                                                        (
+                                                        {(
+                                                            file.size / 1024
+                                                        ).toFixed(0)}{' '}
+                                                        KB)
+                                                    </span>
+                                                </span>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="ml-2 size-6 shrink-0 p-0"
+                                                    onClick={() => {
+                                                        setPendingFiles(
+                                                            (prev) =>
+                                                                prev.filter(
+                                                                    (_, i) =>
+                                                                        i !==
+                                                                        index,
+                                                                ),
+                                                        );
+                                                    }}
+                                                >
+                                                    <X className="size-3.5" />
+                                                </Button>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
+                                <InputError
+                                    message={formErrors['attachments']}
+                                />
+                                <InputError
+                                    message={formErrors['attachments.0']}
+                                />
+                            </div>
 
-                                <div className="flex items-center gap-2">
-                                    <Switch
-                                        id="rapid-entry"
-                                        checked={rapidEntry}
-                                        onCheckedChange={(checked) => {
-                                            setRapidEntry(checked);
-                                            localStorage.setItem(
-                                                'rapid-entry',
-                                                String(checked),
-                                            );
-                                        }}
-                                    />
-                                    <Label
-                                        htmlFor="rapid-entry"
-                                        className="cursor-pointer text-sm text-muted-foreground"
-                                    >
-                                        Keep open for rapid entry
-                                    </Label>
+                            {tags.length > 0 && (
+                                <div className="grid gap-2">
+                                    <Label>Tags</Label>
+                                    {selectedTagIds.map((id) => (
+                                        <input
+                                            key={id}
+                                            type="hidden"
+                                            name="tag_ids[]"
+                                            value={id}
+                                        />
+                                    ))}
+                                    <div className="flex flex-wrap gap-2">
+                                        {tags.map((tag) => (
+                                            <label
+                                                key={tag.id}
+                                                className="flex cursor-pointer items-center gap-1.5"
+                                            >
+                                                <Checkbox
+                                                    checked={selectedTagIds.includes(
+                                                        tag.id,
+                                                    )}
+                                                    onCheckedChange={(
+                                                        checked,
+                                                    ) =>
+                                                        setSelectedTagIds(
+                                                            (prev) =>
+                                                                checked === true
+                                                                    ? [
+                                                                          ...prev,
+                                                                          tag.id,
+                                                                      ]
+                                                                    : prev.filter(
+                                                                          (
+                                                                              id,
+                                                                          ) =>
+                                                                              id !==
+                                                                              tag.id,
+                                                                      ),
+                                                        )
+                                                    }
+                                                />
+                                                <TagPill tag={tag} />
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
 
-                                <Button disabled={processing}>
-                                    Save transaction
-                                </Button>
-                            </>
-                        )}
-                    </Form>
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="rapid-entry"
+                                    checked={rapidEntry}
+                                    onCheckedChange={(checked) => {
+                                        setRapidEntry(checked);
+                                        localStorage.setItem(
+                                            'rapid-entry',
+                                            String(checked),
+                                        );
+                                    }}
+                                />
+                                <Label
+                                    htmlFor="rapid-entry"
+                                    className="cursor-pointer text-sm text-muted-foreground"
+                                >
+                                    Keep open for rapid entry
+                                </Label>
+                            </div>
+
+                            <Button type="submit" disabled={processing}>
+                                Save transaction
+                            </Button>
+                        </>
+                    </form>
                 )}
             </DialogContent>
         </Dialog>

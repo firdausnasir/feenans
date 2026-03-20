@@ -5,6 +5,7 @@ use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create payees in a ledger', function () {
     $user = User::factory()->create();
@@ -30,9 +31,23 @@ test('payee index page renders successfully', function () {
         ->get(route('ledgers.payees.index', $ledger));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/payees/index')
+        ->missing('payees')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('payees')
+        )
     );
+});
+
+test('ledger payee web routes are available for inertia actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+
+    expect(parse_url(route('ledgers.payees.store', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/payees")
+        ->and(parse_url(route('ledgers.payees.update', [$ledger, $payee]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/payees/{$payee->id}")
+        ->and(parse_url(route('ledgers.payees.destroy', [$ledger, $payee]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/payees/{$payee->id}");
 });
 
 test('payee update updates payee name', function () {

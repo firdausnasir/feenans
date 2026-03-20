@@ -27,7 +27,10 @@ class CategoryResource extends JsonResource
                 $this->transactions_count !== null,
                 $this->transactions_count
             ),
-            'children' => CategoryResource::collection($this->whenLoaded('children')),
+            'children' => $this->whenLoaded(
+                'children',
+                fn () => CategoryResource::collection($this->children)->resolve()
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

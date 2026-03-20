@@ -3,6 +3,7 @@
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create categories in a ledger', function () {
     $user = User::factory()->create();
@@ -42,8 +43,15 @@ test('category index returns categories with children', function () {
         ->get(route('ledgers.categories.index', $ledger));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/categories/index')
+        ->missing('categories')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('categories', 1)
+            ->where('categories.0.name', 'Food')
+            ->has('categories.0.children', 1)
+            ->where('categories.0.children.0.name', 'Restaurants')
+        )
     );
 });
 
@@ -114,4 +122,15 @@ test('category reorder updates positions', function () {
 
     expect($cat1->fresh()->position)->toBe(2)
         ->and($cat2->fresh()->position)->toBe(1);
+});
+
+test('ledger category web routes are available for inertia actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    expect(parse_url(route('ledgers.categories.store', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories")
+        ->and(parse_url(route('ledgers.categories.update', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
+        ->and(parse_url(route('ledgers.categories.destroy', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
+        ->and(parse_url(route('ledgers.categories.reorder', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/reorder");
 });

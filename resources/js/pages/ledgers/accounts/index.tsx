@@ -1156,7 +1156,7 @@ export default function AccountsIndex() {
                                         Statement
                                     </span>
                                     <span
-                                        className={`font-medium tabular-nums ${amountColor(-(account.statement_balance ?? 0))}`}
+                                        className={`font-medium tabular-nums ${amountColor(account.statement_balance ?? 0)}`}
                                     >
                                         {formatAbsAmount(
                                             account.statement_balance ?? 0,
@@ -1178,21 +1178,20 @@ export default function AccountsIndex() {
                                         </span>
                                     )}
                                 </div>
-                                {account.current_spending != null &&
-                                    account.current_spending > 0 && (
-                                        <div className="mt-1 flex items-center justify-between border-t border-border/40 pt-1 text-xs">
-                                            <span className="text-muted-foreground">
-                                                Current spending
-                                            </span>
-                                            <span
-                                                className={`font-medium tabular-nums ${amountColor(-account.current_spending)}`}
-                                            >
-                                                {formatAbsAmount(
-                                                    account.current_spending,
-                                                )}
-                                            </span>
-                                        </div>
-                                    )}
+                                {account.current_spending != null && (
+                                    <div className="mt-1 flex items-center justify-between border-t border-border/40 pt-1 text-xs">
+                                        <span className="text-muted-foreground">
+                                            Current spending
+                                        </span>
+                                        <span
+                                            className={`font-medium tabular-nums ${amountColor(account.current_spending)}`}
+                                        >
+                                            {formatAbsAmount(
+                                                account.current_spending,
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>

@@ -7,6 +7,7 @@ use App\Models\Ledger;
 use App\Models\Tag;
 use App\Models\Transaction;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create a tag in a ledger', function () {
     $user = User::factory()->create();
@@ -134,4 +135,38 @@ test('transaction tags are synced on update', function () {
 
     $transaction->refresh();
     expect($transaction->tags()->pluck('tags.id')->toArray())->toBe([$tag2->id]);
+});
+
+test('tag index page loads deferred tags data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Tag::factory()->for($ledger)->create([
+        'name' => 'travel',
+        'color' => '#4ade80',
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.tags.index', $ledger));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/tags/index')
+        ->missing('tags')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('tags', 1)
+            ->where('tags.0.name', 'travel')
+            ->where('tags.0.color', '#4ade80')
+        )
+    );
+});
+
+test('ledger tag web routes are available for inertia actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create();
+
+    expect(parse_url(route('ledgers.tags.store', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/tags")
+        ->and(parse_url(route('ledgers.tags.update', [$ledger, $tag]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/tags/{$tag->id}")
+        ->and(parse_url(route('ledgers.tags.destroy', [$ledger, $tag]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/tags/{$tag->id}");
 });

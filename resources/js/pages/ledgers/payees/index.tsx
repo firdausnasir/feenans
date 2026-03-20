@@ -2,6 +2,11 @@ import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import { ExternalLink, Pencil, Search, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import {
+    destroy as destroyPayee,
+    store as storePayee,
+    update as updatePayee,
+} from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import {
@@ -193,7 +198,7 @@ export default function PayeesIndex() {
         }
 
         router.post(
-            `/ledgers/${ledger.id}/payees`,
+            storePayee(ledger.id),
             { name: trimmed },
             {
                 preserveScroll: true,
@@ -232,7 +237,7 @@ export default function PayeesIndex() {
         }
 
         router.patch(
-            `/ledgers/${ledger.id}/payees/${editingPayee.id}`,
+            updatePayee({ ledger: ledger.id, payee: editingPayee.id }),
             { name: trimmed },
             {
                 preserveScroll: true,
@@ -258,18 +263,21 @@ export default function PayeesIndex() {
 
         setIsDeleting(true);
 
-        router.delete(`/ledgers/${ledger.id}/payees/${payeeToDelete.id}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-                setPayeeToDelete(null);
-                setIsDeleting(false);
-                toast.success('Payee deleted');
+        router.delete(
+            destroyPayee({ ledger: ledger.id, payee: payeeToDelete.id }),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setPayeeToDelete(null);
+                    setIsDeleting(false);
+                    toast.success('Payee deleted');
+                },
+                onError: () => {
+                    setIsDeleting(false);
+                    toast.error('Failed to delete payee');
+                },
             },
-            onError: () => {
-                setIsDeleting(false);
-                toast.error('Failed to delete payee');
-            },
-        });
+        );
     }
 
     return (

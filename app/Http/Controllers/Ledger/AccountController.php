@@ -56,8 +56,8 @@ class AccountController extends Controller
             $previousEnd = $currentStart->subDay();
             [$previousStart, $calculatedPreviousEnd] = $txService->statementCycleBounds($account, $previousEnd);
 
-            $statementBalance = (float) $account->transactions()
-                ->whereBetween('transaction_date', [$previousStart->toDateString(), $calculatedPreviousEnd->toDateString()])
+            $statementBalance = (float) $account->initial_balance + (float) $account->transactions()
+                ->where('transaction_date', '<=', $calculatedPreviousEnd->toDateString())
                 ->sum('amount');
 
             $currentSpending = (float) $account->transactions()
@@ -76,9 +76,9 @@ class AccountController extends Controller
 
             $account->setAttribute('statement_start', $previousStart->toDateString());
             $account->setAttribute('statement_end', $calculatedPreviousEnd->toDateString());
-            $account->setAttribute('statement_balance', round(abs($statementBalance), 2));
-            $account->setAttribute('current_spending', round(abs($currentSpending), 2));
-            $account->setAttribute('outstanding', round(abs($statementBalance) + abs($currentSpending), 2));
+            $account->setAttribute('statement_balance', round($statementBalance, 2));
+            $account->setAttribute('current_spending', round($currentSpending, 2));
+            $account->setAttribute('outstanding', round($statementBalance + $currentSpending, 2));
             $account->setAttribute('payment_due_date', $paymentDueDate->toDateString());
 
             return $account;

@@ -1,7 +1,13 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Check } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    destroyMapping as destroyImportMapping,
+    execute as executeImport,
+    parse as parseImport,
+    storeMapping as storeImportMapping,
+} from '@/actions/App/Http/Controllers/Ledger/ImportController';
 import Heading from '@/components/heading';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -31,10 +37,9 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import { create as importCreate } from '@/routes/ledgers/import';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, BreadcrumbItem } from '@/types';
 
@@ -72,6 +77,18 @@ type ImportHistoryRecord = {
     imported_at: string;
 };
 
+type PageProps = {
+    currentLedger: { id: number; name: string };
+    flash: {
+        success?: string | null;
+        error?: string | null;
+    };
+    accounts?: Account[];
+    importHistory?: ImportHistoryRecord[];
+    savedMappings?: SavedMapping[];
+    parsedImport?: ParseResult | null;
+};
+
 const NOT_MAPPED = '__not_mapped__';
 
 const TARGET_FIELDS: {
@@ -100,46 +117,131 @@ function ImportLoadingSkeleton() {
     );
 }
 
-export default function ImportIndex() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
-    // Fetch lookup data via API
-    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
-        data: Account[];
-    }>(`${base}/accounts`);
-    const { data: historyResult, loading: historyLoading } = useApiQuery<{
-        data: ImportHistoryRecord[];
-    }>(`${base}/import/history`);
-    const {
-        data: savedMappingsResult,
-        loading: mappingsLoading,
-        refetch: refetchMappings,
-    } = useApiQuery<{ data: SavedMapping[] }>(`${base}/import/mappings`);
-
-    const accounts = accountsResult?.data ?? [];
-    const importHistory = historyResult?.data ?? [];
-    const savedMappings = savedMappingsResult?.data ?? [];
-    const lookupLoading = accountsLoading || historyLoading || mappingsLoading;
-
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
-        { title: 'Import', href: '#' },
-    ];
-
-    const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [isLoading, setIsLoading] = useState(false);
-    const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-    const [mapping, setMapping] = useState<Mapping>({
+function emptyMapping(): Mapping {
+    return {
         date: NOT_MAPPED,
         amount: NOT_MAPPED,
         description: NOT_MAPPED,
         category: NOT_MAPPED,
         payee: NOT_MAPPED,
         type: NOT_MAPPED,
-    });
+    };
+}
+
+function buildAutoMapping(headers: string[]): Mapping {
+    const autoMapping = emptyMapping();
+
+    for (const header of headers) {
+        const lower = header.toLowerCase();
+
+        if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
+            autoMapping.date = header;
+        } else if (
+            lower.includes('amount') &&
+            autoMapping.amount === NOT_MAPPED
+        ) {
+            autoMapping.amount = header;
+        } else if (
+            (lower.includes('description') ||
+                lower.includes('memo') ||
+                lower.includes('narration')) &&
+            autoMapping.description === NOT_MAPPED
+        ) {
+            autoMapping.description = header;
+        } else if (
+            (lower.includes('payee') ||
+                lower.includes('merchant') ||
+                lower.includes('vendor')) &&
+            autoMapping.payee === NOT_MAPPED
+        ) {
+            autoMapping.payee = header;
+        } else if (
+            (lower.includes('type') || lower.includes('transaction type')) &&
+            autoMapping.type === NOT_MAPPED
+        ) {
+            autoMapping.type = header;
+        }
+    }
+
+    return autoMapping;
+}
+
+function buildMappingFromRecord(record: Record<string, string>): Mapping {
+    return {
+        date: record.date ?? NOT_MAPPED,
+        amount: record.amount ?? NOT_MAPPED,
+        description: record.description ?? NOT_MAPPED,
+        category: record.category ?? NOT_MAPPED,
+        payee: record.payee ?? NOT_MAPPED,
+        type: record.type ?? NOT_MAPPED,
+    };
+}
+
+function serializeMapping(
+    mapping: Mapping,
+): Record<string, string | undefined> {
+    return {
+        date: mapping.date,
+        amount: mapping.amount,
+        description:
+            mapping.description !== NOT_MAPPED
+                ? mapping.description
+                : undefined,
+        category:
+            mapping.category !== NOT_MAPPED ? mapping.category : undefined,
+        payee: mapping.payee !== NOT_MAPPED ? mapping.payee : undefined,
+        type: mapping.type !== NOT_MAPPED ? mapping.type : undefined,
+    };
+}
+
+function firstErrorMessage(error: unknown): string | null {
+    if (typeof error === 'string' && error.length > 0) {
+        return error;
+    }
+
+    if (Array.isArray(error) && typeof error[0] === 'string') {
+        return error[0];
+    }
+
+    return null;
+}
+
+function resolveMappingFromParsedImport(parsedImport: ParseResult): Mapping {
+    return parsedImport.suggested_mapping
+        ? buildMappingFromRecord(parsedImport.suggested_mapping)
+        : buildAutoMapping(parsedImport.headers);
+}
+
+export default function ImportIndex() {
+    const {
+        currentLedger,
+        flash,
+        accounts,
+        importHistory,
+        savedMappings,
+        parsedImport,
+    } = usePage().props as PageProps;
+    const ledger = currentLedger;
+    const accountOptions = accounts ?? [];
+    const historyRecords = importHistory ?? [];
+    const savedMappingOptions = savedMappings ?? [];
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
+        { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
+        { title: 'Import', href: importCreate.url(ledger.id) },
+    ];
+
+    const [step, setStep] = useState<1 | 2 | 3>(parsedImport ? 2 : 1);
+    const [isLoading, setIsLoading] = useState(false);
+    const [parseResult, setParseResult] = useState<ParseResult | null>(
+        parsedImport ?? null,
+    );
+    const [mapping, setMapping] = useState<Mapping>(
+        parsedImport
+            ? resolveMappingFromParsedImport(parsedImport)
+            : emptyMapping(),
+    );
     const [accountId, setAccountId] = useState<string>('');
     const [skipDuplicates, setSkipDuplicates] = useState(true);
     const [dragOver, setDragOver] = useState(false);
@@ -150,105 +252,69 @@ export default function ImportIndex() {
     const [saveMappingName, setSaveMappingName] = useState('');
     const [isSavingMapping, setIsSavingMapping] = useState(false);
     const [showSaveMappingInput, setShowSaveMappingInput] = useState(false);
-    const [detectedBank, setDetectedBank] = useState<string | null>(null);
+    const [detectedBank, setDetectedBank] = useState<string | null>(
+        parsedImport?.detected_bank ?? null,
+    );
 
     // Import history state
     const [historyOpen, setHistoryOpen] = useState(false);
 
-    const handleFile = async (file: File) => {
+    useEffect(() => {
+        if (!flash.success) {
+            return;
+        }
+
+        toast.success(flash.success);
+    }, [flash.success]);
+
+    useEffect(() => {
+        if (!flash.error) {
+            return;
+        }
+
+        toast.error(flash.error);
+    }, [flash.error]);
+
+    const handleFile = (file: File) => {
         setParseError(null);
         setIsLoading(true);
         setDetectedBank(null);
 
-        const formData = new FormData();
-        formData.append('file', file);
+        router.post(
+            parseImport(ledger.id),
+            { file },
+            {
+                forceFormData: true,
+                preserveScroll: true,
+                onSuccess: (page) => {
+                    const nextParsedImport = page.props.parsedImport as
+                        | ParseResult
+                        | null
+                        | undefined;
 
-        try {
-            const data = await api.post<ParseResult>(
-                `${base}/import/parse`,
-                { body: formData },
-            );
-            setParseResult(data);
+                    if (!nextParsedImport) {
+                        return;
+                    }
 
-            // If bank format detected, use suggested mapping
-            if (data.detected_bank && data.suggested_mapping) {
-                setDetectedBank(data.detected_bank);
-                const bankMapping: Mapping = {
-                    date: data.suggested_mapping.date ?? NOT_MAPPED,
-                    amount: data.suggested_mapping.amount ?? NOT_MAPPED,
-                    description:
-                        data.suggested_mapping.description ?? NOT_MAPPED,
-                    category:
-                        data.suggested_mapping.category ?? NOT_MAPPED,
-                    payee: data.suggested_mapping.payee ?? NOT_MAPPED,
-                    type: data.suggested_mapping.type ?? NOT_MAPPED,
-                };
-                setMapping(bankMapping);
-                setStep(2);
-
-                return;
-            }
-
-            // Auto-detect columns by common header names
-            const autoMapping: Mapping = {
-                date: NOT_MAPPED,
-                amount: NOT_MAPPED,
-                description: NOT_MAPPED,
-                category: NOT_MAPPED,
-                payee: NOT_MAPPED,
-                type: NOT_MAPPED,
-            };
-
-            for (const header of data.headers) {
-                const lower = header.toLowerCase();
-
-                if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
-                    autoMapping.date = header;
-                } else if (
-                    lower.includes('amount') &&
-                    autoMapping.amount === NOT_MAPPED
-                ) {
-                    autoMapping.amount = header;
-                } else if (
-                    (lower.includes('description') ||
-                        lower.includes('memo') ||
-                        lower.includes('narration')) &&
-                    autoMapping.description === NOT_MAPPED
-                ) {
-                    autoMapping.description = header;
-                } else if (
-                    (lower.includes('payee') ||
-                        lower.includes('merchant') ||
-                        lower.includes('vendor')) &&
-                    autoMapping.payee === NOT_MAPPED
-                ) {
-                    autoMapping.payee = header;
-                } else if (
-                    (lower.includes('type') ||
-                        lower.includes('transaction type')) &&
-                    autoMapping.type === NOT_MAPPED
-                ) {
-                    autoMapping.type = header;
-                }
-            }
-
-            setMapping(autoMapping);
-            setStep(2);
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const message =
-                    errors.file?.[0] ??
-                    'Failed to parse CSV. Please check the file and try again.';
-                setParseError(message);
-            } else {
-                setParseError(
-                    'An unexpected error occurred. Please try again.',
-                );
-            }
-        } finally {
-            setIsLoading(false);
-        }
+                    setParseResult(nextParsedImport);
+                    setDetectedBank(nextParsedImport.detected_bank ?? null);
+                    setMapping(
+                        resolveMappingFromParsedImport(nextParsedImport),
+                    );
+                    setParseError(null);
+                    setStep(2);
+                },
+                onError: (errors) => {
+                    setParseError(
+                        firstErrorMessage(errors.file) ??
+                            'Failed to parse CSV. Please check the file and try again.',
+                    );
+                },
+                onFinish: () => {
+                    setIsLoading(false);
+                },
+            },
+        );
     };
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,7 +350,9 @@ export default function ImportIndex() {
     };
 
     const handleLoadSavedMapping = (mappingId: string) => {
-        const saved = savedMappings.find((m) => String(m.id) === mappingId);
+        const saved = savedMappingOptions.find(
+            (m) => String(m.id) === mappingId,
+        );
 
         if (!saved) {
             return;
@@ -302,58 +370,52 @@ export default function ImportIndex() {
         toast.success(`Loaded mapping "${saved.name}"`);
     };
 
-    const handleSaveMapping = async () => {
+    const handleSaveMapping = () => {
         if (!saveMappingName.trim()) {
             return;
         }
 
         setIsSavingMapping(true);
 
-        try {
-            await api.post(`${base}/import/mappings`, {
-                body: {
-                    name: saveMappingName.trim(),
-                    mapping: {
-                        date: mapping.date,
-                        amount: mapping.amount,
-                        description:
-                            mapping.description !== NOT_MAPPED
-                                ? mapping.description
-                                : undefined,
-                        category:
-                            mapping.category !== NOT_MAPPED
-                                ? mapping.category
-                                : undefined,
-                        payee:
-                            mapping.payee !== NOT_MAPPED
-                                ? mapping.payee
-                                : undefined,
-                        type:
-                            mapping.type !== NOT_MAPPED
-                                ? mapping.type
-                                : undefined,
-                    },
+        router.post(
+            storeImportMapping(ledger.id),
+            {
+                name: saveMappingName.trim(),
+                mapping: serializeMapping(mapping),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSaveMappingName('');
+                    setShowSaveMappingInput(false);
                 },
-            });
-            toast.success(`Mapping "${saveMappingName.trim()}" saved`);
-            setSaveMappingName('');
-            setShowSaveMappingInput(false);
-            refetchMappings();
-        } catch {
-            toast.error('Failed to save mapping');
-        } finally {
-            setIsSavingMapping(false);
-        }
+                onError: (errors) => {
+                    toast.error(
+                        firstErrorMessage(errors.name) ??
+                            firstErrorMessage(errors.mapping) ??
+                            'Failed to save mapping',
+                    );
+                },
+                onFinish: () => {
+                    setIsSavingMapping(false);
+                },
+            },
+        );
     };
 
-    const handleDeleteMapping = async (mappingId: number) => {
-        try {
-            await api.delete(`${base}/import/mappings/${mappingId}`);
-            toast.success('Mapping deleted');
-            refetchMappings();
-        } catch {
-            toast.error('Failed to delete mapping');
-        }
+    const handleDeleteMapping = (mappingId: number) => {
+        router.delete(
+            destroyImportMapping({
+                ledger: ledger.id,
+                importMapping: mappingId,
+            }),
+            {
+                preserveScroll: true,
+                onError: () => {
+                    toast.error('Failed to delete mapping');
+                },
+            },
+        );
     };
 
     const canProceedToPreview =
@@ -395,71 +457,43 @@ export default function ImportIndex() {
         return raw;
     };
 
-    const handleConfirmImport = async () => {
+    const handleConfirmImport = () => {
         if (!parseResult) {
             return;
         }
 
         setIsLoading(true);
 
-        try {
-            const result = await api.post<{
-                imported: number;
-                skipped: number;
-            }>(`${base}/import/execute`, {
-                body: {
-                    file_path: parseResult.file_path,
-                    account_id: accountId,
-                    mapping: {
-                        date: mapping.date,
-                        amount: mapping.amount,
-                        description:
-                            mapping.description !== NOT_MAPPED
-                                ? mapping.description
-                                : null,
-                        category:
-                            mapping.category !== NOT_MAPPED
-                                ? mapping.category
-                                : null,
-                        payee:
-                            mapping.payee !== NOT_MAPPED
-                                ? mapping.payee
-                                : null,
-                        type:
-                            mapping.type !== NOT_MAPPED ? mapping.type : null,
-                    },
-                    skip_duplicates: skipDuplicates,
+        router.post(
+            executeImport(ledger.id),
+            {
+                file_path: parseResult.file_path,
+                account_id: accountId,
+                mapping: serializeMapping(mapping),
+                skip_duplicates: skipDuplicates,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setStep(1);
+                    setParseResult(null);
+                    setMapping(emptyMapping());
+                    setAccountId('');
+                    setDetectedBank(null);
+                    setParseError(null);
                 },
-            });
-            const msg = `Imported ${result.imported} transactions${result.skipped > 0 ? `, skipped ${result.skipped} duplicates` : ''}`;
-            toast.success(msg);
-            // Reset to step 1
-            setStep(1);
-            setParseResult(null);
-            setMapping({
-                date: NOT_MAPPED,
-                amount: NOT_MAPPED,
-                description: NOT_MAPPED,
-                category: NOT_MAPPED,
-                payee: NOT_MAPPED,
-                type: NOT_MAPPED,
-            });
-            setAccountId('');
-            setDetectedBank(null);
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.file_path?.[0] ??
-                    errors.account_id?.[0] ??
-                    'Failed to import transactions.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to import transactions.');
-            }
-        } finally {
-            setIsLoading(false);
-        }
+                onError: (errors) => {
+                    toast.error(
+                        firstErrorMessage(errors.file_path) ??
+                            firstErrorMessage(errors.account_id) ??
+                            'Failed to import transactions.',
+                    );
+                },
+                onFinish: () => {
+                    setIsLoading(false);
+                },
+            },
+        );
     };
 
     return (
@@ -474,9 +508,10 @@ export default function ImportIndex() {
                     />
                 </div>
 
-                {lookupLoading ? (
-                    <ImportLoadingSkeleton />
-                ) : (
+                <Deferred
+                    data={['accounts', 'importHistory', 'savedMappings']}
+                    fallback={<ImportLoadingSkeleton />}
+                >
                     <>
                         {/* Step indicator */}
                         <div className="flex items-center justify-center gap-2 sm:gap-4">
@@ -627,14 +662,14 @@ export default function ImportIndex() {
                                                 Bank format detected
                                             </AlertTitle>
                                             <AlertDescription>
-                                                Detected {detectedBank} format
-                                                — mapping auto-applied.
+                                                Detected {detectedBank} format —
+                                                mapping auto-applied.
                                             </AlertDescription>
                                         </Alert>
                                     )}
 
                                     {/* Load saved mapping */}
-                                    {savedMappings.length > 0 && (
+                                    {savedMappingOptions.length > 0 && (
                                         <div className="flex flex-col gap-2">
                                             <Label>Load saved mapping</Label>
                                             <div className="flex items-center gap-2">
@@ -647,7 +682,7 @@ export default function ImportIndex() {
                                                         <SelectValue placeholder="Select a saved mapping..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {savedMappings.map(
+                                                        {savedMappingOptions.map(
                                                             (sm) => (
                                                                 <SelectItem
                                                                     key={sm.id}
@@ -661,7 +696,8 @@ export default function ImportIndex() {
                                                         )}
                                                     </SelectContent>
                                                 </Select>
-                                                {savedMappings.length > 0 && (
+                                                {savedMappingOptions.length >
+                                                    0 && (
                                                     <Select
                                                         onValueChange={(val) =>
                                                             void handleDeleteMapping(
@@ -673,7 +709,7 @@ export default function ImportIndex() {
                                                             <SelectValue placeholder="Delete..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {savedMappings.map(
+                                                            {savedMappingOptions.map(
                                                                 (sm) => (
                                                                     <SelectItem
                                                                         key={
@@ -715,16 +751,18 @@ export default function ImportIndex() {
                                                 <SelectValue placeholder="Select account..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {accounts.map((account) => (
-                                                    <SelectItem
-                                                        key={account.id}
-                                                        value={String(
-                                                            account.id,
-                                                        )}
-                                                    >
-                                                        {account.name}
-                                                    </SelectItem>
-                                                ))}
+                                                {accountOptions.map(
+                                                    (account) => (
+                                                        <SelectItem
+                                                            key={account.id}
+                                                            value={String(
+                                                                account.id,
+                                                            )}
+                                                        >
+                                                            {account.name}
+                                                        </SelectItem>
+                                                    ),
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -839,9 +877,7 @@ export default function ImportIndex() {
                                                     }
                                                     className="max-w-xs"
                                                     onKeyDown={(e) => {
-                                                        if (
-                                                            e.key === 'Enter'
-                                                        ) {
+                                                        if (e.key === 'Enter') {
                                                             void handleSaveMapping();
                                                         }
                                                     }}
@@ -996,7 +1032,7 @@ export default function ImportIndex() {
                         )}
 
                         {/* Import History */}
-                        {importHistory.length > 0 && (
+                        {historyRecords.length > 0 && (
                             <Collapsible
                                 open={historyOpen}
                                 onOpenChange={setHistoryOpen}
@@ -1014,7 +1050,7 @@ export default function ImportIndex() {
                                                 <span className="text-sm text-muted-foreground">
                                                     {historyOpen
                                                         ? 'Hide'
-                                                        : `Show (${importHistory.length})`}
+                                                        : `Show (${historyRecords.length})`}
                                                 </span>
                                             </button>
                                         </CollapsibleTrigger>
@@ -1043,7 +1079,7 @@ export default function ImportIndex() {
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
-                                                        {importHistory.map(
+                                                        {historyRecords.map(
                                                             (record) => (
                                                                 <TableRow
                                                                     key={
@@ -1105,7 +1141,7 @@ export default function ImportIndex() {
                             </Collapsible>
                         )}
                     </>
-                )}
+                </Deferred>
             </div>
         </AppLayout>
     );

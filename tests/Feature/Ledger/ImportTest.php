@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('import page renders for authenticated user', function () {
     $user = User::factory()->create();
@@ -18,7 +19,27 @@ test('import page renders for authenticated user', function () {
         ->get(route('ledgers.import.create', $ledger));
 
     $response->assertOk();
-    $response->assertInertia(fn ($page) => $page->component('ledgers/import/index'));
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/import/index')
+        ->missing('accounts')
+        ->missing('importHistory')
+        ->missing('savedMappings')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('accounts')
+            ->has('importHistory')
+            ->has('savedMappings')
+        )
+    );
+});
+
+test('ledger import web routes are available for inertia actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    expect(parse_url(route('ledgers.import.create', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/import")
+        ->and(parse_url(route('ledgers.import.parse', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/import/parse")
+        ->and(parse_url(route('ledgers.import.execute', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/import/execute")
+        ->and(parse_url(route('ledgers.import.mappings.store', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/import/mappings");
 });
 
 test('import page is inaccessible to unauthenticated users', function () {
