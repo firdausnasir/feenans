@@ -46,5 +46,3 @@ export const currencies: Currency[] = [
     { code: 'EGP', name: 'Egyptian Pound', symbol: 'E\u00A3' },
     { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh' },
 ];
-
-export const currencyCodeSet = new Set(currencies.map((c) => c.code));

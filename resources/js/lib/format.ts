@@ -64,16 +64,6 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
- * Format a date string as "Mar 2026" (month and year only).
- */
-export function formatMonthYear(dateStr: string): string {
-    return parseDate(dateStr).toLocaleDateString('en-MY', {
-        year: 'numeric',
-        month: 'short',
-    });
-}
-
-/**
  * Return a Tailwind text-color class based on the sign of a numeric value.
  * Negative → red, non-negative → foreground.
  */

@@ -10,5 +10,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::call(fn () => app(BillService::class)->processAutoBills())->daily();
-Schedule::command('bills:send-reminders')->dailyAt('08:00');
 Schedule::command('bills:check-reminders')->daily();
