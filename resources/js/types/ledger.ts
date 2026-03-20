@@ -61,7 +61,7 @@ export type Attachment = {
     id: number;
     transaction_id: number;
     filename: string;
-    path: string;
+    path?: string;
     mime_type: string;
     size: number;
     url: string;

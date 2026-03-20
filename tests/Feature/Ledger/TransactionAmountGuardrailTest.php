@@ -107,11 +107,13 @@ test('updating a transaction with zero amount returns validation error', functio
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), validTransactionData($account, $category, [
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), validTransactionData($account, $category, [
             'amount' => '0',
         ]));
 
-    $response->assertStatus(422)->assertJsonValidationErrors(['amount']);
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->assertSessionHasErrors(['amount']);
 });
 
 test('updating a transaction with negative amount returns validation error', function () {
@@ -129,9 +131,11 @@ test('updating a transaction with negative amount returns validation error', fun
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), validTransactionData($account, $category, [
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), validTransactionData($account, $category, [
             'amount' => '-10.00',
         ]));
 
-    $response->assertStatus(422)->assertJsonValidationErrors(['amount']);
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->assertSessionHasErrors(['amount']);
 });

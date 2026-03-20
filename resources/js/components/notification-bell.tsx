@@ -1,6 +1,10 @@
 import { router, usePage } from '@inertiajs/react';
 import { BarChart3, Bell, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+    markAllRead as markAllReadRoute,
+    markRead as markReadRoute,
+} from '@/actions/App/Http/Controllers/NotificationController';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,7 +12,6 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import { api } from '@/lib/api-client';
 
 type NotificationData = {
     type?: string;
@@ -103,36 +106,41 @@ function relativeTime(dateString: string): string {
 }
 
 export function NotificationBell() {
-    const page = usePage();
+    const page = usePage<{
+        unread_notifications_count: number;
+        notifications?: {
+            data: NotificationItem[];
+            meta: NotificationMeta;
+        } | null;
+    }>();
     const unreadCount = Number(page.props.unread_notifications_count ?? 0);
-    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-    const [totalCount, setTotalCount] = useState(0);
     const [open, setOpen] = useState(false);
+    const notifications = page.props.notifications?.data ?? [];
+    const totalCount = page.props.notifications?.meta?.total ?? 0;
 
     useEffect(() => {
         if (!open) {
             return;
         }
 
-        api.get<{ data: NotificationItem[]; meta: NotificationMeta }>(
-            '/notifications',
-        ).then((payload) => {
-            setNotifications(payload.data ?? []);
-            setTotalCount(payload.meta?.total ?? 0);
+        router.reload({
+            only: ['notifications', 'unread_notifications_count'],
         });
     }, [open]);
 
     function markAllRead() {
-        router.patch('/notifications/read-all', {}, { preserveScroll: true });
-        setNotifications([]);
-        setTotalCount(0);
+        router.patch(markAllReadRoute.url(), {}, {
+            only: ['notifications', 'unread_notifications_count'],
+            preserveState: true,
+            preserveScroll: true,
+        });
     }
 
     function markOneRead(id: string) {
-        api.patch(`/notifications/${id}/read`).then(() => {
-            setNotifications((prev) => prev.filter((n) => n.id !== id));
-            setTotalCount((prev) => Math.max(0, prev - 1));
-            router.reload({ only: ['unread_notifications_count'] });
+        router.patch(markReadRoute.url(id), {}, {
+            only: ['notifications', 'unread_notifications_count'],
+            preserveState: true,
+            preserveScroll: true,
         });
     }
 

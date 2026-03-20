@@ -43,7 +43,8 @@ test('bill pay sets bill_id on the created transaction', function () {
 
     $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.bills.pay', [$ledger, $bill]));
+        ->from(route('ledgers.bills.index', $ledger))
+        ->post(route('ledgers.bills.pay', [$ledger, $bill]));
 
     $transaction = $ledger->transactions()->latest('id')->first();
 

@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Ledger\AccountController;
 use App\Http\Controllers\Ledger\ActivityLogController;
-use App\Http\Controllers\Ledger\ApiTokenController;
 use App\Http\Controllers\Ledger\AttachmentController;
 use App\Http\Controllers\Ledger\BillController;
 use App\Http\Controllers\Ledger\BudgetController;
@@ -32,6 +31,9 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
 
     // Budgets
     Route::get('ledgers/{ledger}/budgets', [BudgetController::class, 'index'])->name('ledgers.budgets.index');
+    Route::post('ledgers/{ledger}/budgets', [BudgetController::class, 'store'])->name('ledgers.budgets.store');
+    Route::put('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'update'])->name('ledgers.budgets.update');
+    Route::delete('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'destroy'])->name('ledgers.budgets.destroy');
 
     // Import
     Route::get('ledgers/{ledger}/import', [ImportController::class, 'create'])->name('ledgers.import.create');
@@ -147,18 +149,24 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     // Settings
     Route::get('ledgers/{ledger}/settings', [SettingsController::class, 'index'])
         ->name('ledgers.settings.index');
+    Route::put('ledgers/{ledger}/settings', [SettingsController::class, 'update'])
+        ->name('ledgers.settings.update');
+    Route::post('ledgers/{ledger}/settings/account-types', [SettingsController::class, 'storeAccountType'])
+        ->name('ledgers.settings.account-types.store');
+    Route::put('ledgers/{ledger}/settings/account-types/{accountType}', [SettingsController::class, 'updateAccountType'])
+        ->name('ledgers.settings.account-types.update');
+    Route::delete('ledgers/{ledger}/settings/account-types/{accountType}', [SettingsController::class, 'destroyAccountType'])
+        ->name('ledgers.settings.account-types.destroy');
+    Route::post('ledgers/{ledger}/settings/account-types/reorder', [SettingsController::class, 'reorderAccountTypes'])
+        ->name('ledgers.settings.account-types.reorder');
 
     // Data Export
     Route::get('ledgers/{ledger}/export', DataExportController::class)
         ->name('ledgers.export');
 
-    // API Tokens
-    Route::post('api-tokens', [ApiTokenController::class, 'store'])
-        ->name('api-tokens.store');
-    Route::delete('api-tokens/{token}', [ApiTokenController::class, 'destroy'])
-        ->name('api-tokens.destroy');
-
     // Sample Data
     Route::post('ledgers/{ledger}/sample-data', [SampleDataController::class, 'store'])
         ->name('ledgers.sample-data.store');
+    Route::delete('ledgers/{ledger}/sample-data', [SampleDataController::class, 'destroy'])
+        ->name('ledgers.sample-data.destroy');
 });

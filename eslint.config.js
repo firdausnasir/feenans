@@ -106,6 +106,7 @@ export default [
     },
     {
         ignores: [
+            '.worktrees',
             'vendor',
             'node_modules',
             'public',
@@ -125,7 +126,11 @@ export default [
         },
         rules: {
             curly: ['error', 'all'],
-            '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
+            '@stylistic/brace-style': [
+                'error',
+                '1tbs',
+                { allowSingleLine: false },
+            ],
         },
     },
 ];

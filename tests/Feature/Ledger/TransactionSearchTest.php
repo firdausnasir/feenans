@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('search filters transactions by description', function () {
     $user = User::factory()->create();
@@ -35,14 +36,21 @@ test('search filters transactions by description', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'coffee',
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.description', 'Morning coffee at cafe');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.search', 'coffee')
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.description', 'Morning coffee at cafe')
+            )
+        );
 });
 
 test('search filters transactions by notes', function () {
@@ -74,14 +82,21 @@ test('search filters transactions by notes', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'Birthday',
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.description', 'Store purchase');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.search', 'Birthday')
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.description', 'Store purchase')
+            )
+        );
 });
 
 test('search returns all transactions when search is empty', function () {
@@ -100,15 +115,30 @@ test('search returns all transactions when search is empty', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', $ledger));
+        ->get(route('ledgers.transactions.index', $ledger));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(3, 'data');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.search', null)
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 3)
+            )
+        );
 });
 
-test('transaction index page renders without data props', function () {
+test('transaction index page renders immediate filters and defers transaction results', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    Transaction::factory()->for($ledger)->for($account)->for($category)->create([
+        'description' => 'Test query result',
+        'transaction_date' => now()->toDateString(),
+    ]);
 
     $response = $this
         ->actingAs($user)
@@ -118,8 +148,18 @@ test('transaction index page renders without data props', function () {
         ]));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/transactions/index')
         ->has('filters')
+        ->where('filters.search', 'test query')
+        ->has('accounts', 1)
+        ->has('categories', 1)
+        ->has('payees', 0)
+        ->has('tags', 0)
+        ->missing('transactions')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('transactions.data', 1)
+            ->where('transactions.data.0.description', 'Test query result')
+        )
     );
 });

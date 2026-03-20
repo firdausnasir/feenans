@@ -38,8 +38,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import { create as importCreate } from '@/routes/ledgers/import';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, BreadcrumbItem } from '@/types';
 
@@ -77,19 +77,20 @@ type ImportHistoryRecord = {
     imported_at: string;
 };
 
-type PageProps = {
+const NOT_MAPPED = '__not_mapped__';
+
+type ImportPageProps = {
     currentLedger: { id: number; name: string };
     flash: {
-        success?: string | null;
-        error?: string | null;
+        success: string | null;
+        error: string | null;
+        import_parse_result?: ParseResult | null;
     };
+    parseResult?: ParseResult | null;
     accounts?: Account[];
-    importHistory?: ImportHistoryRecord[];
     savedMappings?: SavedMapping[];
-    parsedImport?: ParseResult | null;
+    importHistory?: ImportHistoryRecord[];
 };
-
-const NOT_MAPPED = '__not_mapped__';
 
 const TARGET_FIELDS: {
     key: keyof Mapping;
@@ -117,21 +118,36 @@ function ImportLoadingSkeleton() {
     );
 }
 
-function emptyMapping(): Mapping {
-    return {
-        date: NOT_MAPPED,
-        amount: NOT_MAPPED,
-        description: NOT_MAPPED,
-        category: NOT_MAPPED,
-        payee: NOT_MAPPED,
-        type: NOT_MAPPED,
-    };
-}
+const emptyMapping = (): Mapping => ({
+    date: NOT_MAPPED,
+    amount: NOT_MAPPED,
+    description: NOT_MAPPED,
+    category: NOT_MAPPED,
+    payee: NOT_MAPPED,
+    type: NOT_MAPPED,
+});
 
-function buildAutoMapping(headers: string[]): Mapping {
+function deriveMapping(result: ParseResult): {
+    mapping: Mapping;
+    detectedBank: string | null;
+} {
+    if (result.detected_bank && result.suggested_mapping) {
+        return {
+            detectedBank: result.detected_bank,
+            mapping: {
+                date: result.suggested_mapping.date ?? NOT_MAPPED,
+                amount: result.suggested_mapping.amount ?? NOT_MAPPED,
+                description: result.suggested_mapping.description ?? NOT_MAPPED,
+                category: result.suggested_mapping.category ?? NOT_MAPPED,
+                payee: result.suggested_mapping.payee ?? NOT_MAPPED,
+                type: result.suggested_mapping.type ?? NOT_MAPPED,
+            },
+        };
+    }
+
     const autoMapping = emptyMapping();
 
-    for (const header of headers) {
+    for (const header of result.headers) {
         const lower = header.toLowerCase();
 
         if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
@@ -163,85 +179,45 @@ function buildAutoMapping(headers: string[]): Mapping {
         }
     }
 
-    return autoMapping;
-}
-
-function buildMappingFromRecord(record: Record<string, string>): Mapping {
     return {
-        date: record.date ?? NOT_MAPPED,
-        amount: record.amount ?? NOT_MAPPED,
-        description: record.description ?? NOT_MAPPED,
-        category: record.category ?? NOT_MAPPED,
-        payee: record.payee ?? NOT_MAPPED,
-        type: record.type ?? NOT_MAPPED,
+        mapping: autoMapping,
+        detectedBank: null,
     };
-}
-
-function serializeMapping(
-    mapping: Mapping,
-): Record<string, string | undefined> {
-    return {
-        date: mapping.date,
-        amount: mapping.amount,
-        description:
-            mapping.description !== NOT_MAPPED
-                ? mapping.description
-                : undefined,
-        category:
-            mapping.category !== NOT_MAPPED ? mapping.category : undefined,
-        payee: mapping.payee !== NOT_MAPPED ? mapping.payee : undefined,
-        type: mapping.type !== NOT_MAPPED ? mapping.type : undefined,
-    };
-}
-
-function firstErrorMessage(error: unknown): string | null {
-    if (typeof error === 'string' && error.length > 0) {
-        return error;
-    }
-
-    if (Array.isArray(error) && typeof error[0] === 'string') {
-        return error[0];
-    }
-
-    return null;
-}
-
-function resolveMappingFromParsedImport(parsedImport: ParseResult): Mapping {
-    return parsedImport.suggested_mapping
-        ? buildMappingFromRecord(parsedImport.suggested_mapping)
-        : buildAutoMapping(parsedImport.headers);
 }
 
 export default function ImportIndex() {
+    const page = usePage<ImportPageProps>();
     const {
         currentLedger,
         flash,
-        accounts,
-        importHistory,
-        savedMappings,
-        parsedImport,
-    } = usePage().props as PageProps;
-    const ledger = currentLedger;
-    const accountOptions = accounts ?? [];
-    const historyRecords = importHistory ?? [];
-    const savedMappingOptions = savedMappings ?? [];
+        parseResult: pageParseResult,
+        accounts: deferredAccounts,
+        savedMappings: deferredSavedMappings,
+        importHistory: deferredImportHistory,
+    } = page.props;
+    const ledger = currentLedger!;
+    const latestParseResult =
+        pageParseResult ?? flash.import_parse_result ?? null;
+    const accounts = deferredAccounts ?? [];
+    const importHistory = deferredImportHistory ?? [];
+    const savedMappings = deferredSavedMappings ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
-        { title: 'Import', href: importCreate.url(ledger.id) },
+        { title: 'Import', href: '#' },
     ];
 
-    const [step, setStep] = useState<1 | 2 | 3>(parsedImport ? 2 : 1);
+    const initialMappingState = latestParseResult
+        ? deriveMapping(latestParseResult)
+        : { mapping: emptyMapping(), detectedBank: null };
+
+    const [step, setStep] = useState<1 | 2 | 3>(
+        latestParseResult ? 2 : 1,
+    );
     const [isLoading, setIsLoading] = useState(false);
-    const [parseResult, setParseResult] = useState<ParseResult | null>(
-        parsedImport ?? null,
-    );
-    const [mapping, setMapping] = useState<Mapping>(
-        parsedImport
-            ? resolveMappingFromParsedImport(parsedImport)
-            : emptyMapping(),
-    );
+    const [parseResult, setParseResult] = useState<ParseResult | null>(latestParseResult);
+    const [mapping, setMapping] = useState<Mapping>(initialMappingState.mapping);
     const [accountId, setAccountId] = useState<string>('');
     const [skipDuplicates, setSkipDuplicates] = useState(true);
     const [dragOver, setDragOver] = useState(false);
@@ -253,66 +229,75 @@ export default function ImportIndex() {
     const [isSavingMapping, setIsSavingMapping] = useState(false);
     const [showSaveMappingInput, setShowSaveMappingInput] = useState(false);
     const [detectedBank, setDetectedBank] = useState<string | null>(
-        parsedImport?.detected_bank ?? null,
+        initialMappingState.detectedBank,
     );
 
     // Import history state
     const [historyOpen, setHistoryOpen] = useState(false);
 
     useEffect(() => {
-        if (!flash.success) {
-            return;
+        if (flash.success) {
+            toast.success(flash.success);
         }
 
-        toast.success(flash.success);
-    }, [flash.success]);
-
-    useEffect(() => {
-        if (!flash.error) {
-            return;
+        if (flash.error) {
+            toast.error(flash.error);
         }
+    }, [flash.error, flash.success]);
 
-        toast.error(flash.error);
-    }, [flash.error]);
+    const resetImportState = () => {
+        setStep(1);
+        setParseResult(null);
+        setMapping(emptyMapping());
+        setAccountId('');
+        setSkipDuplicates(true);
+        setDetectedBank(null);
+        setParseError(null);
+        setShowSaveMappingInput(false);
+        setSaveMappingName('');
+    };
 
-    const handleFile = (file: File) => {
+    const handleFile = async (file: File) => {
         setParseError(null);
         setIsLoading(true);
         setDetectedBank(null);
 
         router.post(
-            parseImport(ledger.id),
+            parseImport.url(ledger.id),
             { file },
             {
                 forceFormData: true,
+                only: ['parseResult', 'flash'],
+                preserveState: true,
                 preserveScroll: true,
                 onSuccess: (page) => {
-                    const nextParsedImport = page.props.parsedImport as
-                        | ParseResult
-                        | null
-                        | undefined;
+                    const nextPage = page.props as ImportPageProps;
+                    const nextParseResult =
+                        nextPage.parseResult ??
+                        nextPage.flash?.import_parse_result ??
+                        null;
 
-                    if (!nextParsedImport) {
+                    if (!nextParseResult) {
                         return;
                     }
 
-                    setParseResult(nextParsedImport);
-                    setDetectedBank(nextParsedImport.detected_bank ?? null);
-                    setMapping(
-                        resolveMappingFromParsedImport(nextParsedImport),
-                    );
+                    const nextMappingState = deriveMapping(nextParseResult);
+
+                    setParseResult(nextParseResult);
+                    setMapping(nextMappingState.mapping);
+                    setDetectedBank(nextMappingState.detectedBank);
                     setParseError(null);
                     setStep(2);
                 },
                 onError: (errors) => {
+                    const mapped = mapInertiaErrorsArray(errors);
+
                     setParseError(
-                        firstErrorMessage(errors.file) ??
+                        mapped.file?.[0] ??
                             'Failed to parse CSV. Please check the file and try again.',
                     );
                 },
-                onFinish: () => {
-                    setIsLoading(false);
-                },
+                onFinish: () => setIsLoading(false),
             },
         );
     };
@@ -350,9 +335,7 @@ export default function ImportIndex() {
     };
 
     const handleLoadSavedMapping = (mappingId: string) => {
-        const saved = savedMappingOptions.find(
-            (m) => String(m.id) === mappingId,
-        );
+        const saved = savedMappings.find((m) => String(m.id) === mappingId);
 
         if (!saved) {
             return;
@@ -370,7 +353,7 @@ export default function ImportIndex() {
         toast.success(`Loaded mapping "${saved.name}"`);
     };
 
-    const handleSaveMapping = () => {
+    const handleSaveMapping = async () => {
         if (!saveMappingName.trim()) {
             return;
         }
@@ -378,38 +361,59 @@ export default function ImportIndex() {
         setIsSavingMapping(true);
 
         router.post(
-            storeImportMapping(ledger.id),
+            storeImportMapping.url(ledger.id),
             {
                 name: saveMappingName.trim(),
-                mapping: serializeMapping(mapping),
+                mapping: {
+                    date: mapping.date,
+                    amount: mapping.amount,
+                    description:
+                        mapping.description !== NOT_MAPPED
+                            ? mapping.description
+                            : undefined,
+                    category:
+                        mapping.category !== NOT_MAPPED
+                            ? mapping.category
+                            : undefined,
+                    payee:
+                        mapping.payee !== NOT_MAPPED
+                            ? mapping.payee
+                            : undefined,
+                    type:
+                        mapping.type !== NOT_MAPPED ? mapping.type : undefined,
+                },
             },
             {
+                only: ['savedMappings', 'flash'],
+                preserveState: true,
                 preserveScroll: true,
                 onSuccess: () => {
                     setSaveMappingName('');
                     setShowSaveMappingInput(false);
                 },
                 onError: (errors) => {
+                    const mapped = mapInertiaErrorsArray(errors);
+
                     toast.error(
-                        firstErrorMessage(errors.name) ??
-                            firstErrorMessage(errors.mapping) ??
+                        mapped.name?.[0] ??
+                            mapped.mapping?.[0] ??
                             'Failed to save mapping',
                     );
                 },
-                onFinish: () => {
-                    setIsSavingMapping(false);
-                },
+                onFinish: () => setIsSavingMapping(false),
             },
         );
     };
 
-    const handleDeleteMapping = (mappingId: number) => {
+    const handleDeleteMapping = async (mappingId: number) => {
         router.delete(
-            destroyImportMapping({
+            destroyImportMapping.url({
                 ledger: ledger.id,
                 importMapping: mappingId,
             }),
             {
+                only: ['savedMappings', 'flash'],
+                preserveState: true,
                 preserveScroll: true,
                 onError: () => {
                     toast.error('Failed to delete mapping');
@@ -457,7 +461,7 @@ export default function ImportIndex() {
         return raw;
     };
 
-    const handleConfirmImport = () => {
+    const handleConfirmImport = async () => {
         if (!parseResult) {
             return;
         }
@@ -465,33 +469,44 @@ export default function ImportIndex() {
         setIsLoading(true);
 
         router.post(
-            executeImport(ledger.id),
+            executeImport.url(ledger.id),
             {
                 file_path: parseResult.file_path,
                 account_id: accountId,
-                mapping: serializeMapping(mapping),
+                mapping: {
+                    date: mapping.date,
+                    amount: mapping.amount,
+                    description:
+                        mapping.description !== NOT_MAPPED
+                            ? mapping.description
+                            : null,
+                    category:
+                        mapping.category !== NOT_MAPPED
+                            ? mapping.category
+                            : null,
+                    payee:
+                        mapping.payee !== NOT_MAPPED ? mapping.payee : null,
+                    type: mapping.type !== NOT_MAPPED ? mapping.type : null,
+                },
                 skip_duplicates: skipDuplicates,
             },
             {
+                only: ['parseResult', 'importHistory', 'flash'],
+                preserveState: true,
                 preserveScroll: true,
                 onSuccess: () => {
-                    setStep(1);
-                    setParseResult(null);
-                    setMapping(emptyMapping());
-                    setAccountId('');
-                    setDetectedBank(null);
-                    setParseError(null);
+                    resetImportState();
                 },
                 onError: (errors) => {
+                    const mapped = mapInertiaErrorsArray(errors);
+
                     toast.error(
-                        firstErrorMessage(errors.file_path) ??
-                            firstErrorMessage(errors.account_id) ??
+                        mapped.file_path?.[0] ??
+                            mapped.account_id?.[0] ??
                             'Failed to import transactions.',
                     );
                 },
-                onFinish: () => {
-                    setIsLoading(false);
-                },
+                onFinish: () => setIsLoading(false),
             },
         );
     };
@@ -508,13 +523,9 @@ export default function ImportIndex() {
                     />
                 </div>
 
-                <Deferred
-                    data={['accounts', 'importHistory', 'savedMappings']}
-                    fallback={<ImportLoadingSkeleton />}
-                >
-                    <>
-                        {/* Step indicator */}
-                        <div className="flex items-center justify-center gap-2 sm:gap-4">
+                <>
+                    {/* Step indicator */}
+                    <div className="flex items-center justify-center gap-2 sm:gap-4">
                             {[
                                 {
                                     num: 1,
@@ -582,68 +593,68 @@ export default function ImportIndex() {
                                     )}
                                 </div>
                             ))}
-                        </div>
+                    </div>
 
-                        {/* Step 1: Upload */}
-                        {step === 1 && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Upload CSV File</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div
-                                        className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
-                                            dragOver
-                                                ? 'border-primary bg-primary/5'
-                                                : 'border-border hover:border-primary/50 hover:bg-muted/30'
-                                        }`}
-                                        onDrop={handleDrop}
-                                        onDragOver={handleDragOver}
-                                        onDragLeave={handleDragLeave}
-                                        onClick={() =>
-                                            fileInputRef.current?.click()
-                                        }
-                                    >
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            accept=".csv,.txt"
-                                            className="hidden"
-                                            onChange={handleFileInput}
-                                        />
-                                        {isLoading ? (
-                                            <p className="text-muted-foreground">
-                                                Parsing file...
-                                            </p>
-                                        ) : (
-                                            <>
-                                                <div className="text-4xl">
-                                                    &#128196;
-                                                </div>
-                                                <div className="text-center">
-                                                    <p className="font-medium">
-                                                        Drop your CSV file here,
-                                                        or click to browse
-                                                    </p>
-                                                    <p className="mt-1 text-sm text-muted-foreground">
-                                                        Supports .csv and .txt
-                                                        files up to 5MB
-                                                    </p>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                    {parseError && (
-                                        <p className="mt-3 text-sm text-destructive">
-                                            {parseError}
+                    {/* Step 1: Upload */}
+                    {step === 1 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Upload CSV File</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div
+                                    className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
+                                        dragOver
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                                    }`}
+                                    onDrop={handleDrop}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".csv,.txt"
+                                        className="hidden"
+                                        onChange={handleFileInput}
+                                    />
+                                    {isLoading ? (
+                                        <p className="text-muted-foreground">
+                                            Parsing file...
                                         </p>
+                                    ) : (
+                                        <>
+                                            <div className="text-4xl">
+                                                &#128196;
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="font-medium">
+                                                    Drop your CSV file here, or click to browse
+                                                </p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    Supports .csv and .txt files up to 5MB
+                                                </p>
+                                            </div>
+                                        </>
                                     )}
-                                </CardContent>
-                            </Card>
-                        )}
+                                </div>
+                                {parseError && (
+                                    <p className="mt-3 text-sm text-destructive">
+                                        {parseError}
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
 
-                        {/* Step 2: Map Columns */}
-                        {step === 2 && parseResult && (
+                    {/* Step 2: Map Columns */}
+                    {step === 2 && parseResult && (
+                        <Deferred
+                            data={['accounts', 'savedMappings']}
+                            fallback={<ImportLoadingSkeleton />}
+                        >
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Map Columns</CardTitle>
@@ -662,14 +673,14 @@ export default function ImportIndex() {
                                                 Bank format detected
                                             </AlertTitle>
                                             <AlertDescription>
-                                                Detected {detectedBank} format —
-                                                mapping auto-applied.
+                                                Detected {detectedBank} format
+                                                — mapping auto-applied.
                                             </AlertDescription>
                                         </Alert>
                                     )}
 
                                     {/* Load saved mapping */}
-                                    {savedMappingOptions.length > 0 && (
+                                    {savedMappings.length > 0 && (
                                         <div className="flex flex-col gap-2">
                                             <Label>Load saved mapping</Label>
                                             <div className="flex items-center gap-2">
@@ -682,7 +693,7 @@ export default function ImportIndex() {
                                                         <SelectValue placeholder="Select a saved mapping..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {savedMappingOptions.map(
+                                                        {savedMappings.map(
                                                             (sm) => (
                                                                 <SelectItem
                                                                     key={sm.id}
@@ -696,8 +707,7 @@ export default function ImportIndex() {
                                                         )}
                                                     </SelectContent>
                                                 </Select>
-                                                {savedMappingOptions.length >
-                                                    0 && (
+                                                {savedMappings.length > 0 && (
                                                     <Select
                                                         onValueChange={(val) =>
                                                             void handleDeleteMapping(
@@ -709,7 +719,7 @@ export default function ImportIndex() {
                                                             <SelectValue placeholder="Delete..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {savedMappingOptions.map(
+                                                            {savedMappings.map(
                                                                 (sm) => (
                                                                     <SelectItem
                                                                         key={
@@ -751,18 +761,16 @@ export default function ImportIndex() {
                                                 <SelectValue placeholder="Select account..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {accountOptions.map(
-                                                    (account) => (
-                                                        <SelectItem
-                                                            key={account.id}
-                                                            value={String(
-                                                                account.id,
-                                                            )}
-                                                        >
-                                                            {account.name}
-                                                        </SelectItem>
-                                                    ),
-                                                )}
+                                                {accounts.map((account) => (
+                                                    <SelectItem
+                                                        key={account.id}
+                                                        value={String(
+                                                            account.id,
+                                                        )}
+                                                    >
+                                                        {account.name}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -877,7 +885,9 @@ export default function ImportIndex() {
                                                     }
                                                     className="max-w-xs"
                                                     onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
+                                                        if (
+                                                            e.key === 'Enter'
+                                                        ) {
                                                             void handleSaveMapping();
                                                         }
                                                     }}
@@ -928,10 +938,12 @@ export default function ImportIndex() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        )}
+                        </Deferred>
+                    )}
 
-                        {/* Step 3: Preview */}
-                        {step === 3 && parseResult && (
+                    {/* Step 3: Preview */}
+                    {step === 3 && parseResult && (
+                        <Deferred data="accounts" fallback={<ImportLoadingSkeleton />}>
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Preview & Confirm</CardTitle>
@@ -1029,10 +1041,12 @@ export default function ImportIndex() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        )}
+                        </Deferred>
+                    )}
 
-                        {/* Import History */}
-                        {historyRecords.length > 0 && (
+                    {/* Import History */}
+                    <Deferred data="importHistory" fallback={null}>
+                        {importHistory.length > 0 && (
                             <Collapsible
                                 open={historyOpen}
                                 onOpenChange={setHistoryOpen}
@@ -1050,7 +1064,7 @@ export default function ImportIndex() {
                                                 <span className="text-sm text-muted-foreground">
                                                     {historyOpen
                                                         ? 'Hide'
-                                                        : `Show (${historyRecords.length})`}
+                                                        : `Show (${importHistory.length})`}
                                                 </span>
                                             </button>
                                         </CollapsibleTrigger>
@@ -1079,7 +1093,7 @@ export default function ImportIndex() {
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
-                                                        {historyRecords.map(
+                                                        {importHistory.map(
                                                             (record) => (
                                                                 <TableRow
                                                                     key={
@@ -1140,8 +1154,8 @@ export default function ImportIndex() {
                                 </Card>
                             </Collapsible>
                         )}
-                    </>
-                </Deferred>
+                    </Deferred>
+                </>
             </div>
         </AppLayout>
     );

@@ -32,16 +32,12 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as tagsIndex } from '@/routes/ledgers/tags';
 import type { BreadcrumbItem, Tag } from '@/types';
 
 type TagWithCount = Tag & { transactions_count: number };
-
-type PageProps = {
-    currentLedger: { id: number; name: string };
-    tags?: TagWithCount[];
-};
 
 type FormState = {
     name: string;
@@ -82,139 +78,13 @@ function TagsLoadingSkeleton() {
     );
 }
 
-function TagsTable({
-    tags,
-    onEdit,
-    onDelete,
-}: {
-    tags: TagWithCount[];
-    onEdit: (tag: TagWithCount) => void;
-    onDelete: (tag: TagWithCount) => void;
-}) {
-    if (tags.length === 0) {
-        return (
-            <EmptyState
-                icon={<Hash className="size-6" />}
-                title="No tags yet"
-                description="Create tags to organize and filter your transactions."
-            />
-        );
-    }
-
-    return (
-        <Card>
-            <CardContent className="p-0">
-                <div className="divide-y sm:hidden">
-                    {tags.map((tag) => (
-                        <div
-                            key={tag.id}
-                            className="flex items-center gap-3 px-4 py-3"
-                        >
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <TagPill tag={tag} />
-                                    {tag.color && (
-                                        <span
-                                            className="size-3 shrink-0 rounded-full"
-                                            style={{
-                                                backgroundColor: tag.color,
-                                            }}
-                                        />
-                                    )}
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    {tag.transactions_count} transaction
-                                    {tag.transactions_count !== 1 ? 's' : ''}
-                                </p>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => onEdit(tag)}
-                                >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-destructive"
-                                    onClick={() => onDelete(tag)}
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <Table className="hidden sm:table">
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Tag</TableHead>
-                            <TableHead>Color</TableHead>
-                            <TableHead className="text-right">
-                                Transactions
-                            </TableHead>
-                            <TableHead className="sr-only">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {tags.map((tag) => (
-                            <TableRow key={tag.id}>
-                                <TableCell>
-                                    <TagPill tag={tag} />
-                                </TableCell>
-                                <TableCell>
-                                    {tag.color ? (
-                                        <span
-                                            className="inline-block size-4 rounded-full border"
-                                            style={{
-                                                backgroundColor: tag.color,
-                                            }}
-                                        />
-                                    ) : (
-                                        <span className="text-xs text-muted-foreground">
-                                            None
-                                        </span>
-                                    )}
-                                </TableCell>
-                                <TableCell className="text-right text-muted-foreground">
-                                    {tag.transactions_count}
-                                </TableCell>
-                                <TableCell>
-                                    <div className="flex items-center justify-end gap-1">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-auto px-2 py-0.5"
-                                            onClick={() => onEdit(tag)}
-                                        >
-                                            <Pencil className="size-3.5" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-auto px-2 py-0.5 text-destructive hover:text-destructive"
-                                            onClick={() => onDelete(tag)}
-                                        >
-                                            <Trash2 className="size-3.5" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-    );
-}
-
 export default function TagsIndex() {
-    const { currentLedger, tags } = usePage().props as PageProps;
-    const ledger = currentLedger;
-    const tagList = tags ?? [];
+    const { currentLedger, tags: deferredTags } = usePage<{
+        currentLedger: { id: number; name: string };
+        tags?: TagWithCount[];
+    }>().props;
+    const ledger = currentLedger!;
+    const tags = deferredTags ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -224,18 +94,8 @@ export default function TagsIndex() {
     const [showDialog, setShowDialog] = useState(false);
     const [editTag, setEditTag] = useState<TagWithCount | null>(null);
     const [form, setForm] = useState<FormState>(emptyForm());
-    const [deleteTagState, setDeleteTagState] = useState<TagWithCount | null>(
-        null,
-    );
+    const [deleteTag, setDeleteTag] = useState<TagWithCount | null>(null);
     const [submitting, setSubmitting] = useState(false);
-    const [deleting, setDeleting] = useState(false);
-
-    function resetDialogState() {
-        setShowDialog(false);
-        setEditTag(null);
-        setForm(emptyForm());
-        setSubmitting(false);
-    }
 
     function handleCreate() {
         setForm(emptyForm());
@@ -249,72 +109,91 @@ export default function TagsIndex() {
         setShowDialog(true);
     }
 
-    function handleSubmit() {
-        const payload = {
-            name: form.name.trim(),
-            color: form.color || null,
-        };
-
-        if (!payload.name) {
-            return;
-        }
-
+    async function handleSubmit() {
         setSubmitting(true);
 
-        const action = editTag
-            ? updateTag({ ledger: ledger.id, tag: editTag.id })
-            : storeTag(ledger.id);
-
-        router.visit(action.url, {
-            method: action.method,
-            data: payload,
-            preserveScroll: true,
-            onSuccess: () => {
-                resetDialogState();
-                toast.success(editTag ? 'Tag updated' : 'Tag created');
-            },
-            onError: (errors) => {
-                setSubmitting(false);
-                toast.error(
-                    typeof errors.name === 'string'
-                        ? errors.name
-                        : 'Failed to save tag.',
+        try {
+            if (editTag) {
+                router.patch(
+                    updateTag.url({ ledger: ledger.id, tag: editTag.id }),
+                    { name: form.name, color: form.color || null },
+                    {
+                        only: ['tags', 'flash'],
+                        preserveState: true,
+                        preserveScroll: true,
+                        onSuccess: () => {
+                            setShowDialog(false);
+                            setEditTag(null);
+                            toast.success('Tag updated');
+                        },
+                        onError: (errors) => {
+                            const mapped = mapInertiaErrorsArray(errors);
+                            toast.error(
+                                mapped.name?.[0] ?? 'Failed to save tag.',
+                            );
+                        },
+                        onFinish: () => setSubmitting(false),
+                    },
                 );
-            },
-            onFinish: () => {
-                setSubmitting(false);
-            },
-        });
+            } else {
+                router.post(
+                    storeTag.url(ledger.id),
+                    { name: form.name, color: form.color || null },
+                    {
+                        only: ['tags', 'flash'],
+                        preserveState: true,
+                        preserveScroll: true,
+                        onSuccess: () => {
+                            setShowDialog(false);
+                            toast.success('Tag created');
+                        },
+                        onError: (errors) => {
+                            const mapped = mapInertiaErrorsArray(errors);
+                            toast.error(
+                                mapped.name?.[0] ?? 'Failed to save tag.',
+                            );
+                        },
+                        onFinish: () => setSubmitting(false),
+                    },
+                );
+            }
+
+            return;
+        } catch {
+            toast.error('An unexpected error occurred');
+            setSubmitting(false);
+        }
     }
 
-    function handleDelete() {
-        if (!deleteTagState) {
+    async function handleDelete() {
+        if (!deleteTag) {
             return;
         }
 
-        setDeleting(true);
-
-        router.delete(
-            destroyTag({ ledger: ledger.id, tag: deleteTagState.id }).url,
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setDeleteTagState(null);
-                    toast.success('Tag deleted');
+        try {
+            router.delete(
+                destroyTag.url({ ledger: ledger.id, tag: deleteTag.id }),
+                {
+                    only: ['tags', 'flash'],
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setDeleteTag(null);
+                        toast.success('Tag deleted');
+                    },
+                    onError: () => {
+                        toast.error('Failed to delete tag');
+                    },
                 },
-                onError: () => {
-                    toast.error('Failed to delete tag');
-                },
-                onFinish: () => {
-                    setDeleting(false);
-                },
-            },
-        );
+            );
+        } catch {
+            toast.error('An unexpected error occurred');
+        }
     }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`Tags - ${ledger.name}`} />
+            <Head title={`Tags — ${ledger.name}`} />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -329,19 +208,150 @@ export default function TagsIndex() {
                 </div>
 
                 <Deferred data="tags" fallback={<TagsLoadingSkeleton />}>
-                    <TagsTable
-                        tags={tagList}
-                        onEdit={handleEdit}
-                        onDelete={setDeleteTagState}
-                    />
+                    {tags.length === 0 ? (
+                        <EmptyState
+                            icon={<Hash className="size-6" />}
+                            title="No tags yet"
+                            description="Create tags to organize and filter your transactions."
+                            action={{
+                                label: 'Create your first tag',
+                                onClick: handleCreate,
+                            }}
+                        />
+                    ) : (
+                        <Card>
+                            <CardContent className="p-0">
+                                <div className="divide-y sm:hidden">
+                                    {tags.map((tag) => (
+                                        <div
+                                            key={tag.id}
+                                            className="flex items-center gap-3 px-4 py-3"
+                                        >
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <TagPill tag={tag} />
+                                                    {tag.color && (
+                                                        <span
+                                                            className="size-3 shrink-0 rounded-full"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    tag.color,
+                                                            }}
+                                                        />
+                                                    )}
+                                                </div>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {tag.transactions_count}{' '}
+                                                    transaction
+                                                    {tag.transactions_count !==
+                                                    1
+                                                        ? 's'
+                                                        : ''}
+                                                </p>
+                                            </div>
+                                            <div className="flex shrink-0 items-center gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7"
+                                                    onClick={() =>
+                                                        handleEdit(tag)
+                                                    }
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-destructive"
+                                                    onClick={() =>
+                                                        setDeleteTag(tag)
+                                                    }
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <Table className="hidden sm:table">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Tag</TableHead>
+                                            <TableHead>Color</TableHead>
+                                            <TableHead className="text-right">
+                                                Transactions
+                                            </TableHead>
+                                            <TableHead className="sr-only">
+                                                Actions
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {tags.map((tag) => (
+                                            <TableRow key={tag.id}>
+                                                <TableCell>
+                                                    <TagPill tag={tag} />
+                                                </TableCell>
+                                                <TableCell>
+                                                    {tag.color ? (
+                                                        <span
+                                                            className="inline-block size-4 rounded-full border"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    tag.color,
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            None
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right text-muted-foreground">
+                                                    {tag.transactions_count}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-auto px-2 py-0.5"
+                                                            onClick={() =>
+                                                                handleEdit(tag)
+                                                            }
+                                                        >
+                                                            <Pencil className="size-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-auto px-2 py-0.5 text-destructive hover:text-destructive"
+                                                            onClick={() =>
+                                                                setDeleteTag(tag)
+                                                            }
+                                                        >
+                                                            <Trash2 className="size-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
                 </Deferred>
             </div>
 
+            {/* Create / Edit Dialog */}
             <Dialog
                 open={showDialog}
                 onOpenChange={(open) => {
                     if (!open) {
-                        resetDialogState();
+                        setShowDialog(false);
+                        setEditTag(null);
                     }
                 }}
             >
@@ -359,8 +369,8 @@ export default function TagsIndex() {
                                 id="tag-name"
                                 value={form.name}
                                 onChange={(e) =>
-                                    setForm((current) => ({
-                                        ...current,
+                                    setForm((f) => ({
+                                        ...f,
                                         name: e.target.value,
                                     }))
                                 }
@@ -383,10 +393,7 @@ export default function TagsIndex() {
                                         }`}
                                         style={{ backgroundColor: color }}
                                         onClick={() =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                color,
-                                            }))
+                                            setForm((f) => ({ ...f, color }))
                                         }
                                     />
                                 ))}
@@ -395,8 +402,8 @@ export default function TagsIndex() {
                                 type="color"
                                 value={form.color}
                                 onChange={(e) =>
-                                    setForm((current) => ({
-                                        ...current,
+                                    setForm((f) => ({
+                                        ...f,
                                         color: e.target.value,
                                     }))
                                 }
@@ -406,7 +413,13 @@ export default function TagsIndex() {
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={resetDialogState}>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setShowDialog(false);
+                                setEditTag(null);
+                            }}
+                        >
                             Cancel
                         </Button>
                         <Button
@@ -419,11 +432,12 @@ export default function TagsIndex() {
                 </DialogContent>
             </Dialog>
 
+            {/* Delete confirmation */}
             <Dialog
-                open={deleteTagState !== null}
+                open={deleteTag !== null}
                 onOpenChange={(open) => {
-                    if (!open && !deleting) {
-                        setDeleteTagState(null);
+                    if (!open) {
+                        setDeleteTag(null);
                     }
                 }}
             >
@@ -432,22 +446,18 @@ export default function TagsIndex() {
                         <DialogTitle>Delete tag</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to delete{' '}
-                            <strong>{deleteTagState?.name}</strong>? It will be
+                            <strong>{deleteTag?.name}</strong>? It will be
                             removed from all transactions.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button
                             variant="outline"
-                            onClick={() => setDeleteTagState(null)}
+                            onClick={() => setDeleteTag(null)}
                         >
                             Cancel
                         </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleDelete}
-                            disabled={deleting}
-                        >
+                        <Button variant="destructive" onClick={handleDelete}>
                             Delete
                         </Button>
                     </DialogFooter>

@@ -11,19 +11,21 @@ test('users can create categories in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.categories.store', $ledger), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.store', $ledger), [
             'name' => 'Subscriptions',
             'transaction_type' => 'expense',
             'color' => '#0f172a',
             'icon' => 'tv',
         ]);
 
-    $response->assertStatus(201);
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($ledger->categories()->where('name', 'Subscriptions')->exists())->toBeTrue();
 });
 
-test('category index returns categories with children', function () {
+test('category index renders the inertia shell for api-driven category data', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
 
@@ -45,12 +47,56 @@ test('category index returns categories with children', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/categories/index')
+        ->where('currentLedger.id', $ledger->id)
         ->missing('categories')
         ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('categories', 1)
-            ->where('categories.0.name', 'Food')
-            ->has('categories.0.children', 1)
-            ->where('categories.0.children.0.name', 'Restaurants')
+            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
+                ->where('name', 'Food')
+                ->has('children', 1)
+                ->where('children.0.name', 'Restaurants')
+                ->etc()
+            )
+        )
+    );
+});
+
+test('category can be created through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.store', $ledger), [
+            'name' => 'Subscriptions',
+            'transaction_type' => 'expense',
+            'color' => '#0f172a',
+            'icon' => 'tv',
+        ]);
+
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($ledger->categories()->where('name', 'Subscriptions')->exists())->toBeTrue();
+});
+
+test('category index supports partial reloads for categories', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Category::factory()->for($ledger)->create(['name' => 'Subscriptions']);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.categories.index', $ledger));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->reloadOnly('categories', fn (Assert $reload) => $reload
+            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
+                ->where('name', 'Subscriptions')
+                ->etc()
+            )
+            ->missing('currentLedger')
         )
     );
 });
@@ -62,12 +108,14 @@ test('category update updates the category', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->patch(route('ledgers.categories.update', [$ledger, $category]), [
             'name' => 'New Name',
             'transaction_type' => 'expense',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($category->fresh()->name)->toBe('New Name');
 });
@@ -80,13 +128,15 @@ test('category update rejects a parent from another ledger', function () {
     $foreignParent = Category::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->patch(route('ledgers.categories.update', [$ledger, $category]), [
             'name' => 'New Name',
             'transaction_type' => 'expense',
             'parent_id' => $foreignParent->id,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors('parent_id');
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasErrors('parent_id');
 });
 
 test('category destroy deletes category without transactions', function () {
@@ -96,9 +146,10 @@ test('category destroy deletes category without transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]));
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $category]));
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger));
 
     expect(Category::find($category->id))->toBeNull();
 });
@@ -111,26 +162,17 @@ test('category reorder updates positions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.categories.reorder', $ledger), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.reorder', $ledger), [
             'items' => [
                 ['id' => $cat1->id, 'position' => 2],
                 ['id' => $cat2->id, 'position' => 1],
             ],
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($cat1->fresh()->position)->toBe(2)
         ->and($cat2->fresh()->position)->toBe(1);
-});
-
-test('ledger category web routes are available for inertia actions', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    expect(parse_url(route('ledgers.categories.store', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories")
-        ->and(parse_url(route('ledgers.categories.update', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
-        ->and(parse_url(route('ledgers.categories.destroy', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
-        ->and(parse_url(route('ledgers.categories.reorder', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/reorder");
 });

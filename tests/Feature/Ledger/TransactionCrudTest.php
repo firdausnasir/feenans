@@ -8,6 +8,7 @@ use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create an income transaction', function () {
     $user = User::factory()->create();
@@ -86,14 +87,21 @@ test('transaction index filters by account', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'account_ids' => [$accountA->id],
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.description', 'Account A transaction');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.account_ids', [(string) $accountA->id])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.description', 'Account A transaction')
+            )
+        );
 });
 
 test('transaction index filters by search term', function () {
@@ -113,14 +121,21 @@ test('transaction index filters by search term', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'search' => 'coffee',
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.description', 'Morning coffee');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.search', 'coffee')
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.description', 'Morning coffee')
+            )
+        );
 });
 
 test('transaction index filters by transaction type', function () {
@@ -142,13 +157,21 @@ test('transaction index filters by transaction type', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'transaction_types' => ['income'],
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.transaction_types', ['income'])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.transaction_type', 'income')
+            )
+        );
 });
 
 test('transaction index filters by category', function () {
@@ -168,13 +191,21 @@ test('transaction index filters by category', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'category_ids' => [$catA->id],
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.category_ids', [(string) $catA->id])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.category.id', $catA->id)
+            )
+        );
 });
 
 test('transaction index filters by payee', function () {
@@ -194,13 +225,21 @@ test('transaction index filters by payee', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'payee_ids' => [$payeeA->id],
         ]));
 
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.payee_ids', [(string) $payeeA->id])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.payee.id', $payeeA->id)
+            )
+        );
 });
 
 test('transaction store is forbidden for another users ledger', function () {
@@ -232,7 +271,7 @@ test('transaction update is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->put(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'transaction_type' => 'expense',
             'amount' => 20.00,
@@ -252,7 +291,7 @@ test('transaction destroy is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->delete(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
         ->assertForbidden();
 });
 
@@ -261,4 +300,58 @@ test('unauthenticated users cannot access transaction index', function () {
 
     $this->get(route('ledgers.transactions.index', $ledger))
         ->assertRedirect(route('login'));
+});
+
+test('transaction update via web route redirects to the transactions index', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => 'expense']);
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Updated from web route',
+            'transaction_date' => '2026-03-20',
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    expect($transaction->fresh()->description)->toBe('Updated from web route');
+});
+
+test('transaction destroy via web route redirects to the transactions index', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->expense()
+        ->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]));
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    expect(Transaction::find($transaction->id))->toBeNull();
 });

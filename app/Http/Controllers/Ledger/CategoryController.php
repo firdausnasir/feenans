@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\DestroyCategoryRequest;
+use App\Http\Requests\ReorderRequest;
+use App\Http\Requests\StoreCategoryRequest;
+use App\Http\Requests\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
 use App\Models\Ledger;
@@ -10,7 +14,6 @@ use App\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,33 +24,26 @@ class CategoryController extends Controller
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/categories/index', [
-            'categories' => Inertia::defer(function () use ($ledger): array {
-                $categories = $ledger
-                    ->categories()
-                    ->with('children')
-                    ->withCount('transactions')
-                    ->with(['children' => fn ($q) => $q->withCount('transactions')])
-                    ->parents()
-                    ->orderBy('position')
-                    ->get();
-
-                return CategoryResource::collection($categories)->resolve();
+            'categories' => Inertia::defer(function () use ($ledger) {
+                return CategoryResource::collection(
+                    $ledger->categories()
+                        ->withCount('transactions')
+                        ->with(['children' => fn ($query) => $query
+                            ->withCount('transactions')
+                            ->orderBy('position')])
+                        ->parents()
+                        ->orderBy('position')
+                        ->get()
+                )->resolve();
             }),
         ]);
     }
 
-    public function store(Request $request, Ledger $ledger): RedirectResponse
+    public function store(StoreCategoryRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('view', $ledger);
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'transaction_type' => ['required', 'string', 'in:expense,income'],
-            'parent_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('ledger_id', $ledger->id)],
-            'color' => ['nullable', 'string', 'max:7'],
-            'icon' => ['nullable', 'string', 'max:50'],
-        ]);
-
+        $validated = $request->validated();
         $parentId = $validated['parent_id'] ?? null;
 
         $positionQuery = $parentId
@@ -63,42 +59,33 @@ class CategoryController extends Controller
             'position' => $positionQuery->count() + 1,
         ]);
 
-        return back()->with('success', 'Category created.');
+        return to_route('ledgers.categories.index', $ledger)->with('success', 'Category created.');
     }
 
-    public function update(Request $request, Ledger $ledger, Category $category): RedirectResponse
+    public function update(UpdateCategoryRequest $request, Ledger $ledger, Category $category): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'parent_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('ledger_id', $ledger->id)],
-            'color' => ['nullable', 'string', 'max:7'],
-            'icon' => ['nullable', 'string', 'max:50'],
-        ]);
+        $category->update($request->validated());
 
-        $category->update($validated);
-
-        return back()->with('success', 'Category updated.');
+        return to_route('ledgers.categories.index', $ledger)->with('success', 'Category updated.');
     }
 
-    public function destroy(Request $request, Ledger $ledger, Category $category): RedirectResponse
+    public function destroy(DestroyCategoryRequest $request, Ledger $ledger, Category $category): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
         $hasReassignKey = $request->has('reassign_category_id');
-        $reassignCategoryId = $request->input('reassign_category_id');
+        $reassignCategoryId = $request->validated('reassign_category_id');
 
         if ($category->children()->exists() && ! $hasReassignKey) {
-            return back()->withErrors([
-                'category' => 'Cannot delete a category that has subcategories. Remove or reassign them first.',
-            ]);
+            return to_route('ledgers.categories.index', $ledger)
+                ->withErrors(['category' => 'Cannot delete a category that has subcategories. Remove or reassign them first.']);
         }
 
         if ($category->transactions()->exists() && ! $hasReassignKey) {
-            return back()->withErrors([
-                'category' => 'Cannot delete a category that has transactions. Please reassign them first.',
-            ]);
+            return to_route('ledgers.categories.index', $ledger)
+                ->withErrors(['category' => 'Cannot delete a category that has transactions. Please reassign them first.']);
         }
 
         DB::transaction(function () use ($category, $reassignCategoryId): void {
@@ -110,23 +97,17 @@ class CategoryController extends Controller
             $category->delete();
         });
 
-        return back()->with('success', 'Category deleted.');
+        return to_route('ledgers.categories.index', $ledger)->with('success', 'Category deleted.');
     }
 
-    public function reorder(Request $request, Ledger $ledger): RedirectResponse
+    public function reorder(ReorderRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $validated = $request->validate([
-            'items' => ['required', 'array'],
-            'items.*.id' => ['required', 'integer', Rule::exists('categories', 'id')->where('ledger_id', $ledger->id)],
-            'items.*.position' => ['required', 'integer', 'min:1'],
-        ]);
-
-        foreach ($validated['items'] as $item) {
+        foreach ($request->items as $item) {
             $ledger->categories()->where('id', $item['id'])->update(['position' => $item['position']]);
         }
 
-        return back();
+        return to_route('ledgers.categories.index', $ledger);
     }
 }

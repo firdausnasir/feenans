@@ -26,13 +26,15 @@ test('bulk change category updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_category',
             'value' => $newCategory->id,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions updated.');
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->category_id)->toBe($newCategory->id);
@@ -56,13 +58,15 @@ test('bulk change account updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_account',
             'value' => $newAccount->id,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions updated.');
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->account_id)->toBe($newAccount->id);
@@ -88,13 +92,15 @@ test('bulk change payee updates all selected transactions', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
             'action' => 'change_payee',
             'value' => $newPayee->id,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions updated.');
 
     foreach ($transactions as $transaction) {
         expect($transaction->fresh()->payee_id)->toBe($newPayee->id);
@@ -124,13 +130,15 @@ test('bulk update skips transfer transactions', function () {
         ->create(['transfer_pair_id' => $pairId]);
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$expense->id, $transfer->id],
             'action' => 'change_category',
             'value' => $newCategory->id,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions updated.');
 
     expect($expense->fresh()->category_id)->toBe($newCategory->id)
         ->and($transfer->fresh()->category_id)->toBeNull();
@@ -154,13 +162,15 @@ test('bulk update rejects cross-ledger values', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$transaction->id],
             'action' => 'change_category',
             'value' => $foreignCategory->id,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors(['value']);
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHasErrors(['value']);
 });
 
 test('bulk update rejects invalid action', function () {
@@ -178,13 +188,15 @@ test('bulk update rejects invalid action', function () {
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-update', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
             'ids' => [$transaction->id],
             'action' => 'invalid_action',
             'value' => $category->id,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors(['action']);
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHasErrors(['action']);
 });
 
 test('bulk delete with confirmation deletes all selected transactions', function () {
@@ -203,13 +215,118 @@ test('bulk delete with confirmation deletes all selected transactions', function
         ->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-destroy', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
             'ids' => $transactions->pluck('id')->all(),
         ]);
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions deleted.');
 
     foreach ($transactions as $transaction) {
         expect(Transaction::find($transaction->id))->toBeNull();
     }
+});
+
+test('bulk change category can target all matching filtered transactions without select-all ids', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $matchingAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $otherAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $originalCategory = Category::factory()->for($ledger)->create();
+    $newCategory = Category::factory()->for($ledger)->create();
+
+    $included = Transaction::factory()
+        ->count(2)
+        ->for($ledger)
+        ->for($matchingAccount)
+        ->for($originalCategory)
+        ->expense()
+        ->create();
+
+    $excluded = Transaction::factory()
+        ->for($ledger)
+        ->for($matchingAccount)
+        ->for($originalCategory)
+        ->expense()
+        ->create();
+
+    $outsideFilter = Transaction::factory()
+        ->for($ledger)
+        ->for($otherAccount)
+        ->for($originalCategory)
+        ->expense()
+        ->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-update', $ledger), [
+            'apply_to_all_matching' => true,
+            'excluded_ids' => [$excluded->id],
+            'filters' => [
+                'account_ids' => [$matchingAccount->id],
+            ],
+            'action' => 'change_category',
+            'value' => $newCategory->id,
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    foreach ($included as $transaction) {
+        expect($transaction->fresh()->category_id)->toBe($newCategory->id);
+    }
+
+    expect($excluded->fresh()->category_id)->toBe($originalCategory->id)
+        ->and($outsideFilter->fresh()->category_id)->toBe($originalCategory->id);
+});
+
+test('bulk delete can target all matching filtered transactions without select-all ids', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $matchingAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $otherAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $included = Transaction::factory()
+        ->count(2)
+        ->for($ledger)
+        ->for($matchingAccount)
+        ->for($category)
+        ->expense()
+        ->create();
+
+    $excluded = Transaction::factory()
+        ->for($ledger)
+        ->for($matchingAccount)
+        ->for($category)
+        ->expense()
+        ->create();
+
+    $outsideFilter = Transaction::factory()
+        ->for($ledger)
+        ->for($otherAccount)
+        ->for($category)
+        ->expense()
+        ->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
+            'apply_to_all_matching' => true,
+            'excluded_ids' => [$excluded->id],
+            'filters' => [
+                'account_ids' => [$matchingAccount->id],
+            ],
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    foreach ($included as $transaction) {
+        expect(Transaction::find($transaction->id))->toBeNull();
+    }
+
+    expect(Transaction::find($excluded->id))->not->toBeNull()
+        ->and(Transaction::find($outsideFilter->id))->not->toBeNull();
 });

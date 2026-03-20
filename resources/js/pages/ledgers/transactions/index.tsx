@@ -9,7 +9,7 @@ import {
     Trash2,
     X,
 } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
@@ -67,7 +67,6 @@ import {
     destroy as destroyRoute,
     exportMethod as exportTransactions,
     index as transactionsIndex,
-    selectAll as selectAllRoute,
     update as updateRoute,
 } from '@/routes/ledgers/transactions';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
@@ -131,7 +130,7 @@ type EditableSplit = {
 type FilterChip = {
     key: string;
     label: string;
-    onRemove: () => void;
+    onRemove: (filters: Filters) => Filters;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -247,13 +246,6 @@ function transactionCategoryOptions(
         }));
 }
 
-function getCsrfToken(): string {
-    return (
-        document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-            ?.content ?? ''
-    );
-}
-
 // ─── EditTransactionModal ────────────────────────────────────────────────────
 
 function EditTransactionModal({
@@ -332,7 +324,7 @@ function EditTransactionModal({
         0,
     );
 
-    async function uploadFiles(files: FileList | null) {
+    function uploadFiles(files: FileList | null) {
         if (!files || files.length === 0) {
             return;
         }
@@ -340,70 +332,67 @@ function EditTransactionModal({
         setUploadingAttachments(true);
         setAttachmentError(null);
 
-        try {
-            for (const file of Array.from(files)) {
-                const formData = new FormData();
-                formData.append('file', file);
+        router.post(
+            attachmentRoutes.store.url({
+                ledger: ledger.id,
+                transaction: transaction.id,
+            }),
+            {
+                attachments: Array.from(files),
+            },
+            {
+                forceFormData: true,
+                only: ['flash'],
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: ({ props }) => {
+                    const uploads = props.flash?.attachment_uploads ?? [];
 
-                const response = await fetch(
-                    attachmentRoutes.store.url({
-                        ledger: ledger.id,
-                        transaction: transaction.id,
-                    }),
-                    {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': getCsrfToken(),
-                            Accept: 'application/json',
-                        },
-                        body: formData,
-                    },
-                );
+                    if (uploads.length > 0) {
+                        setAttachments((current) => [...current, ...uploads]);
+                    }
+                },
+                onError: (errors) => {
+                    const firstError =
+                        errors.attachments ??
+                        errors['attachments.0'] ??
+                        Object.values(errors)[0];
 
-                const payload = await response.json().catch(() => null);
-
-                if (!response.ok) {
                     setAttachmentError(
-                        payload?.errors?.file?.[0] ??
-                            payload?.message ??
-                            'Attachment upload failed.',
+                        typeof firstError === 'string'
+                            ? firstError
+                            : 'Attachment upload failed.',
                     );
-                    break;
-                }
-
-                if (payload?.attachment) {
-                    setAttachments((current) => [
-                        ...current,
-                        payload.attachment as Attachment,
-                    ]);
-                }
-            }
-        } finally {
-            setUploadingAttachments(false);
-        }
+                },
+                onFinish: () => setUploadingAttachments(false),
+            },
+        );
     }
 
-    async function deleteAttachment(attachmentId: number) {
-        const response = await fetch(
+    function deleteAttachment(attachmentId: number) {
+        router.delete(
             attachmentRoutes.destroy.url({
                 ledger: ledger.id,
                 transaction: transaction.id,
                 attachment: attachmentId,
             }),
             {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    Accept: 'application/json',
+                only: ['flash'],
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: ({ props }) => {
+                    const deletedAttachmentId = props.flash?.deleted_attachment_id;
+
+                    if (deletedAttachmentId) {
+                        setAttachments((current) =>
+                            current.filter(
+                                (attachment) => attachment.id !== deletedAttachmentId,
+                            ),
+                        );
+                    }
                 },
             },
         );
-
-        if (response.ok) {
-            setAttachments((current) =>
-                current.filter((attachment) => attachment.id !== attachmentId),
-            );
-        }
     }
 
     function addSplit() {
@@ -1239,6 +1228,7 @@ export default function TransactionsIndex() {
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [allAcrossPages, setAllAcrossPages] = useState(false);
     const [loadingSelectAll, setLoadingSelectAll] = useState(false);
+    const [excludedIds, setExcludedIds] = useState<number[]>([]);
 
     // Modal state
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(
@@ -1257,24 +1247,27 @@ export default function TransactionsIndex() {
 
     // Filter panel open/closed
     const [filtersOpen, setFiltersOpen] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
-    const mqlRef = useRef<MediaQueryList | null>(null);
+    const [isMobile, setIsMobile] = useState(() => {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+
+        return !window.matchMedia('(min-width: 640px)').matches;
+    });
 
     // Track mobile viewport
-    useState(() => {
+    useEffect(() => {
         if (typeof window === 'undefined') {
             return;
         }
 
         const mql = window.matchMedia('(min-width: 640px)');
-        mqlRef.current = mql;
-        setIsMobile(!mql.matches);
 
         const handler = (e: MediaQueryListEvent) => setIsMobile(!e.matches);
         mql.addEventListener('change', handler);
 
         return () => mql.removeEventListener('change', handler);
-    });
+    }, []);
 
     // Check if filters have changed from committed
     const filtersChanged =
@@ -1298,7 +1291,11 @@ export default function TransactionsIndex() {
     // ─── Filter actions ──────────────────────────────────────────────────
 
     function applyFilters() {
-        const params = buildQueryParams(localFilters);
+        applyFiltersWith(localFilters);
+    }
+
+    function applyFiltersWith(filters: Filters) {
+        const params = buildQueryParams(filters);
 
         router.get(transactionsIndex.url(ledger.id), params, {
             only: ['transactions', 'filters'],
@@ -1308,6 +1305,7 @@ export default function TransactionsIndex() {
         });
         setSelectedIds([]);
         setAllAcrossPages(false);
+        setExcludedIds([]);
     }
 
     function handleResetFilters() {
@@ -1325,6 +1323,7 @@ export default function TransactionsIndex() {
         );
         setSelectedIds([]);
         setAllAcrossPages(false);
+        setExcludedIds([]);
     }
 
     const handleSearchChange = useCallback((value: string | null) => {
@@ -1356,79 +1355,64 @@ export default function TransactionsIndex() {
         allVisibleIds.every((id) => selectedIds.includes(id));
     const someSelected =
         !allSelected && allVisibleIds.some((id) => selectedIds.includes(id));
+    const selectedCount = allAcrossPages
+        ? Math.max((transactions?.total ?? 0) - excludedIds.length, 0)
+        : selectedIds.length;
 
     function handleSelectAll(checked: boolean | 'indeterminate') {
         if (checked === true) {
-            setSelectedIds((prev) => [...new Set([...prev, ...allVisibleIds])]);
+            if (allAcrossPages) {
+                setExcludedIds((prev) =>
+                    prev.filter((id) => !allVisibleIds.includes(id)),
+                );
+            } else {
+                setSelectedIds((prev) =>
+                    [...new Set([...prev, ...allVisibleIds])],
+                );
+            }
         } else {
-            setSelectedIds((prev) =>
-                prev.filter((id) => !allVisibleIds.includes(id)),
-            );
+            if (allAcrossPages) {
+                setExcludedIds((prev) =>
+                    [...new Set([...prev, ...allVisibleIds])],
+                );
+            } else {
+                setSelectedIds((prev) =>
+                    prev.filter((id) => !allVisibleIds.includes(id)),
+                );
+            }
         }
     }
 
     function handleSelectOne(id: number, checked: boolean | 'indeterminate') {
-        if (checked === true) {
-            setSelectedIds((prev) => [...prev, id]);
+        if (allAcrossPages) {
+            if (checked === true) {
+                setExcludedIds((prev) => prev.filter((item) => item !== id));
+            } else {
+                setExcludedIds((prev) => [...new Set([...prev, id])]);
+            }
         } else {
-            setSelectedIds((prev) => prev.filter((i) => i !== id));
-            setAllAcrossPages(false);
+            if (checked === true) {
+                setSelectedIds((prev) => [...prev, id]);
+            } else {
+                setSelectedIds((prev) => prev.filter((i) => i !== id));
+                setAllAcrossPages(false);
+            }
         }
     }
 
-    async function handleSelectAllAcrossPages() {
+    function handleSelectAllAcrossPages() {
         setLoadingSelectAll(true);
 
-        try {
-            const response = await fetch(selectAllRoute.url(ledger.id), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    Accept: 'application/json',
-                },
-                body: JSON.stringify({
-                    date_from: committedFilters.date_from || undefined,
-                    date_to: committedFilters.date_to || undefined,
-                    account_ids:
-                        committedFilters.account_ids.length > 0
-                            ? committedFilters.account_ids
-                            : undefined,
-                    category_ids:
-                        committedFilters.category_ids.length > 0
-                            ? committedFilters.category_ids
-                            : undefined,
-                    transaction_types:
-                        committedFilters.transaction_types.length > 0
-                            ? committedFilters.transaction_types
-                            : undefined,
-                    payee_ids:
-                        committedFilters.payee_ids.length > 0
-                            ? committedFilters.payee_ids
-                            : undefined,
-                    tag_ids:
-                        committedFilters.tag_ids.length > 0
-                            ? committedFilters.tag_ids
-                            : undefined,
-                    search: committedFilters.search || undefined,
-                    bill_id: committedFilters.bill_id || undefined,
-                    uncategorized: committedFilters.uncategorized || undefined,
-                }),
-            });
-
-            const result = (await response.json()) as { ids: number[] };
-            setSelectedIds(result.ids);
-            setAllAcrossPages(true);
-        } catch {
-            toast.error('Failed to select all transactions');
-        } finally {
-            setLoadingSelectAll(false);
-        }
+        setAllAcrossPages(true);
+        setSelectedIds([]);
+        setExcludedIds([]);
+        setLoadingSelectAll(false);
     }
 
     function clearSelection() {
         setSelectedIds([]);
         setAllAcrossPages(false);
+        setExcludedIds([]);
     }
 
     // ─── CRUD ────────────────────────────────────────────────────────────
@@ -1436,9 +1420,15 @@ export default function TransactionsIndex() {
     function handleBulkDelete() {
         router.post(
             bulkDestroyRoute.url(ledger.id),
-            {
-                ids: selectedIds,
-            },
+            allAcrossPages
+                ? {
+                      apply_to_all_matching: true,
+                      excluded_ids: excludedIds,
+                      filters: committedFilters,
+                  }
+                : {
+                      ids: selectedIds,
+                  },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1460,11 +1450,19 @@ export default function TransactionsIndex() {
 
         router.post(
             bulkUpdateRoute.url(ledger.id),
-            {
-                ids: selectedIds,
-                action: bulkAction,
-                value: Number(bulkActionValue),
-            },
+            allAcrossPages
+                ? {
+                      apply_to_all_matching: true,
+                      excluded_ids: excludedIds,
+                      filters: committedFilters,
+                      action: bulkAction,
+                      value: Number(bulkActionValue),
+                  }
+                : {
+                      ids: selectedIds,
+                      action: bulkAction,
+                      value: Number(bulkActionValue),
+                  },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1583,12 +1581,11 @@ export default function TransactionsIndex() {
             chips.push({
                 key: 'date_range',
                 label: `${from} - ${to}`,
-                onRemove: () =>
-                    setLocalFilters((prev) => ({
-                        ...prev,
+                onRemove: (filters) => ({
+                        ...filters,
                         date_from: '',
                         date_to: '',
-                    })),
+                    }),
             });
         }
 
@@ -1596,11 +1593,10 @@ export default function TransactionsIndex() {
             chips.push({
                 key: 'search',
                 label: `"${committedFilters.search}"`,
-                onRemove: () =>
-                    setLocalFilters((prev) => ({
-                        ...prev,
+                onRemove: (filters) => ({
+                        ...filters,
                         search: null,
-                    })),
+                    }),
             });
         }
 
@@ -1611,13 +1607,12 @@ export default function TransactionsIndex() {
                 chips.push({
                     key: `account_${id}`,
                     label: account.name,
-                    onRemove: () =>
-                        setLocalFilters((prev) => ({
-                            ...prev,
-                            account_ids: prev.account_ids.filter(
+                    onRemove: (filters) => ({
+                            ...filters,
+                            account_ids: filters.account_ids.filter(
                                 (aid) => aid !== id,
                             ),
-                        })),
+                        }),
                 });
             }
         }
@@ -1631,13 +1626,12 @@ export default function TransactionsIndex() {
                 chips.push({
                     key: `category_${id}`,
                     label: cat.name,
-                    onRemove: () =>
-                        setLocalFilters((prev) => ({
-                            ...prev,
-                            category_ids: prev.category_ids.filter(
+                    onRemove: (filters) => ({
+                            ...filters,
+                            category_ids: filters.category_ids.filter(
                                 (cid) => cid !== id,
                             ),
-                        })),
+                        }),
                 });
             }
         }
@@ -1646,13 +1640,12 @@ export default function TransactionsIndex() {
             chips.push({
                 key: `type_${type}`,
                 label: type.charAt(0).toUpperCase() + type.slice(1),
-                onRemove: () =>
-                    setLocalFilters((prev) => ({
-                        ...prev,
-                        transaction_types: prev.transaction_types.filter(
+                onRemove: (filters) => ({
+                        ...filters,
+                        transaction_types: filters.transaction_types.filter(
                             (t) => t !== type,
                         ),
-                    })),
+                    }),
             });
         }
 
@@ -1663,13 +1656,12 @@ export default function TransactionsIndex() {
                 chips.push({
                     key: `payee_${id}`,
                     label: payee.name,
-                    onRemove: () =>
-                        setLocalFilters((prev) => ({
-                            ...prev,
-                            payee_ids: prev.payee_ids.filter(
+                    onRemove: (filters) => ({
+                            ...filters,
+                            payee_ids: filters.payee_ids.filter(
                                 (pid) => pid !== id,
                             ),
-                        })),
+                        }),
                 });
             }
         }
@@ -1681,11 +1673,10 @@ export default function TransactionsIndex() {
                 chips.push({
                     key: `tag_${id}`,
                     label: tag.name,
-                    onRemove: () =>
-                        setLocalFilters((prev) => ({
-                            ...prev,
-                            tag_ids: prev.tag_ids.filter((tid) => tid !== id),
-                        })),
+                    onRemove: (filters) => ({
+                            ...filters,
+                            tag_ids: filters.tag_ids.filter((tid) => tid !== id),
+                        }),
                 });
             }
         }
@@ -1694,11 +1685,10 @@ export default function TransactionsIndex() {
             chips.push({
                 key: 'uncategorized',
                 label: 'Uncategorized',
-                onRemove: () =>
-                    setLocalFilters((prev) => ({
-                        ...prev,
+                onRemove: (filters) => ({
+                        ...filters,
                         uncategorized: null,
-                    })),
+                    }),
             });
         }
 
@@ -1706,11 +1696,10 @@ export default function TransactionsIndex() {
             chips.push({
                 key: 'bill',
                 label: 'Recurring',
-                onRemove: () =>
-                    setLocalFilters((prev) => ({
-                        ...prev,
+                onRemove: (filters) => ({
+                        ...filters,
                         bill_id: null,
-                    })),
+                    }),
             });
         }
 
@@ -1805,9 +1794,15 @@ export default function TransactionsIndex() {
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <Checkbox
-                                            checked={selectedIds.includes(
-                                                tx.id,
-                                            )}
+                                            checked={
+                                                allAcrossPages
+                                                    ? !excludedIds.includes(
+                                                          tx.id,
+                                                      )
+                                                    : selectedIds.includes(
+                                                          tx.id,
+                                                      )
+                                            }
                                             onCheckedChange={(c) =>
                                                 handleSelectOne(tx.id, c)
                                             }
@@ -1905,7 +1900,11 @@ export default function TransactionsIndex() {
                             key={tx.id}
                             transaction={tx}
                             selectable
-                            selected={selectedIds.includes(tx.id)}
+                            selected={
+                                allAcrossPages
+                                    ? !excludedIds.includes(tx.id)
+                                    : selectedIds.includes(tx.id)
+                            }
                             onSelectChange={(c) => handleSelectOne(tx.id, c)}
                             runningBalance={runningBalances?.get(tx.id) ?? null}
                             actions={[
@@ -2103,13 +2102,11 @@ export default function TransactionsIndex() {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        chip.onRemove();
-                                                        // Auto-apply after chip removal
-                                                        setTimeout(
-                                                            () =>
-                                                                applyFilters(),
-                                                            0,
+                                                        const nextFilters = chip.onRemove(
+                                                            localFilters,
                                                         );
+                                                        setLocalFilters(nextFilters);
+                                                        applyFiltersWith(nextFilters);
                                                     }}
                                                     className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
                                                 >
@@ -2239,10 +2236,11 @@ export default function TransactionsIndex() {
                 </Sheet>
 
                 {/* Bulk actions bar */}
-                {selectedIds.length > 0 && (
+                {selectedCount > 0 && (
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                         <span className="text-sm font-medium text-muted-foreground">
-                            {selectedIds.length} selected
+                            {selectedCount}{' '}
+                            selected
                             {allAcrossPages && ' (all pages)'}
                         </span>
                         {!allAcrossPages &&
@@ -2387,9 +2385,9 @@ export default function TransactionsIndex() {
                     <DialogHeader>
                         <DialogTitle>Delete transactions</DialogTitle>
                         <DialogDescription>
-                            Delete <strong>{selectedIds.length}</strong>{' '}
+                            Delete <strong>{selectedCount}</strong>{' '}
                             transaction
-                            {selectedIds.length !== 1 ? 's' : ''}? This cannot
+                            {selectedCount !== 1 ? 's' : ''}? This cannot
                             be undone.
                         </DialogDescription>
                     </DialogHeader>
@@ -2430,9 +2428,9 @@ export default function TransactionsIndex() {
                             {bulkAction === 'change_payee' && 'Change payee'}
                         </DialogTitle>
                         <DialogDescription>
-                            Update <strong>{selectedIds.length}</strong>{' '}
+                            Update <strong>{selectedCount}</strong>{' '}
                             transaction
-                            {selectedIds.length !== 1 ? 's' : ''}. Transfer
+                            {selectedCount !== 1 ? 's' : ''}. Transfer
                             transactions will be skipped.
                         </DialogDescription>
                     </DialogHeader>

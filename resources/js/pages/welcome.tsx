@@ -102,9 +102,9 @@ const coreFeatures: readonly Feature[] = [
     },
     {
         icon: FolderOpen,
-        title: 'REST API Access',
+        title: 'CSV Import Workflows',
         description:
-            'Build your own integrations with a token-based API. Manage transactions, accounts, and more programmatically.',
+            'Bring bank exports into your ledgers with guided CSV imports, reusable mappings, and review before save.',
     },
 ] as const;
 
@@ -156,9 +156,9 @@ const securityItems: readonly SecurityItem[] = [
     },
     {
         icon: Lock,
-        title: 'Token-Based API Security',
+        title: 'Session-Based Protection',
         description:
-            'API access uses Sanctum tokens scoped to individual ledgers with built-in rate limiting.',
+            'Authentication, password confirmation, and signed flows protect sensitive actions throughout the app.',
     },
     {
         icon: Shield,

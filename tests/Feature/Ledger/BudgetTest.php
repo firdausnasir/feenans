@@ -8,17 +8,126 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('budget index page renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create(['name' => 'Food']);
 
-    $this->actingAs($user)
+    Budget::query()->create([
+        'ledger_id' => $ledger->id,
+        'category_id' => $category->id,
+        'amount' => 300,
+        'period' => 'monthly',
+        'start_date' => now()->toDateString(),
+        'end_date' => null,
+        'is_active' => true,
+        'rollover' => false,
+    ]);
+
+    $response = $this->actingAs($user)
         ->get(route('ledgers.budgets.index', $ledger))
         ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
+        ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/budgets/index')
+            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
+                ->where('name', 'Food')
+                ->etc()
+            )
+            ->missing('budgets')
         );
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('budgets', 1, fn (Assert $budgetPage) => $budgetPage
+                ->where('category_name', 'Food')
+                ->etc()
+            )
+        )
+    );
+});
+
+test('budget can be created through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.budgets.index', $ledger))
+        ->post(route('ledgers.budgets.store', $ledger), [
+            'category_id' => $category->id,
+            'amount' => 250,
+            'period' => 'monthly',
+            'start_date' => now()->toDateString(),
+            'end_date' => null,
+            'rollover' => false,
+        ]);
+
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($ledger->budgets()->where('category_id', $category->id)->exists())->toBeTrue();
+});
+
+test('budget can be updated through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $budget = Budget::query()->create([
+        'ledger_id' => $ledger->id,
+        'category_id' => $category->id,
+        'amount' => 100,
+        'period' => 'monthly',
+        'start_date' => now()->toDateString(),
+        'end_date' => null,
+        'is_active' => true,
+        'rollover' => false,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.budgets.index', $ledger))
+        ->put(route('ledgers.budgets.update', [$ledger, $budget]), [
+            'category_id' => $category->id,
+            'amount' => 175,
+            'period' => 'monthly',
+            'start_date' => now()->toDateString(),
+            'end_date' => null,
+            'rollover' => true,
+        ]);
+
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($budget->fresh())
+        ->amount->toBe('175.00')
+        ->rollover->toBeTrue();
+});
+
+test('budget can be deleted through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $budget = Budget::query()->create([
+        'ledger_id' => $ledger->id,
+        'category_id' => $category->id,
+        'amount' => 100,
+        'period' => 'monthly',
+        'start_date' => now()->toDateString(),
+        'end_date' => null,
+        'is_active' => true,
+        'rollover' => false,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.budgets.index', $ledger))
+        ->delete(route('ledgers.budgets.destroy', [$ledger, $budget]));
+
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger));
+
+    expect(Budget::query()->whereKey($budget->id)->exists())->toBeFalse();
 });
 
 test('budget store rejects categories from another ledger', function () {
@@ -28,7 +137,8 @@ test('budget store rejects categories from another ledger', function () {
     $foreignCategory = Category::factory()->for($foreignLedger)->create();
 
     $response = $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.budgets.store', $ledger), [
+        ->from(route('ledgers.budgets.index', $ledger))
+        ->post(route('ledgers.budgets.store', $ledger), [
             'category_id' => $foreignCategory->id,
             'amount' => 250,
             'period' => 'monthly',
@@ -37,7 +147,8 @@ test('budget store rejects categories from another ledger', function () {
             'rollover' => false,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors('category_id');
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger))
+        ->assertSessionHasErrors('category_id');
 
     expect($ledger->budgets()->count())->toBe(0);
 });
@@ -60,7 +171,7 @@ test('budget update is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->put(route('api.v1.ledgers.budgets.update', [$ledger, $budget]), [
+        ->put(route('ledgers.budgets.update', [$ledger, $budget]), [
             'category_id' => $category->id,
             'amount' => 150,
             'period' => 'monthly',
@@ -89,7 +200,7 @@ test('budget destroy is forbidden for another users ledger', function () {
     ]);
 
     $this->actingAs($intruder)
-        ->delete(route('api.v1.ledgers.budgets.destroy', [$ledger, $budget]))
+        ->delete(route('ledgers.budgets.destroy', [$ledger, $budget]))
         ->assertForbidden();
 
     expect(Budget::query()->whereKey($budget->id)->exists())->toBeTrue();

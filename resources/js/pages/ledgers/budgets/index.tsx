@@ -1,7 +1,12 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import { ExternalLink, Pencil, PiggyBank, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import {
+    destroy as destroyBudget,
+    store as storeBudget,
+    update as updateBudget,
+} from '@/actions/App/Http/Controllers/Ledger/BudgetController';
 import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
@@ -32,10 +37,9 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount, formatDate } from '@/lib/format';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
@@ -182,24 +186,16 @@ function BudgetsLoadingSkeleton() {
 }
 
 export default function BudgetsIndex() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
     const {
-        data: budgetsResult,
-        loading: budgetsLoading,
-        refetch,
-    } = useApiQuery<{ data: BudgetStat[] }>(`${base}/budgets`, {
-        params: { with_stats: true },
-    });
-    const { data: categoriesResult, loading: categoriesLoading } = useApiQuery<{
-        data: Category[];
-    }>(`${base}/categories`);
-
-    const budgets = budgetsResult?.data ?? [];
-    const categories = categoriesResult?.data ?? [];
-    const loading = budgetsLoading || categoriesLoading;
+        currentLedger,
+        budgets: budgetStats,
+        categories,
+    } = usePage<{
+        categories: Category[];
+        budgets?: BudgetStat[];
+    }>().props;
+    const ledger = currentLedger!;
+    const budgets = budgetStats ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -243,7 +239,7 @@ export default function BudgetsIndex() {
         setErrors({});
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         const payload = {
             category_id:
                 form.category_id && form.category_id !== '__none__'
@@ -259,55 +255,74 @@ export default function BudgetsIndex() {
         setSubmitting(true);
         setErrors({});
 
-        try {
-            if (editBudget) {
-                await api.put(`${base}/budgets/${editBudget.id}`, {
-                    body: payload,
-                });
-                toast.success('Budget updated');
-            } else {
-                await api.post(`${base}/budgets`, { body: payload });
-                toast.success('Budget created');
-            }
+        if (editBudget) {
+            router.put(
+                updateBudget.url({
+                    ledger: ledger.id,
+                    budget: editBudget.id,
+                }),
+                payload,
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success('Budget updated');
+                        closeDialog();
+                    },
+                    onError: (inertiaErrors) => {
+                        const validationErrors =
+                            mapInertiaErrorsArray(inertiaErrors);
+                        setErrors(validationErrors);
 
-            closeDialog();
-            refetch();
-        } catch (e) {
-            if (e instanceof ApiError && e.isValidationError) {
-                setErrors(e.validationErrors);
-                const firstError = Object.values(e.validationErrors)[0];
+                        const firstError = Object.values(validationErrors)[0]?.[0];
 
-                if (firstError?.[0]) {
-                    toast.error(String(firstError[0]));
-                }
-            } else {
-                toast.error(
-                    editBudget
-                        ? 'Failed to update budget'
-                        : 'Failed to create budget',
-                );
-            }
-        } finally {
-            setSubmitting(false);
+                        if (firstError) {
+                            toast.error(firstError);
+                        }
+                    },
+                    onFinish: () => setSubmitting(false),
+                },
+            );
+
+            return;
         }
+
+        router.post(storeBudget.url(ledger.id), payload, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success('Budget created');
+                closeDialog();
+            },
+            onError: (inertiaErrors) => {
+                const validationErrors = mapInertiaErrorsArray(inertiaErrors);
+                setErrors(validationErrors);
+
+                const firstError = Object.values(validationErrors)[0]?.[0];
+
+                if (firstError) {
+                    toast.error(firstError);
+                }
+            },
+            onFinish: () => setSubmitting(false),
+        });
     };
 
-    const handleDelete = async (budget: BudgetStat) => {
+    const handleDelete = (budget: BudgetStat) => {
         if (!confirm(`Delete budget for "${budget.category_name}"?`)) {
             return;
         }
 
-        try {
-            await api.delete(`${base}/budgets/${budget.id}`);
-            toast.success('Budget deleted');
-            refetch();
-        } catch (e) {
-            const message =
-                e instanceof ApiError
-                    ? 'Failed to delete budget'
-                    : 'An unexpected error occurred';
-            toast.error(message);
-        }
+        router.delete(
+            destroyBudget.url({ ledger: ledger.id, budget: budget.id }),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Budget deleted');
+                },
+                onError: () => {
+                    toast.error('Failed to delete budget');
+                },
+            },
+        );
     };
 
     const flatCategories = categories.flatMap((c) =>
@@ -329,153 +344,155 @@ export default function BudgetsIndex() {
                     </Button>
                 </div>
 
-                {loading ? (
-                    <BudgetsLoadingSkeleton />
-                ) : budgets.length === 0 ? (
-                    <EmptyState
-                        icon={<PiggyBank className="size-6" />}
-                        title="No budgets yet"
-                        description="Set monthly spending limits for your categories and track how you're doing."
-                        action={{
-                            label: 'Create your first budget',
-                            onClick: handleCreate,
-                        }}
-                    />
-                ) : (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {budgets.map((budget) => (
-                            <Card key={budget.id}>
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="inline-flex items-center gap-1.5 text-base">
-                                            {budget.category_color && (
-                                                <span
-                                                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                                                    style={{
-                                                        backgroundColor:
-                                                            budget.category_color,
-                                                    }}
-                                                />
-                                            )}
-                                            {budget.category_name}
-                                        </CardTitle>
-                                        <span
-                                            className={`rounded-full px-2 py-0.5 text-xs font-medium text-white ${
-                                                statusColor[budget.status] ??
-                                                'bg-muted'
-                                            }`}
-                                        >
-                                            {statusLabel[budget.status]}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground capitalize">
-                                        {budget.period} &middot;{' '}
-                                        {formatDate(budget.period_start)} –{' '}
-                                        {formatDate(budget.period_end)}
-                                    </p>
-                                </CardHeader>
-                                <CardContent className="flex flex-col gap-3">
-                                    <Progress
-                                        value={budget.percentage}
-                                        className="h-2"
-                                    />
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">
-                                            Spent:{' '}
-                                            <span className="font-medium text-foreground">
-                                                {formatAbsAmount(budget.spent)}
+                <Deferred data="budgets" fallback={<BudgetsLoadingSkeleton />}>
+                    {budgets.length === 0 ? (
+                        <EmptyState
+                            icon={<PiggyBank className="size-6" />}
+                            title="No budgets yet"
+                            description="Set monthly spending limits for your categories and track how you're doing."
+                            action={{
+                                label: 'Create your first budget',
+                                onClick: handleCreate,
+                            }}
+                        />
+                    ) : (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {budgets.map((budget) => (
+                                <Card key={budget.id}>
+                                    <CardHeader className="pb-2">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="inline-flex items-center gap-1.5 text-base">
+                                                {budget.category_color && (
+                                                    <span
+                                                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                                        style={{
+                                                            backgroundColor:
+                                                                budget.category_color,
+                                                        }}
+                                                    />
+                                                )}
+                                                {budget.category_name}
+                                            </CardTitle>
+                                            <span
+                                                className={`rounded-full px-2 py-0.5 text-xs font-medium text-white ${
+                                                    statusColor[budget.status] ??
+                                                    'bg-muted'
+                                                }`}
+                                            >
+                                                {statusLabel[budget.status]}
                                             </span>
-                                        </span>
-                                        <span className="text-muted-foreground">
-                                            Budget:{' '}
-                                            <span className="font-medium text-foreground">
-                                                {formatAbsAmount(budget.amount)}
-                                            </span>
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-sm text-muted-foreground">
-                                            {budget.percentage >= 100
-                                                ? `Over by ${formatAbsAmount(budget.spent - budget.amount)}`
-                                                : `${formatAbsAmount(budget.remaining)} remaining`}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground capitalize">
+                                            {budget.period} &middot;{' '}
+                                            {formatDate(budget.period_start)} –{' '}
+                                            {formatDate(budget.period_end)}
                                         </p>
-                                        <div className="flex items-center gap-0.5">
-                                            {budget.category_id !== null && (
+                                    </CardHeader>
+                                    <CardContent className="flex flex-col gap-3">
+                                        <Progress
+                                            value={budget.percentage}
+                                            className="h-2"
+                                        />
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-muted-foreground">
+                                                Spent:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {formatAbsAmount(budget.spent)}
+                                                </span>
+                                            </span>
+                                            <span className="text-muted-foreground">
+                                                Budget:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {formatAbsAmount(budget.amount)}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm text-muted-foreground">
+                                                {budget.percentage >= 100
+                                                    ? `Over by ${formatAbsAmount(budget.spent - budget.amount)}`
+                                                    : `${formatAbsAmount(budget.remaining)} remaining`}
+                                            </p>
+                                            <div className="flex items-center gap-0.5">
+                                                {budget.category_id !== null && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-7"
+                                                                asChild
+                                                            >
+                                                                <Link
+                                                                    href={transactionsIndex.url(
+                                                                        ledger.id,
+                                                                        {
+                                                                            query: {
+                                                                                'category_ids[]':
+                                                                                    budget.category_id,
+                                                                                date_from:
+                                                                                    budget.period_start,
+                                                                                date_to:
+                                                                                    budget.period_end,
+                                                                                'transaction_types[]':
+                                                                                    'expense',
+                                                                            },
+                                                                        },
+                                                                    )}
+                                                                >
+                                                                    <ExternalLink className="size-3.5" />
+                                                                </Link>
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            Transactions
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
                                                             className="size-7"
-                                                            asChild
+                                                            onClick={() =>
+                                                                handleEdit(budget)
+                                                            }
                                                         >
-                                                            <Link
-                                                                href={transactionsIndex.url(
-                                                                    ledger.id,
-                                                                    {
-                                                                        query: {
-                                                                            'category_ids[]':
-                                                                                budget.category_id,
-                                                                            date_from:
-                                                                                budget.period_start,
-                                                                            date_to:
-                                                                                budget.period_end,
-                                                                            'transaction_types[]':
-                                                                                'expense',
-                                                                        },
-                                                                    },
-                                                                )}
-                                                            >
-                                                                <ExternalLink className="size-3.5" />
-                                                            </Link>
+                                                            <Pencil className="size-3.5" />
                                                         </Button>
                                                     </TooltipTrigger>
                                                     <TooltipContent>
-                                                        Transactions
+                                                        Edit
                                                     </TooltipContent>
                                                 </Tooltip>
-                                            )}
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="size-7"
-                                                        onClick={() =>
-                                                            handleEdit(budget)
-                                                        }
-                                                    >
-                                                        <Pencil className="size-3.5" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    Edit
-                                                </TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="size-7 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                                                        onClick={() =>
-                                                            handleDelete(budget)
-                                                        }
-                                                    >
-                                                        <Trash2 className="size-3.5" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    Delete
-                                                </TooltipContent>
-                                            </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="size-7 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                                                            onClick={() =>
+                                                                handleDelete(
+                                                                    budget,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Trash2 className="size-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        Delete
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
                                         </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                )}
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </Deferred>
 
                 {/* Create / Edit Dialog */}
                 <Dialog
@@ -498,33 +515,29 @@ export default function BudgetsIndex() {
                                 <Label htmlFor="category_id">
                                     Category (leave empty for overall)
                                 </Label>
-                                {categoriesLoading ? (
-                                    <Skeleton className="h-9 w-full" />
-                                ) : (
-                                    <SearchableSelect
-                                        options={flatCategories.map((c) => ({
-                                            value: String(c.id),
-                                            label: c.parent_id
-                                                ? `  \u21B3 ${c.name}`
-                                                : c.name,
-                                            color: c.color,
-                                        }))}
-                                        value={
-                                            form.category_id === '__none__'
-                                                ? null
-                                                : form.category_id
-                                        }
-                                        onValueChange={(val) =>
-                                            setForm((f) => ({
-                                                ...f,
-                                                category_id: val ?? '__none__',
-                                            }))
-                                        }
-                                        placeholder="Overall budget"
-                                        searchPlaceholder="Search categories..."
-                                        allOption="Overall budget"
-                                    />
-                                )}
+                                <SearchableSelect
+                                    options={flatCategories.map((c) => ({
+                                        value: String(c.id),
+                                        label: c.parent_id
+                                            ? `  \u21B3 ${c.name}`
+                                            : c.name,
+                                        color: c.color,
+                                    }))}
+                                    value={
+                                        form.category_id === '__none__'
+                                            ? null
+                                            : form.category_id
+                                    }
+                                    onValueChange={(val) =>
+                                        setForm((f) => ({
+                                            ...f,
+                                            category_id: val ?? '__none__',
+                                        }))
+                                    }
+                                    placeholder="Overall budget"
+                                    searchPlaceholder="Search categories..."
+                                    allOption="Overall budget"
+                                />
                                 {errors.category_id && (
                                     <p className="text-xs text-destructive">
                                         {errors.category_id[0]}

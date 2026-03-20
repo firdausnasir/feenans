@@ -15,12 +15,14 @@ test('users can create a tag in a ledger', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.tags.store', $ledger), [
+        ->from(route('ledgers.tags.index', $ledger))
+        ->post(route('ledgers.tags.store', $ledger), [
             'name' => 'groceries',
             'color' => '#4ade80',
         ]);
 
-    $response->assertStatus(201);
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
 });
@@ -30,10 +32,12 @@ test('tag store does not create duplicate tags for the same ledger', function ()
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.tags.store', $ledger), ['name' => 'dining']);
+        ->from(route('ledgers.tags.index', $ledger))
+        ->post(route('ledgers.tags.store', $ledger), ['name' => 'dining']);
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.tags.store', $ledger), ['name' => 'dining']);
+        ->from(route('ledgers.tags.index', $ledger))
+        ->post(route('ledgers.tags.store', $ledger), ['name' => 'dining']);
 
     expect($ledger->tags()->where('name', 'dining')->count())->toBe(1);
 });
@@ -45,9 +49,122 @@ test('users can delete a tag', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.tags.destroy', [$ledger, $tag]));
+        ->from(route('ledgers.tags.index', $ledger))
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.tags.index', $ledger));
+
+    expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
+});
+
+test('tag index renders the inertia shell for api-driven tag data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Tag::factory()->for($ledger)->create(['name' => 'shell-tag']);
+
+    $this->actingAs($user)
+        ->get(route('ledgers.tags.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/tags/index')
+            ->where('currentLedger.id', $ledger->id)
+            ->missing('tags')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('tags', 1, fn (Assert $tagPage) => $tagPage
+                    ->where('name', 'shell-tag')
+                    ->etc()
+                )
+            )
+        );
+});
+
+test('tag can be created through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => 'groceries',
+            'color' => '#4ade80',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
+});
+
+test('tag index supports partial reloads for tags', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Tag::factory()->for($ledger)->create(['name' => 'groceries']);
+
+    $response = $this->actingAs($user)
+        ->get(route('ledgers.tags.index', $ledger));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->reloadOnly('tags', fn (Assert $reload) => $reload
+            ->has('tags', 1, fn (Assert $tagPage) => $tagPage
+                ->where('name', 'groceries')
+                ->etc()
+            )
+            ->missing('currentLedger')
+        )
+    );
+});
+
+test('tag web create uses shared tag request validation messages', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => '',
+            'color' => 'not-a-color',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasErrors([
+            'name' => 'Please enter a tag name.',
+            'color' => 'Please enter a valid hex color like #FF0000.',
+        ]);
+});
+
+test('tag can be updated through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'old-tag']);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'new-tag',
+            'color' => '#22c55e',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($tag->fresh()->name)->toBe('new-tag');
+});
+
+test('tag can be deleted through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'to-delete']);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger));
 
     expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
 });
@@ -96,14 +213,19 @@ test('transaction index can be filtered by tag', function () {
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', [
+        ->get(route('ledgers.transactions.index', [
             'ledger' => $ledger,
             'tag_ids' => [$tag->id],
         ]));
 
     $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.id', $tagged->id);
+    $response->assertInertia(fn (Assert $page) => $page
+        ->missing('transactions')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('transactions.data', 1)
+            ->where('transactions.data.0.id', $tagged->id)
+        )
+    );
 });
 
 test('transaction tags are synced on update', function () {
@@ -123,7 +245,8 @@ test('transaction tags are synced on update', function () {
     $transaction->tags()->sync([$tag1->id]);
 
     $this->actingAs($user)
-        ->put(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'category_id' => $category->id,
             'transaction_type' => 'expense',

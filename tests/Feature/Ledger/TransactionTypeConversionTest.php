@@ -37,7 +37,8 @@ test('converting transfer to expense via HTTP deletes pair and updates transacti
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $source]), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->put(route('ledgers.transactions.update', [$ledger, $source]), [
             'account_id' => $fromAccount->id,
             'category_id' => $category->id,
             'transaction_type' => 'expense',
@@ -46,7 +47,7 @@ test('converting transfer to expense via HTTP deletes pair and updates transacti
             'transaction_date' => '2026-03-01',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
 
     $source->refresh();
     expect($source->transaction_type)->toBe(TransactionType::Expense)
@@ -74,7 +75,8 @@ test('converting expense to transfer via HTTP creates paired transaction', funct
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $fromAccount->id,
             'to_account_id' => $toAccount->id,
             'transaction_type' => 'transfer',
@@ -83,7 +85,7 @@ test('converting expense to transfer via HTTP creates paired transaction', funct
             'transaction_date' => '2026-03-01',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
 
     expect($ledger->transactions()->count())->toBe(2);
 

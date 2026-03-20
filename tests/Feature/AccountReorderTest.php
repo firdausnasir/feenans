@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\Account;
+use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('reorder endpoint updates account positions', function () {
     $user = User::factory()->create();
@@ -13,14 +15,15 @@ test('reorder endpoint updates account positions', function () {
     $accountC = Account::factory()->for($ledger)->create(['name' => 'C', 'position' => 3]);
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.accounts.reorder', $ledger), [
+        ->from(route('ledgers.accounts.index', $ledger))
+        ->post(route('ledgers.accounts.reorder', $ledger), [
             'items' => [
                 ['id' => $accountC->id, 'position' => 1],
                 ['id' => $accountA->id, 'position' => 2],
                 ['id' => $accountB->id, 'position' => 3],
             ],
         ])
-        ->assertNoContent();
+        ->assertRedirect(route('ledgers.accounts.index', $ledger));
 
     expect($accountC->fresh()->position)->toBe(1)
         ->and($accountA->fresh()->position)->toBe(2)
@@ -30,15 +33,23 @@ test('reorder endpoint updates account positions', function () {
 test('accounts index renders successfully', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
 
-    Account::factory()->for($ledger)->create(['name' => 'Zeta', 'position' => 1]);
-    Account::factory()->for($ledger)->create(['name' => 'Alpha', 'position' => 2]);
+    Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Zeta', 'position' => 1]);
+    Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Alpha', 'position' => 2]);
 
     $this->actingAs($user)
         ->get(route('ledgers.accounts.index', $ledger))
         ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
+        ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/accounts/index')
+            ->has('accounts', 1)
+            ->has('accounts.0.accounts', 2)
+            ->has('accountTypes')
+            ->missing('netWorth')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('netWorth')
+            )
         );
 });
 
@@ -51,13 +62,14 @@ test('reorder only updates accounts belonging to the ledger', function () {
     $otherAccount = Account::factory()->for($otherLedger)->create(['position' => 1]);
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.accounts.reorder', $ledger), [
+        ->from(route('ledgers.accounts.index', $ledger))
+        ->post(route('ledgers.accounts.reorder', $ledger), [
             'items' => [
                 ['id' => $account->id, 'position' => 5],
                 ['id' => $otherAccount->id, 'position' => 10],
             ],
         ])
-        ->assertNoContent();
+        ->assertRedirect(route('ledgers.accounts.index', $ledger));
 
     // Own ledger's account should be updated
     expect($account->fresh()->position)->toBe(5);
@@ -71,7 +83,7 @@ test('reorder validates required fields', function () {
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.accounts.reorder', $ledger), [])
+        ->postJson(route('ledgers.accounts.reorder', $ledger), [])
         ->assertStatus(422)->assertJsonValidationErrors('items');
 });
 
@@ -80,7 +92,7 @@ test('reorder validates items structure', function () {
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->postJson(route('api.v1.ledgers.accounts.reorder', $ledger), [
+        ->postJson(route('ledgers.accounts.reorder', $ledger), [
             'items' => [
                 ['id' => 'not-a-number', 'position' => 'also-not'],
             ],
@@ -91,6 +103,6 @@ test('reorder validates items structure', function () {
 test('reorder requires authentication', function () {
     $ledger = Ledger::factory()->for(User::factory())->create();
 
-    $this->postJson(route('api.v1.ledgers.accounts.reorder', $ledger))
+    $this->postJson(route('ledgers.accounts.reorder', $ledger))
         ->assertUnauthorized();
 });

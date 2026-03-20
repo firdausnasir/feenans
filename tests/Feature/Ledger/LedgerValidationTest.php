@@ -98,12 +98,15 @@ test('settings update updates ledger name and cycle_start_day', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.settings.update', $ledger), [
+        ->from(route('ledgers.settings.index', $ledger))
+        ->put(route('ledgers.settings.update', $ledger), [
             'name' => 'Updated Name',
+            'currency_code' => $ledger->currency_code,
             'cycle_start_day' => 15,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.settings.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($ledger->fresh()->name)->toBe('Updated Name')
         ->and($ledger->fresh()->cycle_start_day)->toBe(15);

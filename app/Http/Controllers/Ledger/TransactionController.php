@@ -4,7 +4,11 @@ namespace App\Http\Controllers\Ledger;
 
 use App\Enums\TransactionType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkDestroyTransactionsRequest;
+use App\Http\Requests\BulkUpdateTransactionsRequest;
 use App\Http\Requests\StoreTransactionRequest;
+use App\Http\Requests\UpdateTransactionRequest;
+use App\Http\Resources\TransactionResource;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Ledger;
@@ -18,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -130,8 +135,28 @@ class TransactionController extends Controller
     {
         $this->authorize('view', $ledger);
 
+        $categories = $ledger->categories()->orderBy('position')->get();
+
+        $transaction->load([
+            'account',
+            'category',
+            'payee',
+            'tags',
+            'splits.category',
+            'splits.payee',
+            'attachments.transaction',
+            'transferPair.account',
+            'transferPair.category',
+            'transferPair.payee',
+        ])->loadCount('splits');
+
         return Inertia::render('ledgers/transactions/edit', [
             'ledger' => $ledger,
+            'transaction' => fn () => TransactionResource::make($transaction)->resolve(),
+            'accounts' => fn () => $ledger->accounts()->visible()->orderBy('position')->orderBy('name')->get(['id', 'ledger_id', 'name', 'current_balance', 'color']),
+            'categories' => fn () => $this->flattenCategories($categories),
+            'payees' => fn () => $ledger->payees()->orderBy('name')->get(),
+            'tags' => fn () => $ledger->tags()->orderBy('name')->get(),
             'transaction_id' => $transaction->id,
         ]);
     }
@@ -205,27 +230,11 @@ class TransactionController extends Controller
         }, $filename, ['Content-Type' => 'text/csv']);
     }
 
-    public function update(Request $request, Ledger $ledger, Transaction $transaction): RedirectResponse
+    public function update(UpdateTransactionRequest $request, Ledger $ledger, Transaction $transaction): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $validated = $request->validate([
-            'transaction_type' => ['required', 'in:expense,income,transfer'],
-            'transaction_date' => ['required', 'date'],
-            'account_id' => ['required', 'exists:accounts,id'],
-            'to_account_id' => ['nullable', 'exists:accounts,id', 'different:account_id'],
-            'category_id' => ['nullable', 'exists:categories,id'],
-            'payee_id' => ['nullable', 'exists:payees,id'],
-            'amount' => ['required', 'numeric', 'gt:0'],
-            'description' => ['nullable', 'string', 'max:255'],
-            'notes' => ['nullable', 'string'],
-            'tag_ids' => ['nullable', 'array'],
-            'tag_ids.*' => ['integer', 'exists:tags,id'],
-            'splits' => ['nullable', 'array', 'min:2'],
-            'splits.*.amount' => ['nullable', 'numeric'],
-            'splits.*.category_id' => ['nullable', 'exists:categories,id'],
-            'splits.*.description' => ['nullable', 'string', 'max:255'],
-        ]);
+        $validated = $this->resolveValidatedInlinePayee($request->validated(), $ledger);
 
         $type = TransactionType::from($validated['transaction_type']);
         $wasTransfer = $transaction->transfer_pair_id !== null;
@@ -283,7 +292,9 @@ class TransactionController extends Controller
 
         $this->budgetService->checkThresholds($ledger, $validated['category_id'] ?? null);
 
-        return back()->with('success', 'Transaction updated.');
+        return redirect()
+            ->route('ledgers.transactions.index', $ledger)
+            ->with('success', 'Transaction updated.');
     }
 
     public function destroy(Ledger $ledger, Transaction $transaction): RedirectResponse
@@ -292,21 +303,24 @@ class TransactionController extends Controller
 
         $this->transactionService->delete($transaction);
 
-        return back()->with('success', 'Transaction deleted.');
+        return redirect()
+            ->route('ledgers.transactions.index', $ledger)
+            ->with('success', 'Transaction deleted.');
     }
 
-    public function bulkUpdate(Request $request, Ledger $ledger): RedirectResponse
+    public function bulkUpdate(BulkUpdateTransactionsRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $validated = $request->validate([
-            'ids' => ['required', 'array'],
-            'ids.*' => ['integer'],
-            'action' => ['required', 'in:change_category,change_account,change_payee'],
-            'value' => ['required', 'integer'],
-        ]);
+        $validated = $request->validated();
 
-        $query = $ledger->transactions()->whereIn('id', $validated['ids'])
+        $ids = $this->resolveBulkTransactionIds($request, $ledger, $validated);
+
+        if ($ids === []) {
+            return back()->with('success', 'Transactions updated.');
+        }
+
+        $query = $ledger->transactions()->whereIn('id', $ids)
             ->where('transaction_type', '!=', TransactionType::Transfer);
 
         $field = match ($validated['action']) {
@@ -320,18 +334,21 @@ class TransactionController extends Controller
         return back()->with('success', 'Transactions updated.');
     }
 
-    public function bulkDestroy(Request $request, Ledger $ledger): RedirectResponse
+    public function bulkDestroy(BulkDestroyTransactionsRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $validated = $request->validate([
-            'ids' => ['required', 'array'],
-            'ids.*' => ['integer'],
-        ]);
+        $validated = $request->validated();
+
+        $ids = $this->resolveBulkTransactionIds($request, $ledger, $validated);
+
+        if ($ids === []) {
+            return back()->with('success', 'Transactions deleted.');
+        }
 
         // Get transfer pair IDs before deleting
         $transferPairIds = $ledger->transactions()
-            ->whereIn('id', $validated['ids'])
+            ->whereIn('id', $ids)
             ->whereNotNull('transfer_pair_id')
             ->pluck('transfer_pair_id')
             ->all();
@@ -344,7 +361,7 @@ class TransactionController extends Controller
                 ->all()
             : [];
 
-        $allIds = array_unique(array_merge($validated['ids'], $pairedTransactionIds));
+        $allIds = array_unique(array_merge($ids, $pairedTransactionIds));
 
         $ledger->transactions()->whereIn('id', $allIds)->delete();
 
@@ -369,17 +386,26 @@ class TransactionController extends Controller
      */
     private function resolveFilters(Request $request): array
     {
+        return $this->normalizeFilters($request->all());
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function normalizeFilters(array $input): array
+    {
         return [
-            'search' => $request->input('search'),
-            'date_from' => $request->input('date_from', ''),
-            'date_to' => $request->input('date_to', ''),
-            'account_ids' => $this->resolveArrayFilter($request, 'account_ids') ?? [],
-            'category_ids' => $this->resolveArrayFilter($request, 'category_ids') ?? [],
-            'transaction_types' => $this->resolveArrayFilter($request, 'transaction_types') ?? [],
-            'payee_ids' => $this->resolveArrayFilter($request, 'payee_ids') ?? [],
-            'tag_ids' => $this->resolveArrayFilter($request, 'tag_ids') ?? [],
-            'bill_id' => $request->input('bill_id'),
-            'uncategorized' => $request->input('uncategorized'),
+            'search' => $input['search'] ?? null,
+            'date_from' => (string) ($input['date_from'] ?? ''),
+            'date_to' => (string) ($input['date_to'] ?? ''),
+            'account_ids' => $this->resolveArrayFilterFromValue($input['account_ids'] ?? null) ?? [],
+            'category_ids' => $this->resolveArrayFilterFromValue($input['category_ids'] ?? null) ?? [],
+            'transaction_types' => $this->resolveArrayFilterFromValue($input['transaction_types'] ?? null) ?? [],
+            'payee_ids' => $this->resolveArrayFilterFromValue($input['payee_ids'] ?? null) ?? [],
+            'tag_ids' => $this->resolveArrayFilterFromValue($input['tag_ids'] ?? null) ?? [],
+            'bill_id' => $input['bill_id'] ?? null,
+            'uncategorized' => $input['uncategorized'] ?? null,
         ];
     }
 
@@ -438,7 +464,17 @@ class TransactionController extends Controller
      */
     private function resolveArrayFilter(Request $request, string $key): ?array
     {
-        $value = $request->input($key);
+        return $this->resolveArrayFilterFromValue($request->input($key));
+    }
+
+    /**
+     * @return string[]|null
+     */
+    private function resolveArrayFilterFromValue(mixed $value): ?array
+    {
+        if (is_string($value) && str_contains($value, ',')) {
+            $value = explode(',', $value);
+        }
 
         if ($value === null || $value === '' || $value === []) {
             return null;
@@ -451,6 +487,29 @@ class TransactionController extends Controller
         }
 
         return [(string) $value];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function resolveBulkTransactionIds(Request $request, Ledger $ledger, array $validated): array
+    {
+        if (! $request->boolean('apply_to_all_matching')) {
+            return $validated['ids'] ?? [];
+        }
+
+        $filters = $this->normalizeFilters((array) $request->input('filters', []));
+        $excludedIds = array_map('intval', $request->input('excluded_ids', []));
+
+        $query = $ledger->transactions();
+
+        $this->applyTransactionFilters($query, $filters);
+
+        if ($excludedIds !== []) {
+            $query->whereNotIn('id', $excludedIds);
+        }
+
+        return $query->pluck('id')->all();
     }
 
     /**
@@ -468,6 +527,24 @@ class TransactionController extends Controller
 
         $payee = $ledger->payees()->create(['name' => $newPayeeName]);
         $request->merge(['payee_id' => $payee->id]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function resolveValidatedInlinePayee(array $validated, Ledger $ledger): array
+    {
+        $newPayeeName = trim((string) ($validated['new_payee_name'] ?? ''));
+
+        if ($newPayeeName === '' || ! empty($validated['payee_id'])) {
+            return $validated;
+        }
+
+        $payee = $ledger->payees()->create(['name' => $newPayeeName]);
+        $validated['payee_id'] = $payee->id;
+
+        return $validated;
     }
 
     private function celebrateFirstTransaction(): void
@@ -502,5 +579,26 @@ class TransactionController extends Controller
                 'size' => $file->getSize(),
             ]);
         }
+    }
+
+    /**
+     * @param  Collection<int, Category>  $categories
+     * @return array<int, Category>
+     */
+    private function flattenCategories($categories): array
+    {
+        $flatCategories = [];
+
+        $parentCategories = $categories->whereNull('parent_id')->values();
+
+        foreach ($parentCategories as $parent) {
+            $flatCategories[] = $parent;
+
+            foreach ($categories->where('parent_id', $parent->id)->values() as $child) {
+                $flatCategories[] = $child;
+            }
+        }
+
+        return $flatCategories;
     }
 }
