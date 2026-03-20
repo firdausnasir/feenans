@@ -9,7 +9,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
     store as storeRoute,
@@ -213,16 +213,11 @@ function BillFormModal({
     const [processing, setProcessing] = useState(false);
 
     // Reset form when bill changes
-    const [prevBill, setPrevBill] = useState<Bill | null | undefined>(
-        undefined,
-    );
-
-    if (prevBill !== bill) {
-        setPrevBill(bill);
+    useEffect(() => {
         setFormData(buildInitialData(bill, accounts));
         setErrors({});
         setProcessing(false);
-    }
+    }, [bill, accounts]);
 
     function setData<K extends keyof FormData>(key: K, value: FormData[K]) {
         setFormData((prev) => ({ ...prev, [key]: value }));
@@ -289,7 +284,7 @@ function BillFormModal({
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} modal onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>
@@ -297,6 +292,11 @@ function BillFormModal({
                             ? 'Edit Recurring Transaction'
                             : 'New Recurring Transaction'}
                     </DialogTitle>
+                    <DialogDescription>
+                        {isEdit
+                            ? 'Update the recurring transaction details.'
+                            : 'Create a new recurring transaction.'}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={submit} className="space-y-5">
@@ -924,7 +924,10 @@ function BillCard({
                             variant="ghost"
                             size="icon"
                             className="size-8"
-                            onClick={() => onEdit(bill)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(bill);
+                            }}
                         >
                             <Pencil className="size-3.5" />
                         </Button>
@@ -1324,6 +1327,7 @@ export default function BillsIndex() {
             />
 
             <BillFormModal
+                key={formBill && formBill !== 'create' ? formBill.id : 'create'}
                 bill={formBill === 'create' ? null : formBill}
                 open={formBill !== null}
                 onOpenChange={(open) => {
