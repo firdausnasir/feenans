@@ -335,6 +335,43 @@ test('transaction update via web route redirects to the transactions index', fun
     expect($transaction->fresh()->description)->toBe('Updated from web route');
 });
 
+test('transaction update can create a new payee through the web route', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => 'expense']);
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before payee update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Updated from web route',
+            'transaction_date' => '2026-03-20',
+            'new_payee_name' => 'Fresh Edit Payee',
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    $transaction->refresh();
+
+    expect($ledger->payees()->where('name', 'Fresh Edit Payee')->exists())->toBeTrue()
+        ->and($transaction->payee?->name)->toBe('Fresh Edit Payee');
+});
+
 test('transaction destroy via web route redirects to the transactions index', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();

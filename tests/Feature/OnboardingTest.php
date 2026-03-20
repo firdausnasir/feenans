@@ -41,15 +41,15 @@ test('GET /onboarding is accessible even when onboarding_step is set', function 
     );
 });
 
-test('API routes are not redirected by onboarding middleware', function () {
+test('json onboarding autosave requests are not redirected by onboarding middleware', function () {
     $user = User::factory()->create(['onboarding_step' => 1]);
 
     $response = $this->actingAs($user)
-        ->withHeaders(['Accept' => 'application/json'])
-        ->get('/ledgers');
+        ->postJson(route('onboarding.autosave'), [
+            'data' => ['name' => 'Draft Ledger'],
+        ]);
 
-    // Middleware skips JSON requests; the controller runs and returns 200
-    $response->assertStatus(200);
+    $response->assertOk()->assertJson(['saved' => true]);
 });
 
 // ─────────────────────────────────────────────

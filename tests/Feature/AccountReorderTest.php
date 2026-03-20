@@ -83,8 +83,10 @@ test('reorder validates required fields', function () {
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->postJson(route('ledgers.accounts.reorder', $ledger), [])
-        ->assertStatus(422)->assertJsonValidationErrors('items');
+        ->from(route('ledgers.accounts.index', $ledger))
+        ->post(route('ledgers.accounts.reorder', $ledger), [])
+        ->assertRedirect(route('ledgers.accounts.index', $ledger))
+        ->assertSessionHasErrors('items');
 });
 
 test('reorder validates items structure', function () {
@@ -92,17 +94,19 @@ test('reorder validates items structure', function () {
     $ledger = Ledger::factory()->for($user)->create();
 
     $this->actingAs($user)
-        ->postJson(route('ledgers.accounts.reorder', $ledger), [
+        ->from(route('ledgers.accounts.index', $ledger))
+        ->post(route('ledgers.accounts.reorder', $ledger), [
             'items' => [
                 ['id' => 'not-a-number', 'position' => 'also-not'],
             ],
         ])
-        ->assertStatus(422)->assertJsonValidationErrors(['items.0.id', 'items.0.position']);
+        ->assertRedirect(route('ledgers.accounts.index', $ledger))
+        ->assertSessionHasErrors(['items.0.id', 'items.0.position']);
 });
 
 test('reorder requires authentication', function () {
     $ledger = Ledger::factory()->for(User::factory())->create();
 
-    $this->postJson(route('ledgers.accounts.reorder', $ledger))
-        ->assertUnauthorized();
+    $this->post(route('ledgers.accounts.reorder', $ledger))
+        ->assertRedirect(route('login'));
 });

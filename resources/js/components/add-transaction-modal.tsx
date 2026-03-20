@@ -135,6 +135,17 @@ export function AddTransactionModal({
         return accounts.length > 0 ? String(accounts[0].id) : '';
     }, [defaultAccountId, accounts]);
 
+    const resolveDefaultToAccountId = useCallback(
+        (sourceAccountId: string): string => {
+            const fallback = accounts.find(
+                (account) => String(account.id) !== sourceAccountId,
+            );
+
+            return fallback ? String(fallback.id) : '';
+        },
+        [accounts],
+    );
+
     const [mode, setMode] = useState<TransactionMode>('expense');
     const [accountId, setAccountId] = useState<string>('');
     const [toAccountId, setToAccountId] = useState<string>('');
@@ -144,6 +155,8 @@ export function AddTransactionModal({
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
     const [isSplitTransaction, setIsSplitTransaction] = useState(false);
     const [amount, setAmount] = useState('');
+    const [description, setDescription] = useState('');
+    const [notes, setNotes] = useState('');
     const [splitRows, setSplitRows] = useState<SplitDraft[]>([
         { id: 1, amount: '', category_id: '', payee_id: '', description: '' },
         { id: 2, amount: '', category_id: '', payee_id: '', description: '' },
@@ -160,55 +173,72 @@ export function AddTransactionModal({
     });
 
     const splitRowId = useRef(3);
-    const [duplicateDate, setDuplicateDate] = useState<string | null>(null);
     const [transactionDate, setTransactionDate] = useState(
         new Date().toISOString().slice(0, 10),
     );
-    const [formResetKey, setFormResetKey] = useState(0);
 
-    // Set default account when data loads
-    const [prevModalData, setPrevModalData] = useState<ModalData | null>(null);
+    const initializedDuplicateRef = useRef<DuplicateData | null>(null);
 
-    if (modalData && open && modalData !== prevModalData && !initialData) {
-        setPrevModalData(modalData);
-        setAccountId(resolveDefaultAccountId());
-        setToAccountId(accounts.length > 1 ? String(accounts[1].id) : '');
-    }
+    useEffect(() => {
+        if (open) {
+            return;
+        }
 
-    if (!open && prevModalData) {
-        setPrevModalData(null);
-    }
+        initializedDuplicateRef.current = null;
+    }, [open]);
 
-    const [prevInitialData, setPrevInitialData] = useState(initialData);
+    useEffect(() => {
+        if (
+            !initialData ||
+            !open ||
+            initialData === initializedDuplicateRef.current
+        ) {
+            return;
+        }
 
-    if (initialData && open && initialData !== prevInitialData) {
-        setPrevInitialData(initialData);
-        setMode(initialData.transaction_type);
-        setAccountId(String(initialData.account_id));
-        setToAccountId(
-            initialData.to_account_id
-                ? String(initialData.to_account_id)
-                : accounts.length > 1
-                  ? String(accounts[1].id)
-                  : '',
-        );
-        setCategoryId(
-            initialData.category_id ? String(initialData.category_id) : '',
-        );
-        setSelectedPayeeId(
-            initialData.payee_id ? String(initialData.payee_id) : '',
-        );
-        setAmount(String(Math.abs(parseFloat(initialData.amount || '0'))));
-        setSelectedTagIds(initialData.tag_ids ?? []);
-        setDuplicateDate(new Date().toISOString().slice(0, 10));
-        setTransactionDate(new Date().toISOString().slice(0, 10));
-    }
+        let cancelled = false;
+
+        queueMicrotask(() => {
+            if (cancelled) {
+                return;
+            }
+
+            initializedDuplicateRef.current = initialData;
+            setMode(initialData.transaction_type);
+            setAccountId(String(initialData.account_id));
+            setToAccountId(
+                initialData.to_account_id
+                    ? String(initialData.to_account_id)
+                    : resolveDefaultToAccountId(String(initialData.account_id)),
+            );
+            setCategoryId(
+                initialData.category_id ? String(initialData.category_id) : '',
+            );
+            setSelectedPayeeId(
+                initialData.payee_id ? String(initialData.payee_id) : '',
+            );
+            setNewPayeeNameForSubmit('');
+            setAmount(String(Math.abs(parseFloat(initialData.amount || '0'))));
+            setDescription(initialData.description ?? '');
+            setNotes(initialData.notes ?? '');
+            setSelectedTagIds(initialData.tag_ids ?? []);
+            setTransactionDate(new Date().toISOString().slice(0, 10));
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [initialData, open, resolveDefaultToAccountId]);
+
+    const effectiveAccountId = accountId || resolveDefaultAccountId();
+    const effectiveToAccountId =
+        toAccountId || resolveDefaultToAccountId(effectiveAccountId);
 
     function handleSourceAccountChange(newAccountId: string | null) {
         const id = newAccountId ?? '';
         setAccountId(id);
 
-        if (id === toAccountId) {
+        if (id === effectiveToAccountId) {
             const fallback = accounts.find((a) => String(a.id) !== id);
             setToAccountId(fallback ? String(fallback.id) : '');
         }
@@ -310,14 +340,16 @@ export function AddTransactionModal({
 
     function resetForm() {
         setMode('expense');
-        setAccountId(resolveDefaultAccountId());
-        setToAccountId(accounts.length > 1 ? String(accounts[1].id) : '');
+        setAccountId('');
+        setToAccountId('');
         setCategoryId('');
         setSelectedPayeeId('');
         setNewPayeeNameForSubmit('');
         setSelectedTagIds([]);
         setIsSplitTransaction(false);
         setAmount('');
+        setDescription('');
+        setNotes('');
         setSplitRows([
             {
                 id: 1,
@@ -341,7 +373,6 @@ export function AddTransactionModal({
             fileInputRef.current.value = '';
         }
 
-        setDuplicateDate(null);
         setTransactionDate(new Date().toISOString().slice(0, 10));
     }
 
@@ -350,7 +381,10 @@ export function AddTransactionModal({
         setCategoryId('');
         setSelectedPayeeId('');
         setNewPayeeNameForSubmit('');
+        setSelectedTagIds([]);
         setIsSplitTransaction(false);
+        setDescription('');
+        setNotes('');
         setSplitRows([
             {
                 id: 1,
@@ -373,8 +407,6 @@ export function AddTransactionModal({
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
-
-        setFormResetKey((prev) => prev + 1);
 
         setTimeout(() => {
             amountInputRef.current?.focus();
@@ -591,7 +623,7 @@ export function AddTransactionModal({
                                     <input
                                         type="hidden"
                                         name="account_id"
-                                        value={accountId}
+                                        value={effectiveAccountId}
                                     />
                                     <SearchableSelect
                                         options={accounts.map((account) => ({
@@ -599,7 +631,7 @@ export function AddTransactionModal({
                                             label: account.name,
                                             color: account.color,
                                         }))}
-                                        value={accountId || null}
+                                        value={effectiveAccountId || null}
                                         onValueChange={
                                             handleSourceAccountChange
                                         }
@@ -637,20 +669,21 @@ export function AddTransactionModal({
                                     <input
                                         type="hidden"
                                         name="to_account_id"
-                                        value={toAccountId}
+                                        value={effectiveToAccountId}
                                     />
                                     <SearchableSelect
                                         options={accounts
                                             .filter(
                                                 (a) =>
-                                                    String(a.id) !== accountId,
+                                                    String(a.id) !==
+                                                    effectiveAccountId,
                                             )
                                             .map((account) => ({
                                                 value: String(account.id),
                                                 label: account.name,
                                                 color: account.color,
                                             }))}
-                                        value={toAccountId || null}
+                                        value={effectiveToAccountId || null}
                                         onValueChange={(v) =>
                                             setToAccountId(v ?? '')
                                         }
@@ -770,8 +803,8 @@ export function AddTransactionModal({
 
                                                 <InputError
                                                     message={
-                                                        errors.payee_id ??
-                                                        errors.new_payee_name
+                                                        formErrors.payee_id ??
+                                                        formErrors.new_payee_name
                                                     }
                                                 />
                                             </div>
@@ -983,11 +1016,11 @@ export function AddTransactionModal({
                             <div className="grid gap-2">
                                 <Label htmlFor="description">Description</Label>
                                 <Input
-                                    key={`desc-${duplicateDate ?? 'default'}-${formResetKey}`}
                                     id="description"
                                     name="description"
-                                    defaultValue={
-                                        initialData?.description ?? ''
+                                    value={description}
+                                    onChange={(event) =>
+                                        setDescription(event.target.value)
                                     }
                                     placeholder="Coffee, salary, or transfer note"
                                 />
@@ -997,10 +1030,12 @@ export function AddTransactionModal({
                             <div className="grid gap-2">
                                 <Label htmlFor="notes">Notes</Label>
                                 <Input
-                                    key={`notes-${duplicateDate ?? 'default'}-${formResetKey}`}
                                     id="notes"
                                     name="notes"
-                                    defaultValue={initialData?.notes ?? ''}
+                                    value={notes}
+                                    onChange={(event) =>
+                                        setNotes(event.target.value)
+                                    }
                                     placeholder="Optional details"
                                 />
                                 <InputError message={formErrors.notes} />

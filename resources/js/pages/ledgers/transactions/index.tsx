@@ -2,6 +2,7 @@ import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import {
     Copy,
     MoreVertical,
+    Paperclip,
     Pencil,
     Receipt,
     Search,
@@ -9,7 +10,7 @@ import {
     Trash2,
     X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
@@ -21,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
     Dialog,
@@ -60,6 +62,7 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     bulkDestroy as bulkDestroyRoute,
@@ -114,6 +117,7 @@ type EditFormData = {
     to_account_id: string;
     category_id: string;
     payee_id: string;
+    new_payee_name: string;
     amount: string;
     description: string;
     notes: string;
@@ -124,6 +128,7 @@ type EditableSplit = {
     id: string;
     amount: string;
     category_id: string;
+    payee_id: string;
     description: string;
 };
 
@@ -226,24 +231,75 @@ function createEditableSplit(
         id: split ? String(split.id) : `new-${index}`,
         amount: split?.amount ?? '',
         category_id: split?.category_id ? String(split.category_id) : '',
+        payee_id: split?.payee_id ? String(split.payee_id) : '',
         description: split?.description ?? '',
     };
 }
 
-function transactionCategoryOptions(
+// Build grouped category structure: parents with their children (matches add-transaction-modal)
+function useGroupedCategories(
     categories: Category[],
-    transactionType: EditFormData['transaction_type'],
+    mode: EditFormData['transaction_type'],
 ) {
-    return categories
-        .filter((category) => category.transaction_type === transactionType)
-        .flatMap((parent) => [parent, ...(parent.children ?? [])])
-        .map((category) => ({
-            value: String(category.id),
-            label: category.parent_id
-                ? `${categories.find((item) => item.id === category.parent_id)?.name} > ${category.name}`
-                : category.name,
-            color: category.color,
+    return useMemo(() => {
+        const filtered = categories.filter((c) => c.transaction_type === mode);
+
+        // Separate parents and children
+        const parents = filtered.filter((c) => c.parent_id === null);
+        const childrenMap = new Map<number, Category[]>();
+
+        filtered
+            .filter((c) => c.parent_id !== null)
+            .forEach((c) => {
+                const pid = c.parent_id!;
+
+                if (!childrenMap.has(pid)) {
+                    childrenMap.set(pid, []);
+                }
+
+                childrenMap.get(pid)!.push(c);
+            });
+
+        return parents.map((parent) => ({
+            parent,
+            children: childrenMap.get(parent.id) ?? [],
         }));
+    }, [categories, mode]);
+}
+
+// Build SearchableSelect options for categories (matches add-transaction-modal)
+function useCategoryOptions(
+    categories: Category[],
+    mode: EditFormData['transaction_type'],
+) {
+    const grouped = useGroupedCategories(categories, mode);
+
+    return useMemo(() => {
+        return grouped.flatMap(({ parent, children }) => {
+            const items = [
+                {
+                    value: String(parent.id),
+                    label:
+                        children.length > 0
+                            ? `${parent.name} (general)`
+                            : parent.name,
+                    group: children.length > 0 ? parent.name : undefined,
+                    color: parent.color,
+                },
+            ];
+
+            children.forEach((child) => {
+                items.push({
+                    value: String(child.id),
+                    label: child.name,
+                    group: parent.name,
+                    color: child.color,
+                });
+            });
+
+            return items;
+        });
+    }, [grouped]);
 }
 
 // ─── EditTransactionModal ────────────────────────────────────────────────────
@@ -288,6 +344,7 @@ function EditTransactionModal({
             ? String(transaction.category_id)
             : '',
         payee_id: transaction.payee_id ? String(transaction.payee_id) : '',
+        new_payee_name: '',
         amount: String(Math.abs(parseFloat(transaction.amount || '0'))),
         description: transaction.description ?? '',
         notes: transaction.notes ?? '',
@@ -301,6 +358,7 @@ function EditTransactionModal({
     );
     const [uploadingAttachments, setUploadingAttachments] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
+    const attachmentInputRef = useRef<HTMLInputElement>(null);
     const [isSplitTransaction, setIsSplitTransaction] = useState(
         (transaction.splits ?? []).length > 0,
     );
@@ -315,10 +373,7 @@ function EditTransactionModal({
               ],
     );
 
-    const splitOptions = transactionCategoryOptions(
-        categories,
-        form.transaction_type,
-    );
+    const splitOptions = useCategoryOptions(categories, form.transaction_type);
     const splitTotal = splits.reduce(
         (total, split) => total + (Number(split.amount || 0) || 0),
         0,
@@ -351,6 +406,12 @@ function EditTransactionModal({
                     if (uploads.length > 0) {
                         setAttachments((current) => [...current, ...uploads]);
                     }
+
+                    setAttachmentError(null);
+
+                    if (attachmentInputRef.current) {
+                        attachmentInputRef.current.value = '';
+                    }
                 },
                 onError: (errors) => {
                     const firstError =
@@ -381,15 +442,19 @@ function EditTransactionModal({
                 preserveState: true,
                 preserveScroll: true,
                 onSuccess: ({ props }) => {
-                    const deletedAttachmentId = props.flash?.deleted_attachment_id;
+                    const deletedAttachmentId =
+                        props.flash?.deleted_attachment_id;
 
                     if (deletedAttachmentId) {
                         setAttachments((current) =>
                             current.filter(
-                                (attachment) => attachment.id !== deletedAttachmentId,
+                                (attachment) =>
+                                    attachment.id !== deletedAttachmentId,
                             ),
                         );
                     }
+
+                    setAttachmentError(null);
                 },
             },
         );
@@ -438,10 +503,12 @@ function EditTransactionModal({
                 : {
                       category_id: form.category_id || null,
                       payee_id: form.payee_id || null,
+                      new_payee_name: form.new_payee_name || null,
                       splits: isSplitTransaction
                           ? splits.map((split) => ({
                                 amount: split.amount || null,
                                 category_id: split.category_id || null,
+                                payee_id: split.payee_id || null,
                                 description: split.description || null,
                             }))
                           : null,
@@ -510,73 +577,62 @@ function EditTransactionModal({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Transaction type selector */}
-                    <div className="grid gap-2">
-                        <div className="grid grid-cols-3 gap-1">
-                            {(['expense', 'income', 'transfer'] as const).map(
-                                (t) => (
-                                    <Button
-                                        key={t}
-                                        type="button"
-                                        variant={
-                                            form.transaction_type === t
-                                                ? 'default'
-                                                : 'outline'
-                                        }
-                                        size="sm"
-                                        onClick={() =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                transaction_type: t,
-                                                category_id:
-                                                    t === 'transfer'
-                                                        ? ''
-                                                        : prev.category_id,
-                                                payee_id:
-                                                    t === 'transfer'
-                                                        ? ''
-                                                        : prev.payee_id,
-                                                to_account_id:
-                                                    t === 'transfer'
-                                                        ? prev.to_account_id ||
-                                                          (accounts.length > 1
-                                                              ? String(
-                                                                    accounts.find(
-                                                                        (a) =>
-                                                                            String(
-                                                                                a.id,
-                                                                            ) !==
-                                                                            prev.account_id,
-                                                                    )?.id ?? '',
-                                                                )
-                                                              : '')
-                                                        : prev.to_account_id,
-                                            }))
-                                        }
-                                    >
-                                        {t.charAt(0).toUpperCase() + t.slice(1)}
-                                    </Button>
-                                ),
-                            )}
-                        </div>
+                    {/* Transaction type selector - matches add-transaction-modal */}
+                    <div className="grid grid-cols-3 gap-1">
+                        {(['expense', 'income', 'transfer'] as const).map(
+                            (type) => (
+                                <Button
+                                    key={type}
+                                    type="button"
+                                    variant={
+                                        form.transaction_type === type
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                    className="capitalize"
+                                    onClick={() =>
+                                        setForm((prev) => ({
+                                            ...prev,
+                                            transaction_type: type,
+                                            category_id:
+                                                type === 'transfer'
+                                                    ? ''
+                                                    : prev.category_id,
+                                            payee_id:
+                                                type === 'transfer'
+                                                    ? ''
+                                                    : prev.payee_id,
+                                            to_account_id:
+                                                type === 'transfer'
+                                                    ? prev.to_account_id ||
+                                                      (accounts.length > 1
+                                                          ? String(
+                                                                accounts.find(
+                                                                    (a) =>
+                                                                        String(
+                                                                            a.id,
+                                                                        ) !==
+                                                                        prev.account_id,
+                                                                )?.id ?? '',
+                                                            )
+                                                          : '')
+                                                    : prev.to_account_id,
+                                        }))
+                                    }
+                                >
+                                    {type}
+                                </Button>
+                            ),
+                        )}
                     </div>
 
-                    {/* Date and Amount */}
-                    <div className="grid gap-2 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-date">Date</Label>
-                            <Input
-                                id="edit-date"
-                                name="transaction_date"
-                                type="date"
-                                value={form.transaction_date}
-                                onChange={handleInputChange}
-                                required
-                            />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-amount">Amount</Label>
+                    {/* Amount with currency prefix - matches add-transaction-modal */}
+                    <div className="grid gap-2">
+                        <Label htmlFor="edit-amount">Amount</Label>
+                        <div className="relative">
+                            <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                                {ledger.currency_code}
+                            </span>
                             <Input
                                 id="edit-amount"
                                 name="amount"
@@ -584,45 +640,90 @@ function EditTransactionModal({
                                 inputMode="decimal"
                                 step="0.01"
                                 min="0.01"
+                                required
+                                className="pl-14"
                                 value={form.amount}
                                 onChange={handleInputChange}
-                                required
                             />
                         </div>
                     </div>
 
-                    {/* Account */}
-                    <div className="grid gap-2">
-                        <Label>Account</Label>
-                        <SearchableSelect
-                            options={accounts.map((a) => ({
-                                value: String(a.id),
-                                label: a.name,
-                                color: a.color,
-                            }))}
-                            value={form.account_id}
-                            onValueChange={(value) =>
-                                setForm((prev) => ({
-                                    ...prev,
-                                    account_id: value ?? '',
-                                }))
-                            }
-                            placeholder="Select account"
-                            searchPlaceholder="Search accounts..."
-                        />
+                    {/* Account and Date row - matches add-transaction-modal */}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label>Account</Label>
+                            <SearchableSelect
+                                options={accounts.map((account) => ({
+                                    value: String(account.id),
+                                    label: account.name,
+                                    color: account.color,
+                                }))}
+                                value={form.account_id}
+                                onValueChange={(value) =>
+                                    setForm((prev) => ({
+                                        ...prev,
+                                        account_id: value ?? '',
+                                    }))
+                                }
+                                placeholder="Select account"
+                                searchPlaceholder="Search accounts..."
+                            />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-date">Date</Label>
+                            <DatePicker
+                                id="edit-date"
+                                name="transaction_date"
+                                value={form.transaction_date}
+                                onChange={(date) =>
+                                    setForm((prev) => ({
+                                        ...prev,
+                                        transaction_date: date,
+                                    }))
+                                }
+                            />
+                        </div>
                     </div>
+
+                    {/* Transfer: Destination Account */}
+                    {form.transaction_type === 'transfer' && (
+                        <div className="grid gap-2">
+                            <Label>Destination account</Label>
+                            <SearchableSelect
+                                options={accounts
+                                    .filter(
+                                        (a) => String(a.id) !== form.account_id,
+                                    )
+                                    .map((account) => ({
+                                        value: String(account.id),
+                                        label: account.name,
+                                        color: account.color,
+                                    }))}
+                                value={form.to_account_id || null}
+                                onValueChange={(value) =>
+                                    setForm((prev) => ({
+                                        ...prev,
+                                        to_account_id: value ?? '',
+                                    }))
+                                }
+                                placeholder="Select destination"
+                                searchPlaceholder="Search accounts..."
+                            />
+                        </div>
+                    )}
 
                     {/* Non-transfer fields: splits, category, payee */}
                     {form.transaction_type !== 'transfer' && (
-                        <>
+                        <div className="space-y-4">
                             <div className="flex items-center justify-between rounded-lg border border-dashed border-border px-4 py-3">
                                 <div>
                                     <Label htmlFor={`split-${transaction.id}`}>
                                         Split transaction
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Categorize this transaction across
-                                        multiple lines.
+                                        Break this transaction into multiple
+                                        category lines.
                                     </p>
                                 </div>
                                 <Switch
@@ -633,43 +734,66 @@ function EditTransactionModal({
                             </div>
 
                             {!isSplitTransaction && (
-                                <div className="grid gap-2">
-                                    <Label>Category</Label>
-                                    <SearchableSelect
-                                        options={splitOptions}
-                                        value={form.category_id || null}
-                                        onValueChange={(value) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                category_id: value ?? '',
-                                            }))
-                                        }
-                                        placeholder="No category"
-                                        searchPlaceholder="Search categories..."
-                                        allOption="No category"
-                                    />
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {/* Category */}
+                                    <div className="grid gap-2">
+                                        <Label>Category</Label>
+                                        <SearchableSelect
+                                            options={splitOptions}
+                                            value={form.category_id || null}
+                                            onValueChange={(value) =>
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    category_id: value ?? '',
+                                                }))
+                                            }
+                                            placeholder="No category"
+                                            searchPlaceholder="Search categories..."
+                                            allOption="No category"
+                                        />
+                                    </div>
+
+                                    {/* Payee */}
+                                    <div className="grid gap-2">
+                                        <Label>Payee</Label>
+                                        <SearchableSelect
+                                            options={payees.map((p) => ({
+                                                value: String(p.id),
+                                                label: p.name,
+                                            }))}
+                                            value={
+                                                form.payee_id ||
+                                                (form.new_payee_name
+                                                    ? `new:${form.new_payee_name}`
+                                                    : null)
+                                            }
+                                            onValueChange={(value) =>
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    payee_id: value ?? '',
+                                                    new_payee_name: '',
+                                                }))
+                                            }
+                                            placeholder="No payee"
+                                            searchPlaceholder="Search payees..."
+                                            allOption="No payee"
+                                            creatable
+                                            onCreate={(name) =>
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    payee_id: '',
+                                                    new_payee_name: name,
+                                                }))
+                                            }
+                                            createLabel={
+                                                form.new_payee_name
+                                                    ? `${form.new_payee_name} (new)`
+                                                    : undefined
+                                            }
+                                        />
+                                    </div>
                                 </div>
                             )}
-
-                            <div className="grid gap-2">
-                                <Label>Payee</Label>
-                                <SearchableSelect
-                                    options={payees.map((p) => ({
-                                        value: String(p.id),
-                                        label: p.name,
-                                    }))}
-                                    value={form.payee_id || null}
-                                    onValueChange={(value) =>
-                                        setForm((prev) => ({
-                                            ...prev,
-                                            payee_id: value ?? '',
-                                        }))
-                                    }
-                                    placeholder="No payee"
-                                    searchPlaceholder="Search payees..."
-                                    allOption="No payee"
-                                />
-                            </div>
 
                             {isSplitTransaction && (
                                 <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
@@ -677,7 +801,7 @@ function EditTransactionModal({
                                         <div>
                                             <Label>Split lines</Label>
                                             <p className="text-sm text-muted-foreground">
-                                                Allocated total:{' '}
+                                                Total allocated:{' '}
                                                 {splitTotal.toFixed(2)}
                                             </p>
                                         </div>
@@ -691,111 +815,156 @@ function EditTransactionModal({
                                         </Button>
                                     </div>
 
-                                    {splits.map((split) => (
-                                        <div
-                                            key={split.id}
-                                            className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[120px_1fr_1fr_auto]"
+                                    <div className="space-y-3">
+                                        {splits.map((split, index) => (
+                                            <div
+                                                key={split.id}
+                                                className="space-y-3 rounded-lg border p-3"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm font-medium">
+                                                        Split {index + 1}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        disabled={
+                                                            splits.length <= 2
+                                                        }
+                                                        className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                                        onClick={() =>
+                                                            removeSplit(
+                                                                split.id,
+                                                            )
+                                                        }
+                                                    >
+                                                        <X className="size-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="grid gap-1">
+                                                        <Label className="text-xs">
+                                                            Amount
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            inputMode="decimal"
+                                                            step="0.01"
+                                                            min="0.01"
+                                                            value={split.amount}
+                                                            onChange={(event) =>
+                                                                updateSplit(
+                                                                    split.id,
+                                                                    'amount',
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-1">
+                                                        <Label className="text-xs">
+                                                            Category
+                                                        </Label>
+                                                        <SearchableSelect
+                                                            options={
+                                                                splitOptions
+                                                            }
+                                                            value={
+                                                                split.category_id ||
+                                                                null
+                                                            }
+                                                            onValueChange={(
+                                                                value,
+                                                            ) =>
+                                                                updateSplit(
+                                                                    split.id,
+                                                                    'category_id',
+                                                                    value ?? '',
+                                                                )
+                                                            }
+                                                            placeholder="No category"
+                                                            searchPlaceholder="Search categories..."
+                                                            allOption="No category"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="grid gap-1">
+                                                        <Label className="text-xs">
+                                                            Payee
+                                                        </Label>
+                                                        <SearchableSelect
+                                                            options={payees.map(
+                                                                (p) => ({
+                                                                    value: String(
+                                                                        p.id,
+                                                                    ),
+                                                                    label: p.name,
+                                                                }),
+                                                            )}
+                                                            value={
+                                                                split.payee_id ||
+                                                                null
+                                                            }
+                                                            onValueChange={(
+                                                                value,
+                                                            ) =>
+                                                                updateSplit(
+                                                                    split.id,
+                                                                    'payee_id',
+                                                                    value ?? '',
+                                                                )
+                                                            }
+                                                            placeholder="No payee"
+                                                            searchPlaceholder="Search payees..."
+                                                            allOption="No payee"
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-1">
+                                                        <Label className="text-xs">
+                                                            Description
+                                                        </Label>
+                                                        <Input
+                                                            value={
+                                                                split.description
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateSplit(
+                                                                    split.id,
+                                                                    'description',
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            placeholder="Optional split detail"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex items-center justify-between rounded-lg bg-background px-3 py-2 text-sm">
+                                        <span className="text-muted-foreground">
+                                            Remaining to allocate
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                'font-medium tabular-nums',
+                                                splitTotal.toFixed(2) ===
+                                                    form.amount
+                                                    ? 'text-green-600'
+                                                    : 'text-amber-600',
+                                            )}
                                         >
-                                            <div className="grid gap-2">
-                                                <Label>Amount</Label>
-                                                <Input
-                                                    type="number"
-                                                    inputMode="decimal"
-                                                    step="0.01"
-                                                    min="0.01"
-                                                    value={split.amount}
-                                                    onChange={(event) =>
-                                                        updateSplit(
-                                                            split.id,
-                                                            'amount',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </div>
-
-                                            <div className="grid gap-2">
-                                                <Label>Category</Label>
-                                                <SearchableSelect
-                                                    options={splitOptions}
-                                                    value={
-                                                        split.category_id ||
-                                                        null
-                                                    }
-                                                    onValueChange={(value) =>
-                                                        updateSplit(
-                                                            split.id,
-                                                            'category_id',
-                                                            value ?? '',
-                                                        )
-                                                    }
-                                                    placeholder="No category"
-                                                    searchPlaceholder="Search categories..."
-                                                    allOption="No category"
-                                                />
-                                            </div>
-
-                                            <div className="grid gap-2">
-                                                <Label>Description</Label>
-                                                <Input
-                                                    value={split.description}
-                                                    onChange={(event) =>
-                                                        updateSplit(
-                                                            split.id,
-                                                            'description',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                    placeholder="Optional split detail"
-                                                />
-                                            </div>
-
-                                            <div className="flex items-end justify-end">
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    disabled={
-                                                        splits.length <= 2
-                                                    }
-                                                    onClick={() =>
-                                                        removeSplit(split.id)
-                                                    }
-                                                >
-                                                    Remove
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                            {(
+                                                Number(form.amount || 0) -
+                                                splitTotal
+                                            ).toFixed(2)}
+                                        </span>
+                                    </div>
                                 </div>
                             )}
-                        </>
-                    )}
-
-                    {/* Transfer: To Account */}
-                    {form.transaction_type === 'transfer' && (
-                        <div className="grid gap-2">
-                            <Label>To Account</Label>
-                            <SearchableSelect
-                                options={accounts
-                                    .filter(
-                                        (a) => String(a.id) !== form.account_id,
-                                    )
-                                    .map((a) => ({
-                                        value: String(a.id),
-                                        label: a.name,
-                                        color: a.color,
-                                    }))}
-                                value={form.to_account_id || null}
-                                onValueChange={(value) =>
-                                    setForm((prev) => ({
-                                        ...prev,
-                                        to_account_id: value ?? '',
-                                    }))
-                                }
-                                placeholder="Select account"
-                                searchPlaceholder="Search accounts..."
-                            />
                         </div>
                     )}
 
@@ -807,7 +976,7 @@ function EditTransactionModal({
                             name="description"
                             value={form.description}
                             onChange={handleInputChange}
-                            placeholder="Optional description"
+                            placeholder="Coffee, salary, or transfer note"
                         />
                     </div>
 
@@ -819,11 +988,88 @@ function EditTransactionModal({
                             name="notes"
                             value={form.notes}
                             onChange={handleInputChange}
-                            placeholder="Optional notes"
+                            placeholder="Optional details"
                         />
                     </div>
 
-                    {/* Tags */}
+                    {/* Attachments - matches add-transaction-modal */}
+                    <div className="grid gap-2">
+                        <Label>Attachments</Label>
+                        <input
+                            ref={attachmentInputRef}
+                            type="file"
+                            multiple
+                            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                            className="hidden"
+                            onChange={(e) => uploadFiles(e.target.files)}
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit gap-1.5"
+                            onClick={() => {
+                                if (attachmentInputRef.current) {
+                                    attachmentInputRef.current.value = '';
+                                }
+
+                                attachmentInputRef.current?.click();
+                            }}
+                        >
+                            <Paperclip className="size-3.5" />
+                            Attach files
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Max 5 MB per file. PDF, JPG, PNG, GIF, WebP
+                            accepted.
+                        </p>
+
+                        {attachmentError && (
+                            <p className="text-sm text-destructive">
+                                {attachmentError}
+                            </p>
+                        )}
+
+                        {/* Existing attachments */}
+                        {attachments.length > 0 && (
+                            <div className="space-y-1.5">
+                                {attachments.map((attachment) => (
+                                    <div
+                                        key={attachment.id}
+                                        className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm"
+                                    >
+                                        <a
+                                            href={attachment.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="min-w-0 truncate hover:underline"
+                                        >
+                                            {attachment.filename}
+                                        </a>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="ml-2 size-6 shrink-0 p-0"
+                                            onClick={() =>
+                                                deleteAttachment(attachment.id)
+                                            }
+                                        >
+                                            <X className="size-3.5" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {uploadingAttachments && (
+                            <p className="text-sm text-muted-foreground">
+                                Uploading...
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Tags - matches add-transaction-modal */}
                     {tags.length > 0 && (
                         <div className="grid gap-2">
                             <Label>Tags</Label>
@@ -861,80 +1107,8 @@ function EditTransactionModal({
                         </div>
                     )}
 
-                    {/* Attachments */}
-                    <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <Label
-                                    htmlFor={`attachments-${transaction.id}`}
-                                >
-                                    Attachments
-                                </Label>
-                                <p className="text-sm text-muted-foreground">
-                                    Upload receipts and supporting files.
-                                </p>
-                            </div>
-                            <Input
-                                id={`attachments-${transaction.id}`}
-                                type="file"
-                                multiple
-                                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.csv"
-                                className="max-w-xs"
-                                onChange={(event) =>
-                                    uploadFiles(event.target.files)
-                                }
-                            />
-                        </div>
-
-                        {attachmentError && (
-                            <p className="text-sm text-destructive">
-                                {attachmentError}
-                            </p>
-                        )}
-
-                        <div className="space-y-2">
-                            {attachments.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    No attachments yet.
-                                </p>
-                            ) : (
-                                attachments.map((attachment) => (
-                                    <div
-                                        key={attachment.id}
-                                        className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2"
-                                    >
-                                        <a
-                                            href={attachment.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="truncate text-sm font-medium hover:underline"
-                                        >
-                                            {attachment.filename}
-                                        </a>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() =>
-                                                deleteAttachment(attachment.id)
-                                            }
-                                        >
-                                            Delete
-                                        </Button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-
-                        {uploadingAttachments && (
-                            <p className="text-sm text-muted-foreground">
-                                Uploading attachment...
-                            </p>
-                        )}
-                    </div>
-
-                    {/* Footer */}
-                    <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+                    {/* Footer - matches add-transaction-modal simple layout */}
+                    <div className="flex items-center justify-between pt-2">
                         <Button
                             type="button"
                             variant="destructive"
@@ -956,7 +1130,7 @@ function EditTransactionModal({
                                 Save changes
                             </Button>
                         </div>
-                    </DialogFooter>
+                    </div>
                 </form>
             </DialogContent>
 
@@ -1366,15 +1540,15 @@ export default function TransactionsIndex() {
                     prev.filter((id) => !allVisibleIds.includes(id)),
                 );
             } else {
-                setSelectedIds((prev) =>
-                    [...new Set([...prev, ...allVisibleIds])],
-                );
+                setSelectedIds((prev) => [
+                    ...new Set([...prev, ...allVisibleIds]),
+                ]);
             }
         } else {
             if (allAcrossPages) {
-                setExcludedIds((prev) =>
-                    [...new Set([...prev, ...allVisibleIds])],
-                );
+                setExcludedIds((prev) => [
+                    ...new Set([...prev, ...allVisibleIds]),
+                ]);
             } else {
                 setSelectedIds((prev) =>
                     prev.filter((id) => !allVisibleIds.includes(id)),
@@ -1582,10 +1756,10 @@ export default function TransactionsIndex() {
                 key: 'date_range',
                 label: `${from} - ${to}`,
                 onRemove: (filters) => ({
-                        ...filters,
-                        date_from: '',
-                        date_to: '',
-                    }),
+                    ...filters,
+                    date_from: '',
+                    date_to: '',
+                }),
             });
         }
 
@@ -1594,9 +1768,9 @@ export default function TransactionsIndex() {
                 key: 'search',
                 label: `"${committedFilters.search}"`,
                 onRemove: (filters) => ({
-                        ...filters,
-                        search: null,
-                    }),
+                    ...filters,
+                    search: null,
+                }),
             });
         }
 
@@ -1608,11 +1782,11 @@ export default function TransactionsIndex() {
                     key: `account_${id}`,
                     label: account.name,
                     onRemove: (filters) => ({
-                            ...filters,
-                            account_ids: filters.account_ids.filter(
-                                (aid) => aid !== id,
-                            ),
-                        }),
+                        ...filters,
+                        account_ids: filters.account_ids.filter(
+                            (aid) => aid !== id,
+                        ),
+                    }),
                 });
             }
         }
@@ -1627,11 +1801,11 @@ export default function TransactionsIndex() {
                     key: `category_${id}`,
                     label: cat.name,
                     onRemove: (filters) => ({
-                            ...filters,
-                            category_ids: filters.category_ids.filter(
-                                (cid) => cid !== id,
-                            ),
-                        }),
+                        ...filters,
+                        category_ids: filters.category_ids.filter(
+                            (cid) => cid !== id,
+                        ),
+                    }),
                 });
             }
         }
@@ -1641,11 +1815,11 @@ export default function TransactionsIndex() {
                 key: `type_${type}`,
                 label: type.charAt(0).toUpperCase() + type.slice(1),
                 onRemove: (filters) => ({
-                        ...filters,
-                        transaction_types: filters.transaction_types.filter(
-                            (t) => t !== type,
-                        ),
-                    }),
+                    ...filters,
+                    transaction_types: filters.transaction_types.filter(
+                        (t) => t !== type,
+                    ),
+                }),
             });
         }
 
@@ -1657,11 +1831,11 @@ export default function TransactionsIndex() {
                     key: `payee_${id}`,
                     label: payee.name,
                     onRemove: (filters) => ({
-                            ...filters,
-                            payee_ids: filters.payee_ids.filter(
-                                (pid) => pid !== id,
-                            ),
-                        }),
+                        ...filters,
+                        payee_ids: filters.payee_ids.filter(
+                            (pid) => pid !== id,
+                        ),
+                    }),
                 });
             }
         }
@@ -1674,9 +1848,9 @@ export default function TransactionsIndex() {
                     key: `tag_${id}`,
                     label: tag.name,
                     onRemove: (filters) => ({
-                            ...filters,
-                            tag_ids: filters.tag_ids.filter((tid) => tid !== id),
-                        }),
+                        ...filters,
+                        tag_ids: filters.tag_ids.filter((tid) => tid !== id),
+                    }),
                 });
             }
         }
@@ -1686,9 +1860,9 @@ export default function TransactionsIndex() {
                 key: 'uncategorized',
                 label: 'Uncategorized',
                 onRemove: (filters) => ({
-                        ...filters,
-                        uncategorized: null,
-                    }),
+                    ...filters,
+                    uncategorized: null,
+                }),
             });
         }
 
@@ -1697,9 +1871,9 @@ export default function TransactionsIndex() {
                 key: 'bill',
                 label: 'Recurring',
                 onRemove: (filters) => ({
-                        ...filters,
-                        bill_id: null,
-                    }),
+                    ...filters,
+                    bill_id: null,
+                }),
             });
         }
 
@@ -2102,11 +2276,16 @@ export default function TransactionsIndex() {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const nextFilters = chip.onRemove(
-                                                            localFilters,
+                                                        const nextFilters =
+                                                            chip.onRemove(
+                                                                localFilters,
+                                                            );
+                                                        setLocalFilters(
+                                                            nextFilters,
                                                         );
-                                                        setLocalFilters(nextFilters);
-                                                        applyFiltersWith(nextFilters);
+                                                        applyFiltersWith(
+                                                            nextFilters,
+                                                        );
                                                     }}
                                                     className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
                                                 >
@@ -2239,8 +2418,7 @@ export default function TransactionsIndex() {
                 {selectedCount > 0 && (
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                         <span className="text-sm font-medium text-muted-foreground">
-                            {selectedCount}{' '}
-                            selected
+                            {selectedCount} selected
                             {allAcrossPages && ' (all pages)'}
                         </span>
                         {!allAcrossPages &&
@@ -2385,10 +2563,9 @@ export default function TransactionsIndex() {
                     <DialogHeader>
                         <DialogTitle>Delete transactions</DialogTitle>
                         <DialogDescription>
-                            Delete <strong>{selectedCount}</strong>{' '}
-                            transaction
-                            {selectedCount !== 1 ? 's' : ''}? This cannot
-                            be undone.
+                            Delete <strong>{selectedCount}</strong> transaction
+                            {selectedCount !== 1 ? 's' : ''}? This cannot be
+                            undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -2428,8 +2605,7 @@ export default function TransactionsIndex() {
                             {bulkAction === 'change_payee' && 'Change payee'}
                         </DialogTitle>
                         <DialogDescription>
-                            Update <strong>{selectedCount}</strong>{' '}
-                            transaction
+                            Update <strong>{selectedCount}</strong> transaction
                             {selectedCount !== 1 ? 's' : ''}. Transfer
                             transactions will be skipped.
                         </DialogDescription>

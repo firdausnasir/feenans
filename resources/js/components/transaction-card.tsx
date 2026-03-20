@@ -77,8 +77,7 @@ export function TransactionCard({
         >
             {/* Checkbox zone */}
             {selectable && (
-                <button
-                    type="button"
+                <div
                     className="relative z-10 flex w-12 shrink-0 items-center justify-center border-r border-border sm:w-14"
                     onClick={() => onSelectChange?.(!selected)}
                 >
@@ -89,7 +88,7 @@ export function TransactionCard({
                         }
                         onClick={(e) => e.stopPropagation()}
                     />
-                </button>
+                </div>
             )}
 
             {/* Content */}

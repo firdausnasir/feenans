@@ -5,6 +5,7 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Category;
 use App\Models\Ledger;
+use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -174,6 +175,80 @@ test('update syncs splits correctly', function () {
 
     expect($transaction->splits)->toHaveCount(3)
         ->and($transaction->splits->pluck('description')->all())->toBe(['Food', 'Drinks', 'Dessert']);
+});
+
+test('update syncs split payees correctly', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $food = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $drinks = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $dessert = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $payeeA = Payee::factory()->for($ledger)->create(['name' => 'Cafe A']);
+    $payeeB = Payee::factory()->for($ledger)->create(['name' => 'Cafe B']);
+
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create([
+        'transaction_type' => TransactionType::Expense,
+        'amount' => '-100.00',
+        'transfer_pair_id' => null,
+    ]);
+
+    $transaction->splits()->createMany([
+        [
+            'category_id' => $food->id,
+            'payee_id' => $payeeA->id,
+            'amount' => '-60.00',
+            'description' => 'Food',
+        ],
+        [
+            'category_id' => $drinks->id,
+            'payee_id' => $payeeB->id,
+            'amount' => '-40.00',
+            'description' => 'Drinks',
+        ],
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => null,
+            'payee_id' => null,
+            'transaction_type' => 'expense',
+            'amount' => 100.00,
+            'description' => 'Dinner receipt',
+            'notes' => null,
+            'transaction_date' => '2026-03-13',
+            'splits' => [
+                [
+                    'amount' => 70.00,
+                    'category_id' => $food->id,
+                    'payee_id' => $payeeA->id,
+                    'description' => 'Food',
+                ],
+                [
+                    'amount' => 20.00,
+                    'category_id' => $drinks->id,
+                    'payee_id' => $payeeB->id,
+                    'description' => 'Drinks',
+                ],
+                [
+                    'amount' => 10.00,
+                    'category_id' => $dessert->id,
+                    'payee_id' => $payeeA->id,
+                    'description' => 'Dessert',
+                ],
+            ],
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    $transaction->refresh();
+
+    expect($transaction->splits)->toHaveCount(3)
+        ->and($transaction->splits->pluck('payee_id')->all())->toBe([$payeeA->id, $payeeB->id, $payeeA->id]);
 });
 
 test('transaction with splits shows split metadata in deferred index response', function () {
