@@ -7,7 +7,6 @@ use App\Models\Budget;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
-use App\Models\User;
 use App\Services\BudgetService;
 use Carbon\CarbonImmutable;
 
@@ -262,82 +261,4 @@ test('budget service getBudgetsWithStats skips inactive budgets', function () {
     $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
 
     expect($stats)->toHaveCount(0);
-});
-
-test('budget store via HTTP creates budget', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.budgets.store', $ledger), [
-            'category_id' => $category->id,
-            'amount' => 400.00,
-            'period' => 'monthly',
-            'start_date' => '2026-03-01',
-            'end_date' => null,
-            'rollover' => false,
-        ]);
-
-    $response->assertStatus(201);
-
-    expect($ledger->budgets()->count())->toBe(1)
-        ->and((string) $ledger->budgets()->first()->amount)->toBe('400.00');
-});
-
-test('budget update via HTTP updates budget', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    $budget = Budget::query()->create([
-        'ledger_id' => $ledger->id,
-        'category_id' => $category->id,
-        'amount' => 200.00,
-        'period' => 'monthly',
-        'start_date' => '2026-03-01',
-        'is_active' => true,
-        'rollover' => false,
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.budgets.update', [$ledger, $budget]), [
-            'category_id' => $category->id,
-            'amount' => 350.00,
-            'period' => 'monthly',
-            'start_date' => '2026-03-01',
-            'rollover' => true,
-        ]);
-
-    $response->assertOk();
-
-    $budget->refresh();
-    expect((string) $budget->amount)->toBe('350.00')
-        ->and($budget->rollover)->toBeTrue();
-});
-
-test('budget destroy via HTTP deletes budget', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    $budget = Budget::query()->create([
-        'ledger_id' => $ledger->id,
-        'category_id' => $category->id,
-        'amount' => 200.00,
-        'period' => 'monthly',
-        'start_date' => '2026-03-01',
-        'is_active' => true,
-        'rollover' => false,
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.budgets.destroy', [$ledger, $budget]));
-
-    $response->assertNoContent();
-
-    expect(Budget::query()->find($budget->id))->toBeNull();
 });

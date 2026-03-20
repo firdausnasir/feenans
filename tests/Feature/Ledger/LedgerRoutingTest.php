@@ -39,3 +39,10 @@ test('authenticated users can view a ledger dashboard', function () {
 
     $response->assertSuccessful();
 });
+
+test('web ledger route names are registered', function () {
+    expect(app('router')->has('ledgers.transactions.index'))->toBeTrue()
+        ->and(app('router')->has('ledgers.categories.store'))->toBeTrue()
+        ->and(app('router')->has('ledgers.import.execute'))->toBeTrue()
+        ->and(app('router')->has('ledgers.sample-data.destroy'))->toBeTrue();
+});

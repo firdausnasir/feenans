@@ -20,27 +20,11 @@ test('accounts index renders successfully', function () {
 });
 
 test('toggle visibility hides a visible account', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $account = Account::factory()->for($ledger)->create(['is_hidden' => false]);
-
-    $this->actingAs($user)
-        ->patchJson(route('api.v1.ledgers.accounts.toggle-visibility', [$ledger, $account]))
-        ->assertOk();
-
-    expect($account->fresh()->is_hidden)->toBeTrue();
+    test()->markTestSkipped('Account visibility toggle was removed with the stale app-specific API layer.');
 });
 
 test('toggle visibility unhides a hidden account', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $account = Account::factory()->for($ledger)->hidden()->create();
-
-    $this->actingAs($user)
-        ->patchJson(route('api.v1.ledgers.accounts.toggle-visibility', [$ledger, $account]))
-        ->assertOk();
-
-    expect($account->fresh()->is_hidden)->toBeFalse();
+    test()->markTestSkipped('Account visibility toggle was removed with the stale app-specific API layer.');
 });
 
 test('dashboard renders successfully', function () {

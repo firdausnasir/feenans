@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('store creates split transaction with splits', function () {
     $user = User::factory()->create();
@@ -137,7 +138,8 @@ test('update syncs splits correctly', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $account->id,
             'category_id' => null,
             'payee_id' => null,
@@ -165,7 +167,8 @@ test('update syncs splits correctly', function () {
             ],
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction updated.');
 
     $transaction->refresh();
 
@@ -173,7 +176,7 @@ test('update syncs splits correctly', function () {
         ->and($transaction->splits->pluck('description')->all())->toBe(['Food', 'Drinks', 'Dessert']);
 });
 
-test('transaction with splits shows splits count in API index response', function () {
+test('transaction with splits shows split metadata in deferred index response', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -202,10 +205,18 @@ test('transaction with splits shows splits count in API index response', functio
 
     $response = $this
         ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.index', $ledger));
+        ->get(route('ledgers.transactions.index', $ledger));
 
-    $response->assertSuccessful();
-    $response->assertJsonPath('data.0.is_split', true);
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 1)
+                ->where('transactions.data.0.splits_count', 2)
+                ->where('transactions.data.0.description', 'Dinner receipt')
+            )
+        );
 });
 
 test('deleting transaction also removes its splits', function () {
@@ -238,8 +249,10 @@ test('deleting transaction also removes its splits', function () {
 
     $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]))
-        ->assertNoContent();
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction deleted.');
 
     expect(Transaction::find($transaction->id))->toBeNull();
 });

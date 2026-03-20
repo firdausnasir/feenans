@@ -1,8 +1,18 @@
 <?php
 
+use App\Http\Controllers\Ledger\AttachmentController;
+use App\Http\Controllers\Ledger\ImportController as LedgerImportController;
+use App\Http\Controllers\Ledger\PayeeController as LedgerPayeeController;
+use App\Http\Controllers\Ledger\SettingsController as LedgerSettingsController;
+use App\Http\Controllers\Ledger\TransactionController as LedgerTransactionController;
+use App\Http\Requests\BulkDestroyTransactionsRequest;
 use App\Http\Requests\ReorderRequest;
 use App\Http\Requests\SaveOnboardingStepRequest;
+use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Requests\StoreBillRequest;
+use App\Http\Requests\StoreImportMappingRequest;
+use App\Http\Requests\UpdateAccountTypeRequest;
+use App\Http\Requests\UpdatePayeeRequest;
 use App\Http\Requests\UpdateSettingsRequest;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -394,3 +404,21 @@ test('SaveOnboardingStepRequest step 3 requires no validation', function () {
 
     expect($validator->fails())->toBeFalse();
 });
+
+dataset('controller form request signatures', [
+    'ledger payee store' => [LedgerPayeeController::class, 'store', UpdatePayeeRequest::class],
+    'ledger payee update' => [LedgerPayeeController::class, 'update', UpdatePayeeRequest::class],
+    'ledger attachment store' => [AttachmentController::class, 'store', StoreAttachmentRequest::class],
+    'ledger import mapping store' => [LedgerImportController::class, 'storeMapping', StoreImportMappingRequest::class],
+    'ledger settings account type update' => [LedgerSettingsController::class, 'updateAccountType', UpdateAccountTypeRequest::class],
+    'ledger transaction bulk destroy' => [LedgerTransactionController::class, 'bulkDestroy', BulkDestroyTransactionsRequest::class],
+]);
+
+test('controllers use form requests for refactored validation endpoints', function (string $controller, string $method, string $requestClass) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterType = $reflection->getParameters()[0]->getType();
+
+    expect($parameterType)->not->toBeNull();
+    expect($parameterType->getName())->toBe($requestClass);
+})->with('controller form request signatures');

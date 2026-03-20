@@ -1,6 +1,5 @@
-import { Head, router } from '@inertiajs/react';
-import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Badge } from '@/components/ui/badge';
@@ -17,19 +16,18 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
+    destroy as destroyRoute,
     edit as transactionEdit,
     index as transactionsIndex,
+    update as updateRoute,
 } from '@/routes/ledgers/transactions';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
-    Attachment,
     BreadcrumbItem,
     Category,
     Ledger,
@@ -105,8 +103,6 @@ function TransactionEditForm({
     payees: Payee[];
     tags: Tag[];
 }) {
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Transactions', href: transactionsIndex.url(ledger.id) },
@@ -115,10 +111,12 @@ function TransactionEditForm({
             href: transactionEdit([ledger.id, transaction.id]),
         },
     ];
+    const { flash } = usePage().props;
 
     const isTransfer = transaction.transfer_pair_id !== null;
     const isIncomingSide =
         isTransfer && parseFloat(transaction.amount || '0') > 0;
+    const attachments = transaction.attachments ?? [];
 
     const [form, setForm] = useState<EditFormData>({
         transaction_type: transaction.transaction_type,
@@ -144,9 +142,6 @@ function TransactionEditForm({
         notes: transaction.notes ?? '',
         tag_ids: (transaction.tags ?? []).map((tag) => tag.id),
     });
-    const [attachments, setAttachments] = useState<Attachment[]>(
-        transaction.attachments ?? [],
-    );
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
     const [uploadingAttachments, setUploadingAttachments] = useState(false);
     const [isSplitTransaction, setIsSplitTransaction] = useState(
@@ -174,84 +169,67 @@ function TransactionEditForm({
         0,
     );
 
-    async function uploadFiles(files: FileList | null) {
+    useEffect(() => {
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+
+        if (flash.error) {
+            toast.error(flash.error);
+        }
+    }, [flash.error, flash.success]);
+
+    function uploadFiles(files: FileList | null) {
         if (!files || files.length === 0) {
             return;
         }
 
-        const csrfToken =
-            document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-                ?.content ?? '';
-
         setUploadingAttachments(true);
         setAttachmentError(null);
 
-        try {
-            const formData = new FormData();
-            Array.from(files).forEach((file) => {
-                formData.append('attachments[]', file);
-            });
+        router.post(
+            attachmentRoutes.store.url({
+                ledger: ledger.id,
+                transaction: transaction.id,
+            }),
+            {
+                attachments: Array.from(files),
+            },
+            {
+                forceFormData: true,
+                only: ['transaction', 'flash'],
+                preserveState: true,
+                preserveScroll: true,
+                onError: (errors) => {
+                    const firstError =
+                        errors.attachments ??
+                        errors['attachments.0'] ??
+                        Object.values(errors)[0];
 
-            const response = await fetch(
-                attachmentRoutes.store.url({
-                    ledger: ledger.id,
-                    transaction: transaction.id,
-                }),
-                {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        Accept: 'application/json',
-                    },
-                    body: formData,
+                    setAttachmentError(
+                        typeof firstError === 'string'
+                            ? firstError
+                            : 'Attachment upload failed.',
+                    );
                 },
-            );
-
-            const payload = await response.json().catch(() => null);
-
-            if (!response.ok) {
-                setAttachmentError(
-                    payload?.errors?.['attachments']?.[0] ??
-                        payload?.errors?.['attachments.0']?.[0] ??
-                        payload?.message ??
-                        'Attachment upload failed.',
-                );
-            } else if (payload?.attachments) {
-                setAttachments((current) => [
-                    ...current,
-                    ...(payload.attachments as Attachment[]),
-                ]);
-            }
-        } finally {
-            setUploadingAttachments(false);
-        }
+                onFinish: () => setUploadingAttachments(false),
+            },
+        );
     }
 
-    async function deleteAttachment(attachmentId: number) {
-        const csrfToken =
-            document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-                ?.content ?? '';
-
-        const response = await fetch(
+    function deleteAttachment(attachmentId: number) {
+        router.delete(
             attachmentRoutes.destroy.url({
                 ledger: ledger.id,
                 transaction: transaction.id,
                 attachment: attachmentId,
             }),
             {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    Accept: 'application/json',
-                },
+                only: ['transaction', 'flash'],
+                preserveState: true,
+                preserveScroll: true,
             },
         );
-
-        if (response.ok) {
-            setAttachments((current) =>
-                current.filter((attachment) => attachment.id !== attachmentId),
-            );
-        }
     }
 
     function addSplit() {
@@ -277,81 +255,65 @@ function TransactionEditForm({
         setSplits((current) => current.filter((split) => split.id !== id));
     }
 
-    async function handleSubmit(event: React.FormEvent) {
+    function handleSubmit(event: React.FormEvent) {
         event.preventDefault();
         setProcessing(true);
 
-        try {
-            await api.put(
-                `${base}/transactions/${transaction.id}`,
-                {
-                    body: {
-                        transaction_type: form.transaction_type,
-                        transaction_date: form.transaction_date,
-                        account_id: form.account_id,
-                        ...(form.transaction_type === 'transfer'
-                            ? { to_account_id: form.to_account_id }
-                            : {
-                                  category_id: form.category_id || null,
-                                  payee_id: form.payee_id || null,
-                                  new_payee_name: form.new_payee_name || null,
-                                  splits: isSplitTransaction
-                                      ? splits.map((split) => ({
-                                            amount: split.amount || null,
-                                            category_id:
-                                                split.category_id || null,
-                                            payee_id: split.payee_id || null,
-                                            description:
-                                                split.description || null,
-                                        }))
-                                      : null,
-                              }),
-                        amount: form.amount,
-                        description: form.description || null,
-                        notes: form.notes || null,
-                        tag_ids: form.tag_ids,
-                    },
-                },
-            );
-            toast.success('Transaction updated');
-            router.visit(transactionsIndex.url(ledger.id));
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const firstError = Object.values(err.validationErrors)[0];
+        router.put(
+            updateRoute.url({ ledger: ledger.id, transaction: transaction.id }),
+            {
+                transaction_type: form.transaction_type,
+                transaction_date: form.transaction_date,
+                account_id: form.account_id,
+                ...(form.transaction_type === 'transfer'
+                    ? { to_account_id: form.to_account_id }
+                    : {
+                          category_id: form.category_id || null,
+                          payee_id: form.payee_id || null,
+                          new_payee_name: form.new_payee_name || null,
+                          splits: isSplitTransaction
+                              ? splits.map((split) => ({
+                                    amount: split.amount || null,
+                                    category_id: split.category_id || null,
+                                    payee_id: split.payee_id || null,
+                                    description: split.description || null,
+                                }))
+                              : null,
+                      }),
+                amount: form.amount,
+                description: form.description || null,
+                notes: form.notes || null,
+                tag_ids: form.tag_ids,
+            },
+            {
+                preserveScroll: true,
+                onError: (errors) => {
+                    const firstError = Object.values(errors)[0];
 
-                if (firstError?.[0]) {
-                    toast.error(firstError[0]);
-                }
-            } else {
-                toast.error('Failed to update transaction');
-            }
-        } finally {
-            setProcessing(false);
-        }
+                    if (typeof firstError === 'string') {
+                        toast.error(firstError);
+                    } else {
+                        toast.error('Failed to update transaction');
+                    }
+                },
+                onFinish: () => setProcessing(false),
+            },
+        );
     }
 
-    async function handleDelete() {
+    function handleDelete() {
         setDeleting(true);
 
-        try {
-            await api.delete(
-                `${base}/transactions/${transaction.id}`,
-            );
-            toast.success('Transaction deleted');
-            router.visit(transactionsIndex.url(ledger.id));
-        } catch (err) {
-            if (err instanceof ApiError) {
-                const firstError = Object.values(err.validationErrors)[0];
-
-                if (firstError?.[0]) {
-                    toast.error(firstError[0]);
-                } else {
+        router.delete(
+            destroyRoute.url({ ledger: ledger.id, transaction: transaction.id }),
+            {
+                preserveScroll: true,
+                onError: () => {
                     toast.error('Failed to delete transaction');
-                }
-            }
-        } finally {
-            setDeleting(false);
-        }
+                },
+                onFinish: () => setDeleting(false),
+            },
+        );
     }
 
     return (
@@ -1036,90 +998,25 @@ function TransactionEditForm({
 
 export default function TransactionEditPage({
     ledger,
-    transaction_id,
+    transaction,
+    accounts,
+    categories,
+    payees,
+    tags,
 }: {
     ledger: Ledger;
-    transaction_id: number;
+    transaction: Transaction;
+    accounts: Account[];
+    categories: Category[];
+    payees: Payee[];
+    tags: Tag[];
 }) {
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
-    const { data: txData, loading: txLoading } = useApiQuery<{
-        data: Transaction;
-    }>(`${base}/transactions/${transaction_id}`);
-    const { data: accountsResult, loading: accountsLoading } = useApiQuery<{
-        data: Account[];
-    }>(`${base}/accounts`);
-    const { data: categoriesResult, loading: categoriesLoading } = useApiQuery<{
-        data: Category[];
-    }>(`${base}/categories`);
-    const { data: payeesResult, loading: payeesLoading } = useApiQuery<{
-        data: Payee[];
-    }>(`${base}/payees`);
-    const { data: tagsResult, loading: tagsLoading } = useApiQuery<{
-        data: Tag[];
-    }>(`${base}/tags`);
-
-    const isLoading =
-        txLoading ||
-        accountsLoading ||
-        categoriesLoading ||
-        payeesLoading ||
-        tagsLoading;
-
-    if (isLoading || !txData) {
-        return (
-            <AppLayout
-                breadcrumbs={[
-                    {
-                        title: ledger.name,
-                        href: ledgerDashboard.url(ledger.id),
-                    },
-                    {
-                        title: 'Transactions',
-                        href: transactionsIndex.url(ledger.id),
-                    },
-                    { title: 'Edit Transaction', href: '#' },
-                ]}
-            >
-                <Head title="Edit Transaction" />
-                <div className="flex h-full flex-1 items-center justify-center p-8">
-                    <div className="flex flex-col items-center gap-3">
-                        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                            Loading transaction...
-                        </p>
-                    </div>
-                </div>
-            </AppLayout>
-        );
-    }
-
-    const transaction = txData.data;
-    const accounts = accountsResult?.data ?? [];
-    const categories = categoriesResult?.data ?? [];
-    const payees = payeesResult?.data ?? [];
-    const tags = tagsResult?.data ?? [];
-
-    // Flatten categories (they come with children nested)
-    const flatCategories = categories.flatMap((parent) => {
-        const { children, ...rest } = parent as Category & {
-            children?: Category[];
-        };
-        const result = [rest as Category];
-
-        if (children) {
-            result.push(...children);
-        }
-
-        return result;
-    });
-
     return (
         <TransactionEditForm
             ledger={ledger}
             transaction={transaction}
             accounts={accounts}
-            categories={flatCategories}
+            categories={categories}
             payees={payees}
             tags={tags}
         />

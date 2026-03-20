@@ -12,6 +12,15 @@ declare module '@inertiajs/core' {
                 success: string | null;
                 error: string | null;
                 first_transaction: boolean;
+                attachment_uploads: Array<{
+                    id: number;
+                    transaction_id: number;
+                    filename: string;
+                    mime_type: string;
+                    size: number;
+                    url: string;
+                }>;
+                deleted_attachment_id: number | null;
             };
             currentLedger: Ledger | null;
             availableLedgers: Array<

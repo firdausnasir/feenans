@@ -2,6 +2,9 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Download } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import SampleDataController from '@/actions/App/Http/Controllers/Ledger/SampleDataController';
+import SettingsController from '@/actions/App/Http/Controllers/Ledger/SettingsController';
+import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { ColorPicker } from '@/components/color-picker';
 import { CurrencySelect } from '@/components/currency-select';
 import Heading from '@/components/heading';
@@ -18,11 +21,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import {
     dashboard as ledgerDashboard,
     exportMethod as ledgerExport,
@@ -31,18 +32,6 @@ import { index as settingsIndex } from '@/routes/ledgers/settings';
 import type { AccountType, BreadcrumbItem } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type SettingsResponse = {
-    ledger: {
-        id: number;
-        name: string;
-        currency_code: string;
-        cycle_start_day: number;
-        uses_seeded_categories: boolean;
-        account_types: AccountType[];
-    };
-    has_sample_data: boolean;
-};
 
 type AccountTypeEditState = {
     accountTypeId: number;
@@ -74,44 +63,26 @@ function colorDot(color: string | null) {
     );
 }
 
-function SettingsLoadingSkeleton() {
-    return (
-        <div className="space-y-8">
-            <section className="space-y-4">
-                <Skeleton className="h-5 w-20" />
-                <Separator />
-                <div className="grid max-w-md gap-4">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-24" />
-                    <Skeleton className="h-9 w-16" />
-                </div>
-            </section>
-            <section className="space-y-4">
-                <Skeleton className="h-5 w-32" />
-                <Separator />
-                <div className="max-w-lg space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-10 w-full" />
-                    ))}
-                </div>
-            </section>
-        </div>
-    );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SettingsIndex() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
     const {
-        data: settings,
-        loading,
-        refetch,
-    } = useApiQuery<SettingsResponse>(`${base}/settings`);
+        currentLedger,
+        ledger: ledgerSettings,
+        accountTypes,
+        hasSampleData,
+    } = usePage<{
+        ledger: {
+            id: number;
+            name: string;
+            currency_code: string;
+            cycle_start_day: number;
+            uses_seeded_categories: boolean;
+        };
+        accountTypes: AccountType[];
+        hasSampleData: boolean;
+    }>().props;
+    const ledger = currentLedger!;
 
     // General settings state
     const [ledgerName, setLedgerName] = useState<string | null>(null);
@@ -146,13 +117,9 @@ export default function SettingsIndex() {
     const [isRemovingSampleData, setIsRemovingSampleData] = useState(false);
 
     // Derived values: use local overrides or fall back to API data
-    const effectiveName = ledgerName ?? settings?.ledger.name ?? '';
-    const effectiveCycleDay =
-        cycleStartDay ?? settings?.ledger.cycle_start_day ?? 1;
-    const effectiveCurrency =
-        currencyCode ?? settings?.ledger.currency_code ?? 'MYR';
-    const accountTypes = settings?.ledger.account_types ?? [];
-    const hasSampleData = settings?.has_sample_data ?? false;
+    const effectiveName = ledgerName ?? ledgerSettings.name;
+    const effectiveCycleDay = cycleStartDay ?? ledgerSettings.cycle_start_day;
+    const effectiveCurrency = currencyCode ?? ledgerSettings.currency_code;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -161,7 +128,7 @@ export default function SettingsIndex() {
 
     // ── General settings handlers ─────────────────────────────────────────────
 
-    async function handleSaveGeneral() {
+    function handleSaveGeneral() {
         if (effectiveCycleDay < 1 || effectiveCycleDay > 31) {
             toast.error('Cycle start day must be between 1 and 31.');
 
@@ -170,34 +137,35 @@ export default function SettingsIndex() {
 
         setIsSavingGeneral(true);
 
-        try {
-            await api.put(`${base}/settings`, {
-                body: {
-                    name: effectiveName.trim(),
-                    cycle_start_day: effectiveCycleDay,
-                    currency_code: effectiveCurrency,
+        router.put(
+            SettingsController.update.url(ledger.id),
+            {
+                name: effectiveName.trim(),
+                cycle_start_day: effectiveCycleDay,
+                currency_code: effectiveCurrency,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Settings saved.');
+                    setLedgerName(null);
+                    setCycleStartDay(null);
+                    setCurrencyCode(null);
                 },
-            });
-            toast.success('Settings saved.');
-            setLedgerName(null);
-            setCycleStartDay(null);
-            setCurrencyCode(null);
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.name?.[0] ??
-                    errors.cycle_start_day?.[0] ??
-                    errors.currency_code?.[0] ??
-                    'Failed to save settings.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to save settings.');
-            }
-        } finally {
-            setIsSavingGeneral(false);
-        }
+                onError: (errors) => {
+                    const msg =
+                        typeof errors.name === 'string'
+                            ? errors.name
+                            : typeof errors.cycle_start_day === 'string'
+                              ? errors.cycle_start_day
+                              : typeof errors.currency_code === 'string'
+                                ? errors.currency_code
+                                : 'Failed to save settings.';
+                    toast.error(msg);
+                },
+                onFinish: () => setIsSavingGeneral(false),
+            },
+        );
     }
 
     // ── Account type drag & drop ──────────────────────────────────────────────
@@ -221,7 +189,7 @@ export default function SettingsIndex() {
         setDragOverId(null);
     }
 
-    async function handleDrop(e: React.DragEvent, targetId: number) {
+    function handleDrop(e: React.DragEvent, targetId: number) {
         e.preventDefault();
         dragOverIdRef.current = null;
         setDragOverId(null);
@@ -251,16 +219,19 @@ export default function SettingsIndex() {
 
         isReorderingRef.current = true;
 
-        try {
-            await api.post(`${base}/account-types/reorder`, {
-                body: { items },
-            });
-            refetch();
-        } catch {
-            toast.error('Failed to reorder account types.');
-        } finally {
-            isReorderingRef.current = false;
-        }
+        router.post(
+            SettingsController.reorderAccountTypes.url(ledger.id),
+            { items },
+            {
+                preserveScroll: true,
+                onError: () => {
+                    toast.error('Failed to reorder account types.');
+                },
+                onFinish: () => {
+                    isReorderingRef.current = false;
+                },
+            },
+        );
     }
 
     // ── Account type inline edit ──────────────────────────────────────────────
@@ -274,7 +245,7 @@ export default function SettingsIndex() {
         });
     }
 
-    async function saveEdit() {
+    function saveEdit() {
         if (!editState) {
             return;
         }
@@ -285,142 +256,147 @@ export default function SettingsIndex() {
             return;
         }
 
-        try {
-            await api.put(`${base}/account-types/${editState.accountTypeId}`, {
-                body: {
-                    name: editState.name,
-                    color: editState.color,
-                    is_credit: editState.is_credit,
+        router.put(
+            SettingsController.updateAccountType.url({
+                ledger: ledger.id,
+                accountType: editState.accountTypeId,
+            }),
+            {
+                name: editState.name,
+                color: editState.color,
+                is_credit: editState.is_credit,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setEditState(null);
+                    toast.success('Account type updated.');
                 },
-            });
-            setEditState(null);
-            toast.success('Account type updated.');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.name?.[0] ??
-                    errors.color?.[0] ??
-                    errors.is_credit?.[0] ??
-                    'Failed to update account type.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to update account type.');
-            }
-        }
+                onError: (errors) => {
+                    const msg =
+                        typeof errors.name === 'string'
+                            ? errors.name
+                            : typeof errors.color === 'string'
+                              ? errors.color
+                              : typeof errors.is_credit === 'string'
+                                ? errors.is_credit
+                                : 'Failed to update account type.';
+                    toast.error(msg);
+                },
+            },
+        );
     }
 
     // ── Account type add ──────────────────────────────────────────────────────
 
-    async function handleAddAccountType() {
+    function handleAddAccountType() {
         if (!addState.name.trim()) {
             return;
         }
 
-        try {
-            await api.post(`${base}/account-types`, {
-                body: {
-                    name: addState.name.trim(),
-                    color: addState.color,
-                    is_credit: addState.is_credit,
+        router.post(
+            SettingsController.storeAccountType.url(ledger.id),
+            {
+                name: addState.name.trim(),
+                color: addState.color,
+                is_credit: addState.is_credit,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setAddState({
+                        name: '',
+                        color: '#6b7280',
+                        is_credit: false,
+                    });
+                    setShowAddForm(false);
+                    toast.success('Account type added.');
                 },
-            });
-            setAddState({
-                name: '',
-                color: '#6b7280',
-                is_credit: false,
-            });
-            setShowAddForm(false);
-            toast.success('Account type added.');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.name?.[0] ??
-                    errors.color?.[0] ??
-                    errors.is_credit?.[0] ??
-                    'Failed to add account type.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to add account type.');
-            }
-        }
+                onError: (errors) => {
+                    const msg =
+                        typeof errors.name === 'string'
+                            ? errors.name
+                            : typeof errors.color === 'string'
+                              ? errors.color
+                              : typeof errors.is_credit === 'string'
+                                ? errors.is_credit
+                                : 'Failed to add account type.';
+                    toast.error(msg);
+                },
+            },
+        );
     }
 
     // ── Account type delete ───────────────────────────────────────────────────
 
-    async function handleDeleteAccountType() {
+    function handleDeleteAccountType() {
         if (!deleteTarget) {
             return;
         }
 
         setIsDeletingAccountType(true);
 
-        try {
-            await api.delete(`${base}/account-types/${deleteTarget.id}`);
-            setIsDeletingAccountType(false);
-            setDeleteTarget(null);
-            toast.success('Account type deleted.');
-            refetch();
-        } catch (err) {
-            setIsDeletingAccountType(false);
-            setDeleteTarget(null);
-
-            if (err instanceof ApiError) {
-                const body = err.body as Record<string, string> | null;
-                const msg = body?.message ?? 'Cannot delete this account type.';
-                toast.error(msg);
-            } else {
-                toast.error('Cannot delete this account type.');
-            }
-        }
+        router.delete(
+            SettingsController.destroyAccountType.url({
+                ledger: ledger.id,
+                accountType: deleteTarget.id,
+            }),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setDeleteTarget(null);
+                    toast.success('Account type deleted.');
+                },
+                onError: (errors) => {
+                    const mapped = mapInertiaErrorsArray(errors);
+                    toast.error(
+                        mapped.account_type?.[0] ??
+                            'Cannot delete this account type.',
+                    );
+                },
+                onFinish: () => {
+                    setIsDeletingAccountType(false);
+                },
+            },
+        );
     }
 
     // ── Sample data handler ─────────────────────────────────────────────
 
-    async function handleRemoveSampleData() {
+    function handleRemoveSampleData() {
         setIsRemovingSampleData(true);
 
-        try {
-            await api.delete(`${base}/sample-data`);
-            toast.success('Sample data removed.');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError) {
-                const body = err.body as Record<string, string> | null;
-                const msg = body?.message ?? 'Failed to remove sample data.';
-                toast.error(msg);
-            } else {
+        router.delete(SampleDataController.destroy.url(ledger.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success('Sample data removed.');
+            },
+            onError: () => {
                 toast.error('Failed to remove sample data.');
-            }
-        } finally {
-            setIsRemovingSampleData(false);
-        }
+            },
+            onFinish: () => {
+                setIsRemovingSampleData(false);
+            },
+        });
     }
 
     // ── Ledger delete ─────────────────────────────────────────────────────────
 
-    async function handleDeleteLedger() {
+    function handleDeleteLedger() {
         setIsDeletingLedger(true);
 
-        try {
-            await api.delete(`/api/v1/ledgers/${ledger.id}`);
-            setIsDeletingLedger(false);
-            setShowDeleteDialog(false);
-            router.visit('/');
-        } catch (err) {
-            setIsDeletingLedger(false);
-
-            if (err instanceof ApiError) {
-                const body = err.body as Record<string, string> | null;
-                const msg = body?.message ?? 'Failed to delete workspace.';
-                toast.error(msg);
-            } else {
+        router.delete(LedgerController.destroy.url(ledger.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setShowDeleteDialog(false);
+            },
+            onError: () => {
                 toast.error('Failed to delete workspace.');
-            }
-        }
+            },
+            onFinish: () => {
+                setIsDeletingLedger(false);
+            },
+        });
     }
 
     return (
@@ -433,12 +409,8 @@ export default function SettingsIndex() {
                     description="Ledger configuration, account types, and data management."
                 />
 
-                {loading ? (
-                    <SettingsLoadingSkeleton />
-                ) : (
-                    <>
-                        {/* ── General ────────────────────────────────────────────── */}
-                        <section className="space-y-4">
+                {/* ── General ────────────────────────────────────────────── */}
+                <section className="space-y-4">
                             <h2 className="text-base font-semibold">General</h2>
                             <Separator />
 
@@ -470,7 +442,7 @@ export default function SettingsIndex() {
                                         onValueChange={setCurrencyCode}
                                     />
                                     {effectiveCurrency !==
-                                        settings?.ledger.currency_code && (
+                                        ledgerSettings.currency_code && (
                                         <p className="text-xs text-amber-600 dark:text-amber-400">
                                             Changing the currency code does not
                                             convert existing transaction
@@ -913,8 +885,6 @@ export default function SettingsIndex() {
                                 </div>
                             </div>
                         </section>
-                    </>
-                )}
             </div>
 
             {/* ── Delete account type dialog ───────────────────────────────── */}

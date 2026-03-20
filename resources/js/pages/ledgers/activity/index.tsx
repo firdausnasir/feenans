@@ -1,6 +1,7 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
+import { index as activityIndex } from '@/actions/App/Http/Controllers/Ledger/ActivityLogController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,9 +14,9 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import { index as ledgerActivityIndex } from '@/routes/ledgers/activity';
 import type { BreadcrumbItem, Pagination } from '@/types';
 
 type ActivityItem = {
@@ -269,33 +270,59 @@ function ActivityLoadingSkeleton() {
 }
 
 export default function ActivityIndex() {
-    const { currentLedger } = usePage().props;
+    const {
+        currentLedger,
+        filters,
+        activity,
+    } = usePage<{
+        filters: {
+            subject_type: string | null;
+            action: string | null;
+            page: number;
+        };
+        activity?: Pagination<ActivityItem>;
+    }>().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
 
-    const [filterType, setFilterType] = useState<string>(ALL_FILTER);
-    const [filterAction, setFilterAction] = useState<string>(ALL_FILTER);
-    const [page, setPage] = useState(1);
-
-    const { data: activityResult, loading } = useApiQuery<
-        Pagination<ActivityItem>
-    >(`${base}/activity`, {
-        params: {
-            per_page: 50,
-            page,
-            subject_type:
-                filterType !== ALL_FILTER ? filterType : undefined,
-            action: filterAction !== ALL_FILTER ? filterAction : undefined,
-        },
-        deps: [filterType, filterAction, page],
-    });
-
-    const activity = activityResult?.data ?? [];
+    const [filterType, setFilterType] = useState<string>(
+        filters.subject_type ?? ALL_FILTER,
+    );
+    const [filterAction, setFilterAction] = useState<string>(
+        filters.action ?? ALL_FILTER,
+    );
+    const activityEntries = activity?.data ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
-        { title: 'Activity', href: '#' },
+        { title: 'Activity', href: ledgerActivityIndex.url(ledger.id) },
     ];
+
+    function reloadActivity(next: {
+        subjectType?: string;
+        action?: string;
+        page?: number;
+    }) {
+        router.get(
+            activityIndex.url(ledger.id),
+            {
+                ...(next.subjectType && next.subjectType !== ALL_FILTER
+                    ? { subject_type: next.subjectType }
+                    : {}),
+                ...(next.action && next.action !== ALL_FILTER
+                    ? { action: next.action }
+                    : {}),
+                ...(next.page && next.page > 1
+                    ? { page: String(next.page) }
+                    : {}),
+            },
+            {
+                only: ['activity', 'filters'],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -313,7 +340,11 @@ export default function ActivityIndex() {
                         value={filterType}
                         onValueChange={(val) => {
                             setFilterType(val);
-                            setPage(1);
+                            reloadActivity({
+                                subjectType: val,
+                                action: filterAction,
+                                page: 1,
+                            });
                         }}
                     >
                         <SelectTrigger className="w-44">
@@ -335,7 +366,11 @@ export default function ActivityIndex() {
                         value={filterAction}
                         onValueChange={(val) => {
                             setFilterAction(val);
-                            setPage(1);
+                            reloadActivity({
+                                subjectType: filterType,
+                                action: val,
+                                page: 1,
+                            });
                         }}
                     >
                         <SelectTrigger className="w-40">
@@ -355,44 +390,53 @@ export default function ActivityIndex() {
                     </Select>
                 </div>
 
-                {loading ? (
-                    <ActivityLoadingSkeleton />
-                ) : (
+                <Deferred data="activity" fallback={<ActivityLoadingSkeleton />}>
                     <div className="grid gap-3">
-                        {activity.length === 0 ? (
+                        {activityEntries.length === 0 ? (
                             <EmptyState
                                 icon={<ClipboardList className="size-6" />}
                                 title="No activity yet"
                                 description="Changes to your workspace will appear here."
                             />
                         ) : (
-                            activity.map((entry) => (
+                            activityEntries.map((entry) => (
                                 <ActivityEntry key={entry.id} entry={entry} />
                             ))
                         )}
                     </div>
-                )}
+                </Deferred>
 
                 {/* Pagination */}
-                {activityResult && activityResult.last_page > 1 && (
+                {activity && activity.last_page > 1 && (
                     <div className="flex items-center justify-center gap-2">
                         <button
                             type="button"
                             className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
-                            disabled={page <= 1}
-                            onClick={() => setPage((p) => p - 1)}
+                            disabled={activity.current_page <= 1}
+                            onClick={() =>
+                                reloadActivity({
+                                    subjectType: filterType,
+                                    action: filterAction,
+                                    page: activity.current_page - 1,
+                                })
+                            }
                         >
                             Previous
                         </button>
                         <span className="text-sm text-muted-foreground">
-                            Page {activityResult.current_page} of{' '}
-                            {activityResult.last_page}
+                            Page {activity.current_page} of {activity.last_page}
                         </span>
                         <button
                             type="button"
                             className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
-                            disabled={page >= activityResult.last_page}
-                            onClick={() => setPage((p) => p + 1)}
+                            disabled={activity.current_page >= activity.last_page}
+                            onClick={() =>
+                                reloadActivity({
+                                    subjectType: filterType,
+                                    action: filterAction,
+                                    page: activity.current_page + 1,
+                                })
+                            }
                         >
                             Next
                         </button>

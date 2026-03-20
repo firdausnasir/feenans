@@ -20,5 +20,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:6,1')
         ->name('user-password.update');
 
+    Route::post('settings/password/reset-link', [SecurityController::class, 'sendResetLink'])
+        ->middleware('throttle:6,1')
+        ->name('security.password-reset-link');
+
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
 });

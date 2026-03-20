@@ -13,12 +13,14 @@ test('rename category updates the name', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->patch(route('ledgers.categories.update', [$ledger, $category]), [
             'name' => 'Food & Groceries',
             'transaction_type' => 'expense',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($category->fresh()->name)->toBe('Food & Groceries');
 });
@@ -30,12 +32,14 @@ test('change category color updates the color', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->patch(route('ledgers.categories.update', [$ledger, $category]), [
             'name' => $category->name,
             'color' => '#00ff00',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($category->fresh()->color)->toBe('#00ff00');
 });
@@ -52,12 +56,14 @@ test('change subcategory parent via update', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.categories.update', [$ledger, $child]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->patch(route('ledgers.categories.update', [$ledger, $child]), [
             'name' => $child->name,
             'parent_id' => $parentB->id,
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
 
     expect($child->fresh()->parent_id)->toBe($parentB->id);
 });
@@ -76,11 +82,12 @@ test('delete category with reassignment moves transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $category]), [
             'reassign_category_id' => $targetCategory->id,
         ]);
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger));
 
     expect($transaction->fresh()->category_id)->toBe($targetCategory->id)
         ->and(Category::find($category->id))->toBeNull();
@@ -99,11 +106,12 @@ test('delete category without reassignment sets transactions to uncategorized', 
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $category]), [
             'reassign_category_id' => null,
         ]);
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger));
 
     expect($transaction->fresh()->category_id)->toBeNull()
         ->and(Category::find($category->id))->toBeNull();
@@ -129,11 +137,12 @@ test('delete parent category reassigns children transactions too', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $parent]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $parent]), [
             'reassign_category_id' => $targetCategory->id,
         ]);
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.categories.index', $ledger));
 
     expect($parentTransaction->fresh()->category_id)->toBe($targetCategory->id)
         ->and($childTransaction->fresh()->category_id)->toBe($targetCategory->id)
@@ -150,11 +159,13 @@ test('delete rejects reassignment to category from another ledger', function () 
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $category]), [
             'reassign_category_id' => $foreignCategory->id,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors('reassign_category_id');
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasErrors('reassign_category_id');
 });
 
 test('delete rejects reassignment to the same category being deleted', function () {
@@ -164,11 +175,13 @@ test('delete rejects reassignment to the same category being deleted', function 
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.categories.destroy', [$ledger, $category]), [
+        ->from(route('ledgers.categories.index', $ledger))
+        ->delete(route('ledgers.categories.destroy', [$ledger, $category]), [
             'reassign_category_id' => $category->id,
         ]);
 
-    $response->assertStatus(422)->assertJsonValidationErrors('reassign_category_id');
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasErrors('reassign_category_id');
 });
 
 test('category index page renders successfully', function () {

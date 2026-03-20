@@ -213,7 +213,8 @@ test('transaction update via HTTP updates the transaction', function () {
 
     $response = $this
         ->actingAs($user)
-        ->putJson(route('api.v1.ledgers.transactions.update', [$ledger, $transaction]), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
             'account_id' => $newAccount->id,
             'category_id' => $category->id,
             'payee_id' => null,
@@ -224,7 +225,7 @@ test('transaction update via HTTP updates the transaction', function () {
             'transaction_date' => '2026-03-13',
         ]);
 
-    $response->assertOk();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
 
     expect((float) $transaction->fresh()->amount)->toBe(-55.00)
         ->and($transaction->fresh()->description)->toBe('Updated')
@@ -244,9 +245,10 @@ test('transaction destroy deletes transaction via HTTP', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.transactions.destroy', [$ledger, $transaction]));
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]));
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
 
     expect(Transaction::find($transaction->id))->toBeNull();
 });
@@ -274,11 +276,13 @@ test('bulk destroy deletes multiple transactions', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.transactions.bulk-destroy', $ledger), [
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
             'ids' => [$t1->id, $t2->id],
         ]);
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions deleted.');
 
     expect($ledger->transactions()->count())->toBe(1)
         ->and(Transaction::find($t3->id))->not->toBeNull();
@@ -339,76 +343,4 @@ test('transaction edit page renders for transfer transaction', function () {
         ->component('ledgers/transactions/edit')
         ->where('transaction_id', $outgoing->id)
     );
-});
-
-test('API show includes transferPair for transfer transaction', function () {
-    $pairId = (string) Str::uuid();
-
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
-    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
-
-    $outgoing = Transaction::factory()->for($ledger)->for($fromAccount)->create([
-        'transaction_type' => TransactionType::Transfer,
-        'amount' => -100.00,
-        'transfer_pair_id' => $pairId,
-    ]);
-
-    Transaction::factory()->for($ledger)->for($toAccount)->create([
-        'transaction_type' => TransactionType::Transfer,
-        'amount' => 100.00,
-        'transfer_pair_id' => $pairId,
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.show', [$ledger, $outgoing]));
-
-    $response->assertSuccessful();
-    $response->assertJsonStructure(['data' => ['transfer_pair']]);
-});
-
-test('API show includes attachments and splits in response', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
-    $category = Category::factory()->for($ledger)->create();
-
-    $transaction = Transaction::factory()->for($ledger)->for($account)->for($category)->create([
-        'transaction_type' => TransactionType::Expense,
-        'amount' => '-100.00',
-        'transaction_date' => '2026-03-13',
-    ]);
-
-    $transaction->attachments()->create([
-        'filename' => 'receipt.pdf',
-        'path' => 'attachments/'.$ledger->id.'/receipt.pdf',
-        'mime_type' => 'application/pdf',
-        'size' => 12345,
-    ]);
-
-    $transaction->splits()->createMany([
-        [
-            'category_id' => $category->id,
-            'amount' => '-60.00',
-            'description' => 'Food',
-        ],
-        [
-            'category_id' => $category->id,
-            'amount' => '-40.00',
-            'description' => 'Drinks',
-        ],
-    ]);
-
-    $response = $this
-        ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.transactions.show', [$ledger, $transaction]));
-
-    $response->assertSuccessful();
-    $response->assertJsonCount(1, 'data.attachments');
-    $response->assertJsonCount(2, 'data.splits');
-    $response->assertJsonPath('data.splits.0.description', 'Food');
 });

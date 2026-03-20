@@ -56,7 +56,10 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
+                'import_parse_result' => $request->session()->get('importParseResult'),
                 'first_transaction' => $request->session()->get('first_transaction', false),
+                'attachment_uploads' => $request->session()->get('attachment_uploads', []),
+                'deleted_attachment_id' => $request->session()->get('deleted_attachment_id'),
             ],
             'currentLedger' => $currentLedger ? [
                 'id' => $currentLedger->id,
@@ -66,6 +69,24 @@ class HandleInertiaRequests extends Middleware
             ] : null,
             'availableLedgers' => $availableLedgers->values(),
             'unread_notifications_count' => $user?->unreadNotifications()->count() ?? 0,
+            'notifications' => Inertia::optional(function () use ($user) {
+                if ($user === null) {
+                    return null;
+                }
+
+                $notifications = $user->unreadNotifications()
+                    ->latest()
+                    ->paginate(10);
+
+                return [
+                    'data' => $notifications->items(),
+                    'meta' => [
+                        'page' => $notifications->currentPage(),
+                        'per_page' => $notifications->perPage(),
+                        'total' => $notifications->total(),
+                    ],
+                ];
+            }),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'transactionModalData' => Inertia::optional(function () use ($currentLedger) {
                 if (! $currentLedger) {

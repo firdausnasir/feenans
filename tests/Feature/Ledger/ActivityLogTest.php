@@ -257,11 +257,63 @@ test('activity page renders successfully', function () {
     $this->withoutVite();
     $this->actingAs($this->user);
 
-    $this->get(route('ledgers.activity.index', $this->ledger))
+    $response = $this->get(route('ledgers.activity.index', $this->ledger))
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/activity/index')
+            ->where('filters.subject_type', null)
+            ->where('filters.action', null)
+            ->where('filters.page', 1)
+            ->missing('activity')
         );
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('activity.data')
+            ->where('activity.current_page', 1)
+        )
+    );
+});
+
+test('activity page supports partial reload filters', function () {
+    $this->actingAs($this->user);
+
+    ActivityLog::query()->create([
+        'ledger_id' => $this->ledger->id,
+        'user_id' => $this->user->id,
+        'action' => 'created',
+        'subject_type' => Budget::class,
+        'subject_id' => 10,
+        'old_values' => [],
+        'new_values' => ['name' => 'Groceries'],
+        'created_at' => now(),
+    ]);
+
+    $response = $this->get(route('ledgers.activity.index', [
+        $this->ledger,
+        'subject_type' => 'Budget',
+        'action' => 'created',
+    ]));
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/activity/index')
+        ->where('filters.subject_type', 'Budget')
+        ->where('filters.action', 'created')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('activity.data', 1, fn (Assert $entry) => $entry
+                ->where('subject_type', 'Budget')
+                ->where('action', 'created')
+                ->etc()
+            )
+        )
+    );
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->reloadOnly('activity', fn (Assert $reload) => $reload
+            ->has('activity.data', 1)
+            ->missing('filters')
+        )
+    );
 });
 
 test('activity log excludes sensitive timestamp fields', function () {

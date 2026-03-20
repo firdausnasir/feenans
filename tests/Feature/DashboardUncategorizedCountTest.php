@@ -13,7 +13,6 @@ beforeEach(function () {
     $this->accountType = AccountType::factory()->for($this->ledger)->create();
     $this->account = Account::factory()->for($this->ledger)->for($this->accountType)->create();
     $this->category = Category::factory()->for($this->ledger)->create();
-    $this->token = $this->user->createToken('test');
 });
 
 test('uncategorized count returns 0 when all transactions have categories', function () {
@@ -25,10 +24,14 @@ test('uncategorized count returns 0 when all transactions have categories', func
         'transaction_date' => now(),
     ]);
 
-    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
-        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+    $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger))
         ->assertSuccessful()
-        ->assertJson(['count' => 0]);
+        ->assertInertia(fn ($page) => $page
+            ->loadDeferredProps(fn ($reload) => $reload
+                ->where('uncategorizedCount', 0)
+            )
+        );
 });
 
 test('uncategorized count returns correct count when some transactions lack categories', function () {
@@ -48,10 +51,14 @@ test('uncategorized count returns correct count when some transactions lack cate
         'transaction_date' => now(),
     ]);
 
-    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
-        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+    $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger))
         ->assertSuccessful()
-        ->assertJson(['count' => 2]);
+        ->assertInertia(fn ($page) => $page
+            ->loadDeferredProps(fn ($reload) => $reload
+                ->where('uncategorizedCount', 2)
+            )
+        );
 });
 
 test('transfer transactions are excluded from the uncategorized count', function () {
@@ -66,8 +73,12 @@ test('transfer transactions are excluded from the uncategorized count', function
         'transaction_date' => now(),
     ]);
 
-    $this->withHeader('Authorization', "Bearer {$this->token->plainTextToken}")
-        ->getJson("/api/v1/ledgers/{$this->ledger->id}/transactions/uncategorized-count")
+    $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger))
         ->assertSuccessful()
-        ->assertJson(['count' => 1]);
+        ->assertInertia(fn ($page) => $page
+            ->loadDeferredProps(fn ($reload) => $reload
+                ->where('uncategorizedCount', 1)
+            )
+        );
 });

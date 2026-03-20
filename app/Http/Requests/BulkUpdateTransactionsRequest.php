@@ -38,8 +38,12 @@ class BulkUpdateTransactionsRequest extends FormRequest
             : 'exists:payees,id';
 
         return [
-            'ids' => ['required', 'array', 'min:1'],
+            'apply_to_all_matching' => ['sometimes', 'boolean'],
+            'ids' => ['required_without:apply_to_all_matching', 'array', 'min:1'],
             'ids.*' => ['required', 'integer'],
+            'excluded_ids' => ['nullable', 'array'],
+            'excluded_ids.*' => ['integer'],
+            'filters' => ['nullable', 'array'],
             'action' => ['required', 'string', Rule::in(['change_category', 'change_account', 'change_payee'])],
             'value' => [
                 'required',

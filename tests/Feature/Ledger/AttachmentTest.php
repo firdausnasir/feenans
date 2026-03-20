@@ -19,13 +19,15 @@ test('store uploads attachment and returns created response', function () {
 
     $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
+    $this->from(route('ledgers.transactions.edit', [$ledger, $transaction]));
+
     $response = $this
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
             'file' => $file,
         ]);
 
-    $response->assertCreated();
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     $attachment = $transaction->attachments()->first();
 
@@ -50,13 +52,15 @@ test('store supports multiple attachments', function () {
         UploadedFile::fake()->image('photo.jpg', 100, 100),
     ];
 
+    $this->from(route('ledgers.transactions.edit', [$ledger, $transaction]));
+
     $response = $this
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
             'attachments' => $files,
         ]);
 
-    $response->assertCreated();
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     expect($transaction->attachments()->count())->toBe(2);
 });
@@ -113,11 +117,12 @@ test('destroy deletes attachment record and file from disk', function () {
     $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
             'file' => $file,
         ])
-        ->assertCreated();
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     $attachment = $transaction->fresh()->attachments()->first();
 
@@ -126,10 +131,11 @@ test('destroy deletes attachment record and file from disk', function () {
     Storage::disk('local')->assertExists($attachment->path);
 
     $response = $this
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
         ->actingAs($user)
         ->delete("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments/{$attachment->id}");
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     expect($transaction->fresh()->attachments()->count())->toBe(0);
     Storage::disk('local')->assertMissing($attachment->path);
@@ -147,11 +153,12 @@ test('show returns file content for authorized user', function () {
     $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
         ->actingAs($user)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
             'file' => $file,
         ])
-        ->assertCreated();
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     $attachment = $transaction->fresh()->attachments()->first();
 
@@ -175,11 +182,12 @@ test('show returns forbidden for unauthorized user', function () {
     $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
         ->actingAs($owner)
         ->post("/ledgers/{$ledger->id}/transactions/{$transaction->id}/attachments", [
             'file' => $file,
         ])
-        ->assertCreated();
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     $attachment = $transaction->fresh()->attachments()->first();
 
@@ -191,7 +199,7 @@ test('show returns forbidden for unauthorized user', function () {
 });
 
 test('attachment uploads use the configured filesystem disk', function () {
-    config()->set('filesystems.default', 's3');
+    config()->set('app.attachment_disk', 's3');
     Storage::fake('s3');
 
     $user = User::factory()->create();
@@ -203,10 +211,11 @@ test('attachment uploads use the configured filesystem disk', function () {
     $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
 
     $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
         ->post(route('ledgers.transactions.attachments.store', [$ledger, $transaction]), [
             'file' => $file,
         ])
-        ->assertCreated();
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 
     $attachment = $transaction->fresh()->attachments()->first();
 

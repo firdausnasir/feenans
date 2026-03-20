@@ -33,12 +33,20 @@ class NotificationController extends Controller
         $notification = $request->user()?->notifications()->findOrFail($id);
         $notification->markAsRead();
 
+        if ($request->header('X-Inertia')) {
+            return redirect()->back();
+        }
+
         return response()->noContent();
     }
 
     public function markAllRead(Request $request): Response
     {
         $request->user()?->unreadNotifications()->update(['read_at' => now()]);
+
+        if ($request->header('X-Inertia')) {
+            return redirect()->back();
+        }
 
         return response()->noContent();
     }

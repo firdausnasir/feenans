@@ -1,5 +1,5 @@
 import { Transition } from '@headlessui/react';
-import { Form, Head, useForm, usePage } from '@inertiajs/react';
+import { Form, Head, useForm } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useRef, useState } from 'react';
@@ -23,6 +23,10 @@ type Props = {
     canManageTwoFactor?: boolean;
     requiresConfirmation?: boolean;
     twoFactorEnabled?: boolean;
+    passwordReset?: {
+        email: string;
+        status: string | null;
+    };
 };
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -36,6 +40,7 @@ export default function Security({
     canManageTwoFactor = false,
     requiresConfirmation = false,
     twoFactorEnabled = false,
+    passwordReset,
 }: Props) {
     const passwordInput = useRef<HTMLInputElement>(null);
     const currentPasswordInput = useRef<HTMLInputElement>(null);
@@ -51,44 +56,12 @@ export default function Security({
         errors: twoFactorErrors,
     } = useTwoFactorAuth();
     const [showSetupModal, setShowSetupModal] = useState<boolean>(false);
-    const [isSendingReset, setIsSendingReset] = useState(false);
-    const [resetSent, setResetSent] = useState(false);
-
-    const { auth } = usePage().props;
-
-    const handleForgotPassword = async () => {
-        setIsSendingReset(true);
-        setResetSent(false);
-
-        try {
-            const response = await fetch('/forgot-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document.querySelector<HTMLMetaElement>(
-                            'meta[name="csrf-token"]',
-                        )?.content ?? '',
-                    Accept: 'application/json',
-                },
-                body: JSON.stringify({ email: auth.user!.email }),
-            });
-
-            if (response.ok) {
-                setResetSent(true);
-            }
-        } catch {
-            // silently handle
-        } finally {
-            setIsSendingReset(false);
-        }
-    };
-
     const passwordForm = useForm({
         current_password: '',
         password: '',
         password_confirmation: '',
     });
+    const resetLinkForm = useForm({});
 
     const submitPassword = (e: FormEvent) => {
         e.preventDefault();
@@ -238,17 +211,25 @@ export default function Security({
                             <button
                                 type="button"
                                 className="text-primary underline hover:text-primary/80"
-                                onClick={handleForgotPassword}
-                                disabled={isSendingReset}
+                                onClick={() => {
+                                    resetLinkForm.post(
+                                        SecurityController.sendResetLink.url(),
+                                        {
+                                            preserveScroll: true,
+                                            preserveState: true,
+                                        },
+                                    );
+                                }}
+                                disabled={resetLinkForm.processing}
                             >
-                                {isSendingReset
+                                {resetLinkForm.processing
                                     ? 'Sending...'
                                     : 'Send a password reset link'}
                             </button>
                         </p>
-                        {resetSent && (
+                        {passwordReset?.status && (
                             <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-                                Password reset link sent to your email.
+                                {passwordReset.status}
                             </p>
                         )}
                     </div>

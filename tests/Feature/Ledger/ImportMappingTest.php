@@ -9,28 +9,9 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 
 // ─── Import Mappings ────────────────────────────────────────────────
-
-test('mappings endpoint returns saved mappings for the ledger', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-
-    ImportMapping::factory()->for($ledger)->create(['name' => 'My Bank']);
-    ImportMapping::factory()->for($ledger)->create(['name' => 'Another']);
-
-    // Create mapping for a different ledger to ensure isolation
-    ImportMapping::factory()->create(['name' => 'Other Ledger']);
-
-    $response = $this
-        ->actingAs($user)
-        ->getJson(route('api.v1.ledgers.import.mappings', $ledger));
-
-    $response->assertOk();
-    $data = $response->json('data');
-    expect($data)->toHaveCount(2);
-    expect(collect($data)->pluck('name')->sort()->values()->all())->toBe(['Another', 'My Bank']);
-});
 
 test('save mapping creates a new import mapping', function () {
     $user = User::factory()->create();
@@ -38,7 +19,8 @@ test('save mapping creates a new import mapping', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), [
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.mappings.store', $ledger), [
             'name' => 'Maybank Format',
             'mapping' => [
                 'date' => 'Transaction Date',
@@ -47,7 +29,7 @@ test('save mapping creates a new import mapping', function () {
             ],
         ]);
 
-    $response->assertCreated();
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
     expect($ledger->importMappings()->count())->toBe(1);
 
     $mapping = $ledger->importMappings()->first();
@@ -65,10 +47,11 @@ test('save mapping validates required fields', function () {
 
     $response = $this
         ->actingAs($user)
-        ->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), []);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.mappings.store', $ledger), []);
 
-    $response->assertUnprocessable();
-    $response->assertJsonValidationErrors(['name', 'mapping']);
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHasErrors(['name', 'mapping']);
 });
 
 test('destroy mapping deletes the mapping', function () {
@@ -78,9 +61,10 @@ test('destroy mapping deletes the mapping', function () {
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.import.mappings.destroy', [$ledger, $mapping]));
+        ->from(route('ledgers.import.create', $ledger))
+        ->delete(route('ledgers.import.mappings.destroy', [$ledger, $mapping]));
 
-    $response->assertNoContent();
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
     expect(ImportMapping::query()->find($mapping->id))->toBeNull();
 });
 
@@ -92,7 +76,8 @@ test('destroy mapping returns 404 for mapping from another ledger', function () 
 
     $response = $this
         ->actingAs($user)
-        ->deleteJson(route('api.v1.ledgers.import.mappings.destroy', [$ledger, $mapping]));
+        ->from(route('ledgers.import.create', $ledger))
+        ->delete(route('ledgers.import.mappings.destroy', [$ledger, $mapping]));
 
     $response->assertNotFound();
 });
@@ -100,13 +85,10 @@ test('destroy mapping returns 404 for mapping from another ledger', function () 
 test('unauthenticated users cannot access mapping endpoints', function () {
     $ledger = Ledger::factory()->create();
 
-    $this->getJson(route('api.v1.ledgers.import.mappings', $ledger))
-        ->assertUnauthorized();
-
-    $this->postJson(route('api.v1.ledgers.import.mappings.store', $ledger), [
+    $this->post(route('ledgers.import.mappings.store', $ledger), [
         'name' => 'Test',
         'mapping' => ['date' => 'date'],
-    ])->assertUnauthorized();
+    ])->assertRedirect(route('login'));
 });
 
 // ─── Bank Detection ─────────────────────────────────────────────────
@@ -122,10 +104,11 @@ test('parse detects Maybank CSV format and returns suggested mapping', function 
 
     $response = $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertOk();
-    $data = $response->json();
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+    $data = session('importParseResult');
 
     expect($data)->toHaveKey('detected_bank');
     expect($data['detected_bank'])->toBe('Maybank');
@@ -146,10 +129,11 @@ test('parse detects CIMB CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertOk();
-    expect($response->json('detected_bank'))->toBe('CIMB');
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+    expect(session('importParseResult.detected_bank'))->toBe('CIMB');
 });
 
 test('parse detects RHB CSV format', function () {
@@ -163,10 +147,11 @@ test('parse detects RHB CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertOk();
-    expect($response->json('detected_bank'))->toBe('RHB');
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+    expect(session('importParseResult.detected_bank'))->toBe('RHB');
 });
 
 test('parse detects Public Bank CSV format', function () {
@@ -180,10 +165,11 @@ test('parse detects Public Bank CSV format', function () {
 
     $response = $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertOk();
-    expect($response->json('detected_bank'))->toBe('Public Bank');
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+    expect(session('importParseResult.detected_bank'))->toBe('Public Bank');
 });
 
 test('parse does not return detected_bank for unrecognized formats', function () {
@@ -197,11 +183,12 @@ test('parse does not return detected_bank for unrecognized formats', function ()
 
     $response = $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.parse', $ledger), ['file' => $file]);
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
 
-    $response->assertOk();
-    expect($response->json())->not->toHaveKey('detected_bank');
-    expect($response->json())->not->toHaveKey('suggested_mapping');
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+    expect(session('importParseResult'))->not->toHaveKey('detected_bank');
+    expect(session('importParseResult'))->not->toHaveKey('suggested_mapping');
 });
 
 // ─── Import History ─────────────────────────────────────────────────
@@ -220,7 +207,7 @@ test('store creates import record after successful import', function () {
 
     $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.execute', $ledger), [
+        ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -268,7 +255,7 @@ test('import record tracks skipped duplicates correctly', function () {
 
     $this
         ->actingAs($user)
-        ->post(route('api.v1.ledgers.import.execute', $ledger), [
+        ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
             'mapping' => [
@@ -293,7 +280,64 @@ test('create page renders successfully', function () {
         ->get(route('ledgers.import.create', $ledger));
 
     $response->assertOk();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/import/index')
+        ->where('currentLedger.id', $ledger->id)
+        ->missing('accounts')
+        ->missing('savedMappings')
+        ->missing('importHistory')
     );
+});
+
+test('save mapping can be created through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.mappings.store', $ledger), [
+            'name' => 'Maybank Format',
+            'mapping' => [
+                'date' => 'Transaction Date',
+                'amount' => 'Debit',
+                'description' => 'Description',
+            ],
+        ]);
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHasNoErrors();
+
+    expect($ledger->importMappings()->where('name', 'Maybank Format')->exists())->toBeTrue();
+});
+
+test('save mapping validates through web routes with form request messages', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.mappings.store', $ledger), []);
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHasErrors([
+            'name' => 'Please provide a name for this mapping.',
+            'mapping' => 'Please provide the mapping configuration.',
+        ]);
+});
+
+test('saved mapping can be deleted through web routes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $mapping = ImportMapping::factory()->for($ledger)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->delete(route('ledgers.import.mappings.destroy', [$ledger, $mapping]));
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger));
+
+    expect(ImportMapping::query()->find($mapping->id))->toBeNull();
 });

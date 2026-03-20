@@ -16,7 +16,6 @@ A private, self-hosted personal finance tracker. Manage multiple ledgers, track 
 - **Activity Audit Trail** — Full change history with before/after diffs
 - **CSV Import** — Bank statement import with guided steps, reusable column mappings
 - **Full Data Export** — Export entire ledgers to JSON or transactions to CSV
-- **REST API** — Token-based API with Sanctum for external integrations
 - **Two-Factor Authentication** — TOTP-based 2FA with recovery codes
 - **Password Reset While Logged In** — Send reset link from security settings
 - **Timezone Support** — Configurable per-user timezone with `APP_TIMEZONE` env default
@@ -33,7 +32,7 @@ A private, self-hosted personal finance tracker. Manage multiple ledgers, track 
 | Laravel           | 12      | Application framework                         |
 | Inertia.js        | 2       | Server-side adapter (SPA bridge)              |
 | Laravel Fortify   | 1       | Headless authentication                       |
-| Laravel Sanctum   | 4       | API token authentication                      |
+| Laravel Sanctum   | 4       | Authentication foundation for Laravel features |
 | Laravel Wayfinder | 0.1     | TypeScript route generation                   |
 | DomPDF            | 3.1     | PDF report generation                         |
 | SQLite            | —       | Default database (MySQL/PostgreSQL supported) |
@@ -203,7 +202,6 @@ app/
 ├── Enums/            # PHP enums
 ├── Http/
 │   ├── Controllers/
-│   │   ├── Api/V1/   # REST API controllers
 │   │   ├── Ledger/   # Ledger feature controllers
 │   │   └── Settings/ # User settings controllers
 │   ├── Middleware/    # HTTP middleware
@@ -234,7 +232,7 @@ resources/
 
 routes/
 ├── web.php           # Web routes
-├── api.php           # API routes (v1)
+├── api.php           # Reserved API route file
 ├── ledger.php        # Ledger feature routes
 ├── settings.php      # Settings routes
 └── console.php       # Artisan commands
@@ -262,34 +260,6 @@ CACHE_STORE=redis
 SESSION_DRIVER=redis
 QUEUE_CONNECTION=redis
 ```
-
-## API
-
-The REST API is available at `/api/v1/` and uses Laravel Sanctum for token authentication.
-
-### Authentication
-
-```bash
-# Create a token via the app UI under Settings > Security > API Tokens
-# Use the token in requests:
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-     -H "Accept: application/json" \
-     http://localhost/api/v1/ledgers
-```
-
-### Available Endpoints
-
-API resources are nested under ledgers:
-
-- `GET /api/v1/ledgers` — List ledgers
-- `GET /api/v1/ledgers/{ledger}/transactions` — List transactions
-- `GET /api/v1/ledgers/{ledger}/accounts` — List accounts
-- `GET /api/v1/ledgers/{ledger}/categories` — List categories
-- `GET /api/v1/ledgers/{ledger}/bills` — List bills
-- `GET /api/v1/ledgers/{ledger}/budgets` — List budgets
-- `GET /api/v1/ledgers/{ledger}/tags` — List tags
-
-Rate limiting is enabled at 60 requests per minute.
 
 ## License
 

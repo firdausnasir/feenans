@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\UpdatePayeeRequest;
 use App\Models\Ledger;
 use App\Models\Payee;
 use Illuminate\Http\RedirectResponse;
@@ -34,28 +35,20 @@ class PayeeController extends Controller
         ]);
     }
 
-    public function store(Request $request, Ledger $ledger): RedirectResponse
+    public function store(UpdatePayeeRequest $request, Ledger $ledger): RedirectResponse
     {
         $this->authorize('view', $ledger);
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]);
-
-        $ledger->payees()->create($validated);
+        $ledger->payees()->create($request->validated());
 
         return back()->with('success', 'Payee added.');
     }
 
-    public function update(Request $request, Ledger $ledger, Payee $payee): RedirectResponse
+    public function update(UpdatePayeeRequest $request, Ledger $ledger, Payee $payee): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]);
-
-        $payee->update($validated);
+        $payee->update($request->validated());
 
         return back()->with('success', 'Payee updated.');
     }

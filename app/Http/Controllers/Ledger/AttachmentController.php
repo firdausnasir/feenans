@@ -3,35 +3,29 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreAttachmentRequest;
+use App\Http\Resources\AttachmentResource;
 use App\Models\Attachment;
 use App\Models\Ledger;
 use App\Models\Transaction;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
 {
-    public function store(Request $request, Ledger $ledger, Transaction $transaction): JsonResponse
+    public function store(StoreAttachmentRequest $request, Ledger $ledger, Transaction $transaction): RedirectResponse
     {
         $this->authorize('view', $ledger);
 
-        // Support both single 'file' and multiple 'attachments[]' uploads
-        if ($request->hasFile('file') && ! $request->hasFile('attachments')) {
-            $request->merge(['attachments' => [$request->file('file')]]);
-        }
-
-        $validated = $request->validate([
-            'attachments' => ['required', 'array', 'max:10'],
-            'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,gif,webp'],
-        ]);
+        $validated = $request->validated();
 
         $uploaded = [];
+        $disk = (string) config('app.attachment_disk', 'local');
 
         foreach ($validated['attachments'] as $file) {
-            $path = $file->store("attachments/{$ledger->id}");
+            $path = $file->store("attachments/{$ledger->id}", $disk);
 
             $uploaded[] = $transaction->attachments()->create([
                 'filename' => $file->getClientOriginalName(),
@@ -41,9 +35,10 @@ class AttachmentController extends Controller
             ])->load('transaction');
         }
 
-        return response()->json([
-            'attachments' => $uploaded,
-        ], Response::HTTP_CREATED);
+        return redirect()
+            ->to($this->redirectUrl($request, $ledger, $transaction))
+            ->with('success', count($uploaded) === 1 ? 'Attachment uploaded.' : 'Attachments uploaded.')
+            ->with('attachment_uploads', AttachmentResource::collection(collect($uploaded))->resolve());
     }
 
     public function show(Request $request, Ledger $ledger, Transaction $transaction, Attachment $attachment): StreamedResponse
@@ -55,13 +50,23 @@ class AttachmentController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, Ledger $ledger, Transaction $transaction, Attachment $attachment): Response
+    public function destroy(Request $request, Ledger $ledger, Transaction $transaction, Attachment $attachment): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        Storage::delete($attachment->path);
+        $disk = (string) config('app.attachment_disk', 'local');
+
+        Storage::disk($disk)->delete($attachment->path);
         $attachment->delete();
 
-        return response()->noContent();
+        return redirect()
+            ->to($this->redirectUrl($request, $ledger, $transaction))
+            ->with('success', 'Attachment deleted.')
+            ->with('deleted_attachment_id', $attachment->id);
+    }
+
+    private function redirectUrl(Request $request, Ledger $ledger, Transaction $transaction): string
+    {
+        return $request->headers->get('referer') ?: route('ledgers.transactions.edit', [$ledger, $transaction]);
     }
 }

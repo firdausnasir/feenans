@@ -1,7 +1,13 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Plus, Tag } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    destroy as destroyCategory,
+    reorder as reorderCategories,
+    store as storeCategory,
+    update as updateCategory,
+} from '@/actions/App/Http/Controllers/Ledger/CategoryController';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,9 +31,8 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useApiQuery } from '@/hooks/use-api-query';
 import AppLayout from '@/layouts/app-layout';
-import { api, ApiError } from '@/lib/api-client';
+import { mapInertiaErrorsArray } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as categoriesIndex } from '@/routes/ledgers/categories';
 import type { BreadcrumbItem, Category } from '@/types';
@@ -371,15 +376,13 @@ function AddSubcategoryForm({
 function DeleteCategoryDialog({
     deleteTarget,
     allCategories,
-    base,
+    ledgerId,
     onClose,
-    onSuccess,
 }: {
     deleteTarget: DeleteTarget | null;
     allCategories: Category[];
-    base: string;
+    ledgerId: number;
     onClose: () => void;
-    onSuccess: () => void;
 }) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteAction, setDeleteAction] =
@@ -411,31 +414,38 @@ function DeleteCategoryDialog({
                 : null;
 
         try {
-            await api.delete(
-                `${base}/categories/${deleteTarget.category.id}`,
+            router.delete(
+                destroyCategory.url({
+                    ledger: ledgerId,
+                    category: deleteTarget.category.id,
+                }),
                 {
-                    body: { reassign_category_id: reassignValue },
+                    data: { reassign_category_id: reassignValue },
+                    only: ['categories', 'flash'],
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setDeleteAction('uncategorize');
+                        setReassignCategoryId('');
+                        onClose();
+                        toast.success('Category deleted');
+                    },
+                    onError: (errors) => {
+                        const mapped = mapInertiaErrorsArray(errors);
+                        toast.error(
+                            mapped.category?.[0] ??
+                                mapped.reassign_category_id?.[0] ??
+                                'Cannot delete this category.',
+                        );
+                    },
+                    onFinish: () => {
+                        setIsDeleting(false);
+                    },
                 },
             );
+        } catch {
             setIsDeleting(false);
-            setDeleteAction('uncategorize');
-            setReassignCategoryId('');
-            onClose();
-            toast.success('Category deleted');
-            onSuccess();
-        } catch (err) {
-            setIsDeleting(false);
-
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.category?.[0] ??
-                    errors.reassign_category_id?.[0] ??
-                    'Cannot delete this category.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to delete category.');
-            }
+            toast.error('Failed to delete category.');
         }
     }
 
@@ -583,7 +593,7 @@ function DeleteCategoryDialog({
 // ── Category list for one tab ────────────────────────────────────────────────
 
 function CategoryList({
-    base,
+    ledgerId,
     categories,
     transactionType,
     editState,
@@ -593,9 +603,8 @@ function CategoryList({
     onDeleteRequest,
     onAddCategory,
     openAddFormTrigger,
-    refetch,
 }: {
-    base: string;
+    ledgerId: number;
     categories: Category[];
     transactionType: 'expense' | 'income';
     editState: EditState | null;
@@ -611,7 +620,6 @@ function CategoryList({
         transactionType?: 'expense' | 'income',
     ) => void;
     openAddFormTrigger?: number;
-    refetch: () => void;
 }) {
     const [showAddForm, setShowAddForm] = useState(false);
     const dragOverIdRef = useRef<number | null>(null);
@@ -664,33 +672,39 @@ function CategoryList({
         }
 
         try {
-            await api.patch(
-                `${base}/categories/${editState.categoryId}`,
+            router.patch(
+                updateCategory.url({
+                    ledger: ledgerId,
+                    category: editState.categoryId,
+                }),
                 {
-                    body: {
-                        name: editState.name,
-                        color: editState.color || null,
-                        icon: editState.icon || null,
-                        parent_id: editState.parentId,
+                    name: editState.name,
+                    color: editState.color || null,
+                    icon: editState.icon || null,
+                    parent_id: editState.parentId,
+                },
+                {
+                    only: ['categories', 'flash'],
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setEditState(null);
+                        toast.success('Category updated');
+                    },
+                    onError: (errors) => {
+                        const mapped = mapInertiaErrorsArray(errors);
+                        toast.error(
+                            mapped.name?.[0] ??
+                                mapped.color?.[0] ??
+                                mapped.icon?.[0] ??
+                                mapped.parent_id?.[0] ??
+                                'Failed to update category.',
+                        );
                     },
                 },
             );
-            setEditState(null);
-            toast.success('Category updated');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.name?.[0] ??
-                    errors.color?.[0] ??
-                    errors.icon?.[0] ??
-                    errors.parent_id?.[0] ??
-                    'Failed to update category.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to update category.');
-            }
+        } catch {
+            toast.error('Failed to update category.');
         }
     }
 
@@ -749,10 +763,18 @@ function CategoryList({
         const items = reordered.map((c, i) => ({ id: c.id, position: i + 1 }));
 
         try {
-            await api.post(`${base}/categories/reorder`, {
-                body: { items },
-            });
-            refetch();
+            router.post(
+                reorderCategories.url(ledgerId),
+                { items },
+                {
+                    only: ['categories', 'flash'],
+                    preserveState: true,
+                    preserveScroll: true,
+                    onError: () => {
+                        toast.error('Failed to reorder categories.');
+                    },
+                },
+            );
         } catch {
             toast.error('Failed to reorder categories.');
         }
@@ -1022,19 +1044,12 @@ function CategoryList({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function CategoriesIndex() {
-    const { currentLedger } = usePage().props;
+    const { currentLedger, categories: deferredCategories } = usePage<{
+        currentLedger: { id: number; name: string };
+        categories?: Category[];
+    }>().props;
     const ledger = currentLedger!;
-    const base = `/api/v1/ledgers/${ledger.id}`;
-
-    const {
-        data: categoriesResult,
-        loading,
-        refetch,
-    } = useApiQuery<{ data: Category[] }>(`${base}/categories`, {
-        params: { with_counts: true },
-    });
-
-    const categories = categoriesResult?.data ?? [];
+    const categories = deferredCategories ?? [];
 
     const [editState, setEditState] = useState<EditState | null>(null);
     const [addSubState, setAddSubState] = useState<AddSubState | null>(null);
@@ -1055,28 +1070,34 @@ export default function CategoriesIndex() {
         transactionType?: 'expense' | 'income',
     ) {
         try {
-            await api.post(`${base}/categories`, {
-                body: {
+            router.post(
+                storeCategory.url(ledger.id),
+                {
                     name,
                     color: color || null,
                     icon: icon || null,
                     parent_id: parentId ?? null,
                     transaction_type: transactionType,
                 },
-            });
-            toast.success('Category created');
-            refetch();
-        } catch (err) {
-            if (err instanceof ApiError && err.isValidationError) {
-                const errors = err.validationErrors;
-                const msg =
-                    errors.name?.[0] ??
-                    errors.transaction_type?.[0] ??
-                    'Failed to create category.';
-                toast.error(msg);
-            } else {
-                toast.error('Failed to create category.');
-            }
+                {
+                    only: ['categories', 'flash'],
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success('Category created');
+                    },
+                    onError: (errors) => {
+                        const mapped = mapInertiaErrorsArray(errors);
+                        toast.error(
+                            mapped.name?.[0] ??
+                                mapped.transaction_type?.[0] ??
+                                'Failed to create category.',
+                        );
+                    },
+                },
+            );
+        } catch {
+            toast.error('Failed to create category.');
         }
     }
 
@@ -1104,9 +1125,7 @@ export default function CategoriesIndex() {
                     </Button>
                 </div>
 
-                {loading ? (
-                    <CategoriesLoadingSkeleton />
-                ) : (
+                <Deferred data="categories" fallback={<CategoriesLoadingSkeleton />}>
                     <Tabs
                         defaultValue="expense"
                         onValueChange={(v) => {
@@ -1121,7 +1140,7 @@ export default function CategoriesIndex() {
 
                         <TabsContent value="expense" className="mt-4">
                             <CategoryList
-                                base={base}
+                                ledgerId={ledger.id}
                                 categories={categories}
                                 transactionType="expense"
                                 editState={editState}
@@ -1137,13 +1156,12 @@ export default function CategoriesIndex() {
                                         ? addFormTrigger
                                         : undefined
                                 }
-                                refetch={refetch}
                             />
                         </TabsContent>
 
                         <TabsContent value="income" className="mt-4">
                             <CategoryList
-                                base={base}
+                                ledgerId={ledger.id}
                                 categories={categories}
                                 transactionType="income"
                                 editState={editState}
@@ -1159,20 +1177,18 @@ export default function CategoriesIndex() {
                                         ? addFormTrigger
                                         : undefined
                                 }
-                                refetch={refetch}
                             />
                         </TabsContent>
                     </Tabs>
-                )}
+                </Deferred>
             </div>
 
             {/* Delete confirmation dialog */}
             <DeleteCategoryDialog
                 deleteTarget={deleteTarget}
                 allCategories={categories}
-                base={base}
+                ledgerId={ledger.id}
                 onClose={() => setDeleteTarget(null)}
-                onSuccess={refetch}
             />
         </AppLayout>
     );
