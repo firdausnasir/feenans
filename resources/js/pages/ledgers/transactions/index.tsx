@@ -1421,8 +1421,11 @@ export default function TransactionsIndex() {
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
     const [attachmentModalTransaction, setAttachmentModalTransaction] =
         useState<Transaction | null>(null);
-    const { attachments: modalAttachments, loading: loadingAttachments } =
-        useAttachments(ledger.id, attachmentModalTransaction);
+    const {
+        attachments: modalAttachments,
+        loading: loadingAttachments,
+        deleteAttachment,
+    } = useAttachments(ledger.id, attachmentModalTransaction);
 
     // Filter panel open/closed
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -2635,15 +2638,31 @@ export default function TransactionsIndex() {
                                             KB
                                         </p>
                                     </div>
-                                    <Button variant="ghost" size="sm" asChild>
-                                        <a
-                                            href={attachment.url}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            asChild
                                         >
-                                            View
-                                        </a>
-                                    </Button>
+                                            <a
+                                                href={attachment.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                View
+                                            </a>
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive"
+                                            onClick={() =>
+                                                deleteAttachment(attachment.id)
+                                            }
+                                        >
+                                            Delete
+                                        </Button>
+                                    </div>
                                 </div>
                             ))
                         )}

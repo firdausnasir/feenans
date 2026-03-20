@@ -68,7 +68,11 @@ class AttachmentController extends Controller
 
         $disk = (string) config('app.attachment_disk', 'local');
 
-        Storage::disk($disk)->delete($attachment->path);
+        try {
+            Storage::disk($disk)->delete($attachment->path);
+        } catch (\Exception $e) {
+            // Ignore file not found errors - file may already be deleted
+        }
         $attachment->delete();
 
         return redirect()

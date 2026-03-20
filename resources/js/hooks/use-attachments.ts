@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { router } from '@inertiajs/react';
+import { useCallback, useEffect, useState } from 'react';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type { Attachment, Transaction } from '@/types';
 
@@ -44,5 +45,31 @@ export function useAttachments(
         };
     }, [ledgerId, transaction]);
 
-    return { attachments, loading };
+    const deleteAttachment = useCallback(
+        (attachmentId: number) => {
+            if (!transaction) {
+                return;
+            }
+
+            router.delete(
+                attachmentRoutes.destroy.url({
+                    ledger: ledgerId,
+                    transaction: transaction.id,
+                    attachment: attachmentId,
+                }),
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setAttachments((current) =>
+                            current.filter((a) => a.id !== attachmentId),
+                        );
+                    },
+                },
+            );
+        },
+        [ledgerId, transaction],
+    );
+
+    return { attachments, loading, deleteAttachment };
 }
