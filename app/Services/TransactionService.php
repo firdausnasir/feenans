@@ -74,6 +74,7 @@ class TransactionService
                 'notes' => $attributes['notes'] ?? null,
                 'transaction_date' => $attributes['transaction_date'],
                 'transfer_pair_id' => $attributes['transfer_pair_id'] ?? null,
+                'bill_id' => $attributes['bill_id'] ?? null,
             ]);
 
             $this->syncSplits($transaction, $this->normalizeSplits($transactionType, $attributes['splits'] ?? null));
@@ -106,6 +107,7 @@ class TransactionService
                 'notes' => $attributes['notes'] ?? null,
                 'transaction_date' => $attributes['transaction_date'],
                 'transfer_pair_id' => $pairId,
+                'bill_id' => $attributes['bill_id'] ?? null,
             ]);
 
             $incoming = $this->store([
@@ -117,6 +119,7 @@ class TransactionService
                 'notes' => $attributes['notes'] ?? null,
                 'transaction_date' => $attributes['transaction_date'],
                 'transfer_pair_id' => $pairId,
+                'bill_id' => $attributes['bill_id'] ?? null,
             ]);
 
             return [$outgoing, $incoming];

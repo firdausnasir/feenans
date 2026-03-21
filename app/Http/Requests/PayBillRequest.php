@@ -30,6 +30,7 @@ class PayBillRequest extends FormRequest
         return [
             'amount' => ['nullable', 'numeric', 'min:0.01'],
             'account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('ledger_id', $ledger->id)],
+            'to_account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('ledger_id', $ledger->id), 'different:account_id'],
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('ledger_id', $ledger->id)],
             'payee_id' => ['nullable', 'integer', Rule::exists('payees', 'id')->where('ledger_id', $ledger->id)],
             'date' => ['nullable', 'date'],
@@ -43,6 +44,7 @@ class PayBillRequest extends FormRequest
     {
         return [
             'amount.min' => 'The amount must be at least 0.01.',
+            'to_account_id.different' => 'The destination account must be different from the source account.',
         ];
     }
 
@@ -53,6 +55,7 @@ class PayBillRequest extends FormRequest
     {
         return [
             'account_id' => 'account',
+            'to_account_id' => 'destination account',
             'category_id' => 'category',
             'payee_id' => 'payee',
         ];

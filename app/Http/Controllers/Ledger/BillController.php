@@ -29,7 +29,7 @@ class BillController extends Controller
             'payees' => fn () => $ledger->payees()->orderBy('name')->get(),
             'bills' => Inertia::defer(function () use ($ledger) {
                 $bills = $ledger->bills()
-                    ->with(['account', 'category', 'payee', 'transactions' => fn ($q) => $q->with('account')->latest('transaction_date')->limit(5)])
+                    ->with(['account', 'toAccount', 'category', 'payee', 'transactions' => fn ($q) => $q->with('account')->latest('transaction_date')->limit(5)])
                     ->oldest('next_due_date')
                     ->get();
 
@@ -58,7 +58,7 @@ class BillController extends Controller
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/bills/edit', [
-            'bill' => new BillResource($bill->load(['account', 'category', 'payee'])),
+            'bill' => new BillResource($bill->load(['account', 'toAccount', 'category', 'payee'])),
             'accounts' => fn () => $ledger->accounts()->visible()->orderBy('name')->get(['id', 'ledger_id', 'name', 'color']),
             'categories' => fn () => $ledger->categories()->orderBy('position')->get(),
             'payees' => fn () => $ledger->payees()->orderBy('name')->get(),

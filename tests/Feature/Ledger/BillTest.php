@@ -269,6 +269,45 @@ test('bill store creates a bill via HTTP', function () {
     expect($ledger->bills()->where('name', 'Electricity')->exists())->toBeTrue();
 });
 
+test('bill store creates a recurring transfer via HTTP', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Transfer to savings',
+            'transaction_type' => 'transfer',
+            'amount' => 120.00,
+            'account_id' => $fromAccount->id,
+            'to_account_id' => $toAccount->id,
+            'category_id' => null,
+            'payee_id' => null,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'recurrence_day' => null,
+            'next_due_date' => '2026-04-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'end_date' => null,
+            'end_after_occurrences' => null,
+        ]);
+
+    $response->assertRedirect(route('ledgers.bills.index', $ledger))
+        ->assertSessionHas('success', 'Recurring transaction created.');
+
+    $bill = $ledger->bills()->where('name', 'Transfer to savings')->first();
+
+    expect($bill)->not->toBeNull()
+        ->and($bill->transaction_type->value)->toBe('transfer')
+        ->and($bill->account_id)->toBe($fromAccount->id)
+        ->and($bill->to_account_id)->toBe($toAccount->id);
+});
+
 test('bill store rejects cross ledger related ids', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -359,6 +398,44 @@ test('bill pay uses edited amount override when creating transaction', function 
 
     expect($transaction)->not->toBeNull()
         ->and((string) $transaction->amount)->toBe('-72.35');
+});
+
+test('bill pay creates paired transactions for a transfer bill', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $bill = Bill::factory()->for($ledger)->for($fromAccount)->create([
+        'name' => 'Transfer to savings',
+        'transaction_type' => 'transfer',
+        'to_account_id' => $toAccount->id,
+        'amount' => 50.00,
+        'recurrence_type' => RecurrenceType::Monthly,
+        'recurrence_interval' => 1,
+        'next_due_date' => CarbonImmutable::today(),
+        'is_active' => true,
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->post(route('ledgers.bills.pay', [$ledger, $bill]));
+
+    $response->assertRedirect();
+
+    $transactions = $ledger->transactions()
+        ->where('bill_id', $bill->id)
+        ->orderBy('amount')
+        ->get();
+
+    expect($transactions)->toHaveCount(2)
+        ->and((string) $transactions[0]->amount)->toBe('-50.00')
+        ->and((string) $transactions[1]->amount)->toBe('50.00')
+        ->and($transactions[0]->account_id)->toBe($fromAccount->id)
+        ->and($transactions[1]->account_id)->toBe($toAccount->id)
+        ->and($transactions[0]->transfer_pair_id)->toBe($transactions[1]->transfer_pair_id);
 });
 
 test('bill toggle toggles the is_active flag', function () {

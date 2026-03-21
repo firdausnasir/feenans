@@ -112,10 +112,11 @@ export type Bill = {
     id: number;
     ledger_id: number;
     account_id: number;
+    to_account_id: number | null;
     category_id: number | null;
     payee_id: number | null;
     name: string;
-    transaction_type: 'expense' | 'income';
+    transaction_type: 'expense' | 'income' | 'transfer';
     amount: number;
     recurrence_type: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
     recurrence_interval: number;
@@ -129,6 +130,7 @@ export type Bill = {
     is_active: boolean;
     // relationships (optional, may be loaded)
     account?: Account;
+    to_account?: Account | null;
     category?: Category | null;
     payee?: Payee | null;
     transactions?: Transaction[];

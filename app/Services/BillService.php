@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\TransactionType;
+use App\Models\Account;
 use App\Models\Bill;
 use App\Models\Ledger;
 use App\Models\Transaction;
@@ -12,10 +13,13 @@ use Illuminate\Support\Facades\DB;
 
 class BillService
 {
+    public function __construct(private readonly TransactionService $transactionService) {}
+
     public function store(Ledger $ledger, array $data): Bill
     {
         return $ledger->bills()->create([
             'account_id' => $data['account_id'],
+            'to_account_id' => $data['to_account_id'] ?? null,
             'category_id' => $data['category_id'] ?? null,
             'payee_id' => $data['payee_id'] ?? null,
             'name' => $data['name'],
@@ -36,6 +40,7 @@ class BillService
     {
         $bill->update([
             'account_id' => $data['account_id'] ?? $bill->account_id,
+            'to_account_id' => array_key_exists('to_account_id', $data) ? $data['to_account_id'] : $bill->to_account_id,
             'category_id' => array_key_exists('category_id', $data) ? $data['category_id'] : $bill->category_id,
             'payee_id' => array_key_exists('payee_id', $data) ? $data['payee_id'] : $bill->payee_id,
             'name' => $data['name'] ?? $bill->name,
@@ -58,6 +63,38 @@ class BillService
     {
         return DB::transaction(function () use ($bill, $overrides): Transaction {
             $type = $bill->transaction_type;
+
+            if ($type === TransactionType::Transfer) {
+                $toAccountId = $overrides['to_account_id'] ?? $bill->to_account_id;
+
+                /** @var Account $fromAccount */
+                $fromAccount = Account::query()->findOrFail($overrides['account_id'] ?? $bill->account_id);
+
+                /** @var Account $toAccount */
+                $toAccount = Account::query()->findOrFail($toAccountId);
+
+                [$outgoing] = $this->transactionService->storeTransfer($bill->ledger, [
+                    'from_account' => $fromAccount,
+                    'to_account' => $toAccount,
+                    'amount' => $overrides['amount'] ?? $bill->amount,
+                    'description' => $overrides['description'] ?? $bill->name,
+                    'notes' => null,
+                    'transaction_date' => $overrides['date'] ?? CarbonImmutable::today(),
+                    'bill_id' => $bill->id,
+                ]);
+
+                $this->advanceToNextDue($bill);
+
+                $bill->increment('occurrences_count');
+                $bill->refresh();
+
+                if ($bill->hasReachedEnd()) {
+                    $bill->update(['is_active' => false]);
+                }
+
+                return $outgoing;
+            }
+
             $rawAmount = abs((float) ($overrides['amount'] ?? $bill->amount));
             $amount = $type === TransactionType::Income ? $rawAmount : -$rawAmount;
 
@@ -130,7 +167,7 @@ class BillService
                 $missed = $this->computeMissedCycles($bill);
                 $cycles = max(1, $missed);
 
-                $dueDate = $bill->next_due_date;
+                $dueDate = CarbonImmutable::parse($bill->next_due_date->toDateString());
 
                 for ($i = 0; $i < $cycles; $i++) {
                     $this->payBill($bill, ['date' => $dueDate]);

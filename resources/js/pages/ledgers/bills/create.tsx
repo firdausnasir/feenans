@@ -37,6 +37,7 @@ type FormData = {
     transaction_type: string;
     amount: string;
     account_id: string;
+    to_account_id: string;
     category_id: string;
     payee_id: string;
     recurrence_type: RecurrenceType;
@@ -66,6 +67,7 @@ export default function CreateBill() {
         transaction_type: 'expense',
         amount: '',
         account_id: accounts.length > 0 ? String(accounts[0].id) : '',
+        to_account_id: accounts.length > 1 ? String(accounts[1].id) : '',
         category_id: '',
         payee_id: '',
         recurrence_type: 'monthly',
@@ -117,8 +119,15 @@ export default function CreateBill() {
             transaction_type: data.transaction_type,
             amount: data.amount,
             account_id: data.account_id,
-            category_id: data.category_id || null,
-            payee_id: data.payee_id || null,
+            to_account_id: data.to_account_id || null,
+            category_id:
+                data.transaction_type === 'transfer'
+                    ? null
+                    : data.category_id || null,
+            payee_id:
+                data.transaction_type === 'transfer'
+                    ? null
+                    : data.payee_id || null,
             recurrence_type: data.recurrence_type,
             recurrence_interval: data.recurrence_interval,
             recurrence_day: data.recurrence_day || null,
@@ -176,9 +185,32 @@ export default function CreateBill() {
                         <Label>Type</Label>
                         <Select
                             value={data.transaction_type}
-                            onValueChange={(value) =>
-                                setData('transaction_type', value)
-                            }
+                            onValueChange={(value) => {
+                                setData('transaction_type', value);
+
+                                if (value === 'transfer') {
+                                    setData('category_id', '');
+                                    setData('payee_id', '');
+
+                                    if (
+                                        !data.to_account_id &&
+                                        accounts.length > 1
+                                    ) {
+                                        const fallbackAccount = accounts.find(
+                                            (account) =>
+                                                String(account.id) !==
+                                                data.account_id,
+                                        );
+
+                                        if (fallbackAccount) {
+                                            setData(
+                                                'to_account_id',
+                                                String(fallbackAccount.id),
+                                            );
+                                        }
+                                    }
+                                }
+                            }}
                         >
                             <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Select type" />
@@ -186,6 +218,9 @@ export default function CreateBill() {
                             <SelectContent>
                                 <SelectItem value="expense">Expense</SelectItem>
                                 <SelectItem value="income">Income</SelectItem>
+                                <SelectItem value="transfer">
+                                    Transfer
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                         <InputError message={errors.transaction_type} />
@@ -227,50 +262,80 @@ export default function CreateBill() {
                         <InputError message={errors.account_id} />
                     </div>
 
-                    {/* Category — grouped by parent */}
-                    <div className="grid gap-2">
-                        <Label>
-                            Category{' '}
-                            <span className="text-muted-foreground">
-                                (optional)
-                            </span>
-                        </Label>
-                        <SearchableSelect
-                            options={buildCategoryOptions(categories)}
-                            value={data.category_id || null}
-                            onValueChange={(value) =>
-                                setData('category_id', value ?? '')
-                            }
-                            placeholder="No category"
-                            searchPlaceholder="Search categories..."
-                            allOption="No category"
-                        />
-                        <InputError message={errors.category_id} />
-                    </div>
+                    {data.transaction_type === 'transfer' && (
+                        <div className="grid gap-2">
+                            <Label>Destination account</Label>
+                            <SearchableSelect
+                                options={accounts
+                                    .filter(
+                                        (account) =>
+                                            String(account.id) !==
+                                            data.account_id,
+                                    )
+                                    .map((account) => ({
+                                        value: String(account.id),
+                                        label: account.name,
+                                        color: account.color,
+                                    }))}
+                                value={data.to_account_id || null}
+                                onValueChange={(value) =>
+                                    setData('to_account_id', value ?? '')
+                                }
+                                placeholder="Select destination account"
+                                searchPlaceholder="Search accounts..."
+                            />
+                            <InputError message={errors.to_account_id} />
+                        </div>
+                    )}
 
-                    {/* Payee */}
-                    <div className="grid gap-2">
-                        <Label>
-                            Payee{' '}
-                            <span className="text-muted-foreground">
-                                (optional)
-                            </span>
-                        </Label>
-                        <SearchableSelect
-                            options={payees.map((payee) => ({
-                                value: String(payee.id),
-                                label: payee.name,
-                            }))}
-                            value={data.payee_id || null}
-                            onValueChange={(value) =>
-                                setData('payee_id', value ?? '')
-                            }
-                            placeholder="No payee"
-                            searchPlaceholder="Search payees..."
-                            allOption="No payee"
-                        />
-                        <InputError message={errors.payee_id} />
-                    </div>
+                    {data.transaction_type !== 'transfer' && (
+                        <>
+                            {/* Category — grouped by parent */}
+                            <div className="grid gap-2">
+                                <Label>
+                                    Category{' '}
+                                    <span className="text-muted-foreground">
+                                        (optional)
+                                    </span>
+                                </Label>
+                                <SearchableSelect
+                                    options={buildCategoryOptions(categories)}
+                                    value={data.category_id || null}
+                                    onValueChange={(value) =>
+                                        setData('category_id', value ?? '')
+                                    }
+                                    placeholder="No category"
+                                    searchPlaceholder="Search categories..."
+                                    allOption="No category"
+                                />
+                                <InputError message={errors.category_id} />
+                            </div>
+
+                            {/* Payee */}
+                            <div className="grid gap-2">
+                                <Label>
+                                    Payee{' '}
+                                    <span className="text-muted-foreground">
+                                        (optional)
+                                    </span>
+                                </Label>
+                                <SearchableSelect
+                                    options={payees.map((payee) => ({
+                                        value: String(payee.id),
+                                        label: payee.name,
+                                    }))}
+                                    value={data.payee_id || null}
+                                    onValueChange={(value) =>
+                                        setData('payee_id', value ?? '')
+                                    }
+                                    placeholder="No payee"
+                                    searchPlaceholder="Search payees..."
+                                    allOption="No payee"
+                                />
+                                <InputError message={errors.payee_id} />
+                            </div>
+                        </>
+                    )}
 
                     {/* Recurrence */}
                     <div className="grid gap-4 sm:grid-cols-2">

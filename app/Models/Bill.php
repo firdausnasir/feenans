@@ -31,6 +31,7 @@ class Bill extends Model
     protected $fillable = [
         'ledger_id',
         'account_id',
+        'to_account_id',
         'category_id',
         'payee_id',
         'name',
@@ -76,6 +77,11 @@ class Bill extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
+    }
+
+    public function toAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'to_account_id');
     }
 
     public function category(): BelongsTo

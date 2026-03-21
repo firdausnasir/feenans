@@ -41,11 +41,12 @@ class StoreBillRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'min:2', 'max:255'],
-            'transaction_type' => ['required', 'string', Rule::in([TransactionType::Expense->value, TransactionType::Income->value])],
+            'transaction_type' => ['required', 'string', Rule::in([TransactionType::Expense->value, TransactionType::Income->value, TransactionType::Transfer->value])],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'account_id' => ['required', 'integer', $accountRule],
-            'category_id' => ['nullable', 'integer', $categoryRule],
-            'payee_id' => ['nullable', 'integer', $payeeRule],
+            'to_account_id' => ['nullable', 'integer', $accountRule, 'different:account_id', Rule::requiredIf($this->input('transaction_type') === TransactionType::Transfer->value)],
+            'category_id' => ['nullable', 'integer', $categoryRule, Rule::prohibitedIf($this->input('transaction_type') === TransactionType::Transfer->value)],
+            'payee_id' => ['nullable', 'integer', $payeeRule, Rule::prohibitedIf($this->input('transaction_type') === TransactionType::Transfer->value)],
             'recurrence_type' => ['required', 'string', Rule::in(array_column(RecurrenceType::cases(), 'value'))],
             'recurrence_interval' => ['required', 'integer', 'min:1'],
             'recurrence_day' => ['nullable', 'integer', 'min:1', 'max:31'],
@@ -64,6 +65,8 @@ class StoreBillRequest extends FormRequest
     {
         return [
             'account_id.required' => 'Please select an account.',
+            'to_account_id.required' => 'Please select a destination account for this transfer.',
+            'to_account_id.different' => 'The destination account must be different from the source account.',
             'transaction_type.required' => 'Please select a transaction type.',
             'amount.required' => 'Please enter an amount.',
             'amount.min' => 'The amount must be at least 0.01.',
@@ -84,6 +87,7 @@ class StoreBillRequest extends FormRequest
     {
         return [
             'account_id' => 'account',
+            'to_account_id' => 'destination account',
             'category_id' => 'category',
             'payee_id' => 'payee',
             'transaction_type' => 'transaction type',

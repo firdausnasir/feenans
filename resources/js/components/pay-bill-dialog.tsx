@@ -1,6 +1,8 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { pay as payRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -39,6 +41,7 @@ export function PayBillDialog({
 }: PayBillDialogProps) {
     const [amount, setAmount] = useState('');
     const [accountId, setAccountId] = useState('');
+    const [toAccountId, setToAccountId] = useState('');
     const [paymentDate, setPaymentDate] = useState('');
     const [processing, setProcessing] = useState(false);
     const [prevBill, setPrevBill] = useState(bill);
@@ -47,6 +50,7 @@ export function PayBillDialog({
         setPrevBill(bill);
         setAmount(String(bill.amount));
         setAccountId(String(bill.account_id));
+        setToAccountId(bill.to_account_id ? String(bill.to_account_id) : '');
         setPaymentDate(new Date().toISOString().slice(0, 10));
         setProcessing(false);
     }
@@ -58,8 +62,13 @@ export function PayBillDialog({
     }
 
     const isIncome = bill?.transaction_type === 'income';
+    const isTransfer = bill?.transaction_type === 'transfer';
     const actionLabel = isIncome ? 'Record Income' : 'Record Payment';
+    const actionLabelText = isTransfer ? 'Record Transfer' : actionLabel;
     const successLabel = isIncome ? 'recorded' : 'paid';
+    const availableToAccounts = accounts.filter(
+        (account) => String(account.id) !== accountId,
+    );
 
     function handlePay() {
         if (!bill) {
@@ -79,13 +88,21 @@ export function PayBillDialog({
         }
 
         if (
+            isTransfer &&
+            toAccountId &&
+            toAccountId !== String(bill.to_account_id)
+        ) {
+            body.to_account_id = toAccountId;
+        }
+
+        if (
             paymentDate &&
             paymentDate !== new Date().toISOString().slice(0, 10)
         ) {
             body.date = paymentDate;
         }
 
-        router.post(`/ledgers/${ledgerId}/bills/${bill.id}/pay`, body, {
+        router.post(payRoute.url({ ledger: ledgerId, bill: bill.id }), body, {
             preserveScroll: true,
             onSuccess: () => {
                 toast.success(`${bill.name} ${successLabel}`);
@@ -148,6 +165,25 @@ export function PayBillDialog({
                         </Select>
                     </div>
 
+                    {isTransfer && (
+                        <div className="grid gap-2">
+                            <Label>Destination account</Label>
+                            <SearchableSelect
+                                options={availableToAccounts.map((account) => ({
+                                    value: String(account.id),
+                                    label: account.name,
+                                    color: account.color,
+                                }))}
+                                value={toAccountId || null}
+                                onValueChange={(value) =>
+                                    setToAccountId(value ?? '')
+                                }
+                                placeholder="Select destination account"
+                                searchPlaceholder="Search accounts..."
+                            />
+                        </div>
+                    )}
+
                     <div className="grid gap-2">
                         <Label htmlFor="pay-date">Payment date</Label>
                         <DatePicker
@@ -164,7 +200,7 @@ export function PayBillDialog({
                         Cancel
                     </Button>
                     <Button onClick={handlePay} disabled={processing}>
-                        {processing ? 'Processing...' : actionLabel}
+                        {processing ? 'Processing...' : actionLabelText}
                     </Button>
                 </DialogFooter>
             </DialogContent>

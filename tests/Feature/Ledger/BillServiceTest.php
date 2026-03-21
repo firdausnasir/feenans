@@ -44,6 +44,35 @@ test('bill service can store a bill', function () {
         ->and((string) $bill->amount)->toBe('1200.00');
 });
 
+test('bill service can store a transfer bill', function () {
+    [$ledger, $fromAccount] = makeLedgerWithAccount();
+    $toAccount = Account::factory()->for($ledger)->create();
+
+    $bill = app(BillService::class)->store($ledger, [
+        'name' => 'Savings transfer',
+        'transaction_type' => 'transfer',
+        'amount' => 250.00,
+        'account_id' => $fromAccount->id,
+        'to_account_id' => $toAccount->id,
+        'category_id' => null,
+        'payee_id' => null,
+        'recurrence_type' => RecurrenceType::Monthly,
+        'recurrence_interval' => 1,
+        'recurrence_day' => null,
+        'next_due_date' => '2026-04-01',
+        'auto_create' => false,
+        'end_type' => null,
+        'end_date' => null,
+        'end_after_occurrences' => null,
+    ]);
+
+    expect($bill)->toBeInstanceOf(Bill::class)
+        ->and($bill->transaction_type->value)->toBe('transfer')
+        ->and($bill->account_id)->toBe($fromAccount->id)
+        ->and($bill->to_account_id)->toBe($toAccount->id)
+        ->and((string) $bill->amount)->toBe('250.00');
+});
+
 test('bill service can update a bill', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
@@ -77,6 +106,35 @@ test('bill service pay bill creates transaction', function () {
         ->and($transaction->account_id)->toBe($account->id)
         ->and($transaction->description)->toBe('Electricity')
         ->and($transaction->transaction_date->toDateString())->toBe(CarbonImmutable::today()->toDateString());
+});
+
+test('bill service pay transfer bill creates paired transactions', function () {
+    [$ledger, $fromAccount] = makeLedgerWithAccount();
+    $toAccount = Account::factory()->for($ledger)->create();
+
+    $bill = Bill::factory()->for($ledger)->for($fromAccount)->create([
+        'transaction_type' => 'transfer',
+        'to_account_id' => $toAccount->id,
+        'amount' => 150.00,
+        'name' => 'Savings transfer',
+        'next_due_date' => CarbonImmutable::today(),
+    ]);
+
+    $transaction = app(BillService::class)->payBill($bill);
+
+    $transactions = Transaction::query()
+        ->where('bill_id', $bill->id)
+        ->orderBy('amount')
+        ->get();
+
+    expect($transaction)->toBeInstanceOf(Transaction::class)
+        ->and($transactions)->toHaveCount(2)
+        ->and((string) $transactions[0]->amount)->toBe('-150.00')
+        ->and((string) $transactions[1]->amount)->toBe('150.00')
+        ->and($transactions[0]->account_id)->toBe($fromAccount->id)
+        ->and($transactions[1]->account_id)->toBe($toAccount->id)
+        ->and($transactions[0]->transfer_pair_id)->not->toBeNull()
+        ->and($transactions[0]->transfer_pair_id)->toBe($transactions[1]->transfer_pair_id);
 });
 
 test('bill service pay bill advances next due date', function () {
@@ -172,6 +230,32 @@ test('bill service process auto bills creates transactions for due bills', funct
     app(BillService::class)->processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(1);
+});
+
+test('bill service process auto bills creates paired transactions for due transfer bills', function () {
+    [$ledger, $fromAccount] = makeLedgerWithAccount();
+    $toAccount = Account::factory()->for($ledger)->create();
+
+    $bill = Bill::factory()->for($ledger)->for($fromAccount)->create([
+        'transaction_type' => 'transfer',
+        'to_account_id' => $toAccount->id,
+        'auto_create' => true,
+        'next_due_date' => CarbonImmutable::today(),
+        'recurrence_type' => RecurrenceType::Monthly,
+        'recurrence_interval' => 1,
+        'amount' => 75.00,
+    ]);
+
+    app(BillService::class)->processAutoBills();
+
+    $transactions = Transaction::query()
+        ->where('bill_id', $bill->id)
+        ->orderBy('amount')
+        ->get();
+
+    expect($transactions)->toHaveCount(2)
+        ->and((string) $transactions[0]->amount)->toBe('-75.00')
+        ->and((string) $transactions[1]->amount)->toBe('75.00');
 });
 
 test('bill service process auto bills handles multiple missed cycles', function () {
