@@ -62,6 +62,7 @@ test('hidden scope returns only hidden accounts', function () {
 
 test('bill create form renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     Account::factory()->for($ledger)->create(['name' => 'Visible']);

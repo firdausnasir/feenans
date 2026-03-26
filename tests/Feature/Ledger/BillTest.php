@@ -220,6 +220,7 @@ test('bill nextDueDateAfter handles recurrence_day greater than target month len
 
 test('bill index renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -239,6 +240,7 @@ test('bill index renders successfully', function () {
 
 test('bill store creates a bill via HTTP', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -271,6 +273,7 @@ test('bill store creates a bill via HTTP', function () {
 
 test('bill store creates a recurring transfer via HTTP', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
@@ -310,6 +313,7 @@ test('bill store creates a recurring transfer via HTTP', function () {
 
 test('bill store rejects cross ledger related ids', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     Account::factory()->for($ledger)->for($accountType)->create();
@@ -345,6 +349,7 @@ test('bill store rejects cross ledger related ids', function () {
 
 test('bill pay creates a transaction and advances next due date', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -372,6 +377,7 @@ test('bill pay creates a transaction and advances next due date', function () {
 
 test('bill pay uses edited amount override when creating transaction', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -402,6 +408,7 @@ test('bill pay uses edited amount override when creating transaction', function 
 
 test('bill pay creates paired transactions for a transfer bill', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
@@ -440,6 +447,7 @@ test('bill pay creates paired transactions for a transfer bill', function () {
 
 test('bill toggle toggles the is_active flag', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();

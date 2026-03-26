@@ -6,6 +6,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('report page renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
 
     $response = $this
@@ -19,6 +20,7 @@ test('report page renders successfully', function () {
 
 test('financial health report page renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     $response = $this
@@ -32,6 +34,7 @@ test('financial health report page renders successfully', function () {
 
 test('budget performance report page renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     $response = $this
@@ -45,6 +48,7 @@ test('budget performance report page renders successfully', function () {
 
 test('cash flow report page renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     $response = $this
@@ -59,6 +63,7 @@ test('cash flow report page renders successfully', function () {
 test('another user cannot view reports', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
+    $other->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
 
     $this->actingAs($other)

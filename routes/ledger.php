@@ -29,11 +29,46 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     // Dashboard
     Route::get('ledgers/{ledger}', DashboardController::class)->name('ledgers.dashboard');
 
-    // Budgets
-    Route::get('ledgers/{ledger}/budgets', [BudgetController::class, 'index'])->name('ledgers.budgets.index');
-    Route::post('ledgers/{ledger}/budgets', [BudgetController::class, 'store'])->name('ledgers.budgets.store');
-    Route::put('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'update'])->name('ledgers.budgets.update');
-    Route::delete('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'destroy'])->name('ledgers.budgets.destroy');
+    // Premium-gated features
+    Route::middleware('premium')->group(function () {
+        // Budgets
+        Route::get('ledgers/{ledger}/budgets', [BudgetController::class, 'index'])->name('ledgers.budgets.index');
+        Route::post('ledgers/{ledger}/budgets', [BudgetController::class, 'store'])->name('ledgers.budgets.store');
+        Route::put('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'update'])->name('ledgers.budgets.update');
+        Route::delete('ledgers/{ledger}/budgets/{budget}', [BudgetController::class, 'destroy'])->name('ledgers.budgets.destroy');
+
+        // Bills
+        Route::get('ledgers/{ledger}/bills', [BillController::class, 'index'])
+            ->name('ledgers.bills.index');
+        Route::get('ledgers/{ledger}/bills/create', [BillController::class, 'create'])
+            ->name('ledgers.bills.create');
+        Route::get('ledgers/{ledger}/bills/{bill}/edit', [BillController::class, 'edit'])
+            ->name('ledgers.bills.edit');
+
+        Route::post('ledgers/{ledger}/bills', [BillController::class, 'store'])
+            ->name('ledgers.bills.store');
+        Route::put('ledgers/{ledger}/bills/{bill}', [BillController::class, 'update'])
+            ->name('ledgers.bills.update');
+        Route::delete('ledgers/{ledger}/bills/{bill}', [BillController::class, 'destroy'])
+            ->name('ledgers.bills.destroy');
+        Route::patch('ledgers/{ledger}/bills/{bill}/toggle', [BillController::class, 'toggle'])
+            ->name('ledgers.bills.toggle');
+
+        Route::post('ledgers/{ledger}/bills/{bill}/pay', [BillController::class, 'pay'])
+            ->name('ledgers.bills.pay');
+
+        // Reports
+        Route::get('ledgers/{ledger}/reports', [ReportController::class, 'index'])
+            ->name('ledgers.reports.index');
+        Route::get('ledgers/{ledger}/reports/financial-health', [ReportController::class, 'financialHealth'])
+            ->name('ledgers.reports.financial-health');
+        Route::get('ledgers/{ledger}/reports/budget-performance', [ReportController::class, 'budgetPerformance'])
+            ->name('ledgers.reports.budget-performance');
+        Route::get('ledgers/{ledger}/reports/cash-flow', [ReportController::class, 'cashFlow'])
+            ->name('ledgers.reports.cash-flow');
+        Route::get('ledgers/{ledger}/reports/export-pdf', [ReportController::class, 'exportPdf'])
+            ->name('ledgers.reports.export-pdf');
+    });
 
     // Import
     Route::get('ledgers/{ledger}/import', [ImportController::class, 'create'])->name('ledgers.import.create');
@@ -98,26 +133,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::post('ledgers/{ledger}/categories/reorder', [CategoryController::class, 'reorder'])
         ->name('ledgers.categories.reorder');
 
-    // Bills
-    Route::get('ledgers/{ledger}/bills', [BillController::class, 'index'])
-        ->name('ledgers.bills.index');
-    Route::get('ledgers/{ledger}/bills/create', [BillController::class, 'create'])
-        ->name('ledgers.bills.create');
-    Route::get('ledgers/{ledger}/bills/{bill}/edit', [BillController::class, 'edit'])
-        ->name('ledgers.bills.edit');
-
-    Route::post('ledgers/{ledger}/bills', [BillController::class, 'store'])
-        ->name('ledgers.bills.store');
-    Route::put('ledgers/{ledger}/bills/{bill}', [BillController::class, 'update'])
-        ->name('ledgers.bills.update');
-    Route::delete('ledgers/{ledger}/bills/{bill}', [BillController::class, 'destroy'])
-        ->name('ledgers.bills.destroy');
-    Route::patch('ledgers/{ledger}/bills/{bill}/toggle', [BillController::class, 'toggle'])
-        ->name('ledgers.bills.toggle');
-
-    Route::post('ledgers/{ledger}/bills/{bill}/pay', [BillController::class, 'pay'])
-        ->name('ledgers.bills.pay');
-
     // Payees
     Route::get('ledgers/{ledger}/payees', [PayeeController::class, 'index'])
         ->name('ledgers.payees.index');
@@ -134,17 +149,7 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::patch('ledgers/{ledger}/tags/{tag}', [TagController::class, 'update'])->name('ledgers.tags.update');
     Route::delete('ledgers/{ledger}/tags/{tag}', [TagController::class, 'destroy'])->name('ledgers.tags.destroy');
 
-    // Reports
-    Route::get('ledgers/{ledger}/reports', [ReportController::class, 'index'])
-        ->name('ledgers.reports.index');
-    Route::get('ledgers/{ledger}/reports/financial-health', [ReportController::class, 'financialHealth'])
-        ->name('ledgers.reports.financial-health');
-    Route::get('ledgers/{ledger}/reports/budget-performance', [ReportController::class, 'budgetPerformance'])
-        ->name('ledgers.reports.budget-performance');
-    Route::get('ledgers/{ledger}/reports/cash-flow', [ReportController::class, 'cashFlow'])
-        ->name('ledgers.reports.cash-flow');
-    Route::get('ledgers/{ledger}/reports/export-pdf', [ReportController::class, 'exportPdf'])
-        ->name('ledgers.reports.export-pdf');
+    // Activity
     Route::get('ledgers/{ledger}/activity', [ActivityLogController::class, 'index'])
         ->name('ledgers.activity.index');
 

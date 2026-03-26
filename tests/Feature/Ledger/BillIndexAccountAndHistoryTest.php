@@ -11,6 +11,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('bill index renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Main Checking']);
@@ -29,6 +30,7 @@ test('bill index renders successfully', function () {
 
 test('bill index deferred bills include account data as a plain array', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $sourceAccount = Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Main Checking']);
@@ -61,6 +63,7 @@ test('bill index deferred bills include account data as a plain array', function
 
 test('bill pay sets bill_id on the created transaction', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();

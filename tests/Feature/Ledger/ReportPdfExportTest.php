@@ -10,6 +10,7 @@ use App\Models\User;
 
 test('pdf export returns a PDF download for a given month', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -38,6 +39,7 @@ test('pdf export returns a PDF download for a given month', function () {
 
 test('pdf export defaults to current month when no month is specified', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     $response = $this
@@ -50,6 +52,7 @@ test('pdf export defaults to current month when no month is specified', function
 
 test('pdf export includes category breakdown data', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -82,6 +85,7 @@ test('pdf export includes category breakdown data', function () {
 test('another user cannot export pdf reports', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
+    $other->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
 
     $this->actingAs($other)

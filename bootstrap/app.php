@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureHasWorkspace;
 use App\Http\Middleware\EnsureOnboardingComplete;
+use App\Http\Middleware\EnsurePremium;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => EnsureAdmin::class,
+            'premium' => EnsurePremium::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

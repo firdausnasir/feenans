@@ -56,3 +56,71 @@ test('shared props include membership data for premium user', function () {
             ->where('auth.user.membership.is_premium', true)
         );
 });
+
+test('free user is redirected from reports to premium page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger))
+        ->assertRedirect(route('premium'));
+});
+
+test('premium user can access reports', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger))
+        ->assertSuccessful();
+});
+
+test('free user is redirected from bills to premium page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.bills.index', $ledger))
+        ->assertRedirect(route('premium'));
+});
+
+test('premium user can access bills', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.bills.index', $ledger))
+        ->assertSuccessful();
+});
+
+test('free user is redirected from budgets to premium page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.budgets.index', $ledger))
+        ->assertRedirect(route('premium'));
+});
+
+test('premium user can access budgets', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.budgets.index', $ledger))
+        ->assertSuccessful();
+});
+
+test('premium page renders for authenticated user', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('premium'))
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page
+            ->component('premium/index')
+        );
+});

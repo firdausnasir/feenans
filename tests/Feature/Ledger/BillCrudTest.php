@@ -9,6 +9,7 @@ use App\Models\User;
 
 test('bill update via HTTP updates the bill', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -50,6 +51,7 @@ test('bill update via HTTP updates the bill', function () {
 
 test('bill destroy deletes bill via HTTP', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -68,6 +70,7 @@ test('bill destroy deletes bill via HTTP', function () {
 
 test('bill create page renders', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
 
     $response = $this
@@ -82,6 +85,7 @@ test('bill create page renders', function () {
 
 test('bill edit page renders', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -101,6 +105,7 @@ test('bill edit page renders', function () {
 test('bill store is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();
+    $intruder->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -122,6 +127,7 @@ test('bill store is forbidden for another users ledger', function () {
 test('bill update is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();
+    $intruder->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();

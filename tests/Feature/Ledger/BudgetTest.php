@@ -12,6 +12,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('budget index page renders successfully', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create(['name' => 'Food']);
 
@@ -50,6 +51,7 @@ test('budget index page renders successfully', function () {
 
 test('budget can be created through web routes', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create();
 
@@ -72,6 +74,7 @@ test('budget can be created through web routes', function () {
 
 test('budget can be updated through web routes', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create();
 
@@ -107,6 +110,7 @@ test('budget can be updated through web routes', function () {
 
 test('budget can be deleted through web routes', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create();
 
@@ -132,6 +136,7 @@ test('budget can be deleted through web routes', function () {
 
 test('budget store rejects categories from another ledger', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $foreignLedger = Ledger::factory()->create();
     $foreignCategory = Category::factory()->for($foreignLedger)->create();
@@ -156,6 +161,7 @@ test('budget store rejects categories from another ledger', function () {
 test('budget update is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();
+    $intruder->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
     $category = Category::factory()->for($ledger)->create();
 
@@ -185,6 +191,7 @@ test('budget update is forbidden for another users ledger', function () {
 test('budget destroy is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();
+    $intruder->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($owner)->create();
     $category = Category::factory()->for($ledger)->create();
 

@@ -6,6 +6,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 test('report page renders with comparison query params', function () {
     $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
 
     $response = $this

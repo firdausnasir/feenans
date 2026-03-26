@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\PremiumPageController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
@@ -21,6 +22,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('onboarding/step/{step}', [OnboardingController::class, 'saveStep'])->name('onboarding.step')->where('step', '[12]');
     Route::post('onboarding/autosave', [OnboardingController::class, 'autosave'])->name('onboarding.autosave');
     Route::post('onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
+
+    Route::get('premium', PremiumPageController::class)->name('premium');
 });
 
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->group(function () {
