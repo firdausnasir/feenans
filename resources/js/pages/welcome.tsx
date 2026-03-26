@@ -1,26 +1,23 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
+    ArrowLeftRight,
     ArrowRight,
-    BarChart3,
+    BarChart2,
     Bell,
     CreditCard,
     Download,
-    Eye,
-    EyeOff,
-    FileText,
     FolderOpen,
-    KeyRound,
-    Layers,
+    History,
+    Key,
     Lock,
-    PiggyBank,
-    Receipt,
     RefreshCw,
     Shield,
     ShieldCheck,
     Tag,
-    Trash2,
+    Target,
+    TrendingUp,
     Upload,
-    UserX,
+    Users,
 } from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
@@ -35,76 +32,76 @@ type Feature = {
 
 const coreFeatures: readonly Feature[] = [
     {
-        icon: Layers,
+        icon: FolderOpen,
         title: 'Multiple Ledgers',
         description:
-            'Organize your finances into separate workspaces — personal, household, side projects. Each ledger is completely independent.',
+            'Keep personal, household, and business finances completely separate. Each ledger has its own accounts, categories, budgets, and reports — with its own currency and billing cycle.',
     },
     {
         icon: CreditCard,
         title: 'Multi-Account Tracking',
         description:
-            'Manage checking, savings, credit cards, and cash accounts in one place. Track balances, visibility, and custom account types.',
+            'Track checking, savings, credit cards, investments, and cash in one place. Color-coded accounts with real-time balances. Exclude accounts from net worth if needed.',
     },
     {
-        icon: Receipt,
+        icon: ArrowLeftRight,
         title: 'Smart Transactions',
         description:
-            'Log income, expenses, and transfers. Split transactions across categories, attach receipts, and bulk-edit with ease.',
+            'Log income, expenses, and transfers with full metadata: payee, category, tags, notes, and file attachments. Split transactions across multiple categories. Bulk-edit hundreds of entries in one action.',
     },
     {
         icon: RefreshCw,
         title: 'Recurring Bills',
         description:
-            'Automate bill tracking with flexible schedules — daily, weekly, monthly, or custom. Get reminders before due dates.',
+            'Track every recurring payment — rent, subscriptions, loans. Daily, weekly, monthly, or fully custom schedules. Auto-creates transactions on the due date and flags missed payments on your dashboard.',
     },
     {
-        icon: PiggyBank,
+        icon: Target,
         title: 'Budget Tracking',
         description:
-            'Set category budgets with custom periods. Track progress, enable rollovers, and get alerts when you approach limits.',
+            'Set spending limits per category with rollover support. Visual progress bars turn yellow, orange, then red as you approach your limit. Threshold alerts fire the moment you get close.',
     },
     {
-        icon: BarChart3,
-        title: 'Visual Reports',
+        icon: BarChart2,
+        title: 'Four Powerful Reports',
         description:
-            'Understand your spending with clear charts and breakdowns. Filter by date, category, or account. Export to PDF.',
+            'Income and expense trends, period-over-period comparison, a year-long spending heatmap, and a financial health dashboard with savings rate and debt-to-asset ratio. Export any report as a PDF.',
+    },
+    {
+        icon: TrendingUp,
+        title: 'Cash Flow Forecast',
+        description:
+            'See your daily cash flow and overlay upcoming bills to forecast your balance before money leaves your account. Know what is coming, not just what has happened.',
+    },
+    {
+        icon: Users,
+        title: 'Payee Management',
+        description:
+            'A searchable directory of every payee in your ledger. See how much you have spent with each one. Filter your entire transaction history to any payee in one click.',
     },
     {
         icon: Tag,
-        title: 'Tags & Categories',
+        title: 'Tags and Categories',
         description:
-            'Organize with hierarchical categories and color-coded tags. Create the structure that makes sense for your life.',
-    },
-    {
-        icon: Bell,
-        title: 'Smart Notifications',
-        description:
-            'Bill reminders, overdue alerts, and budget warnings — all delivered automatically so nothing slips through.',
+            'Two-level category hierarchy with custom icons and colors. Attach multiple tags to any transaction for cross-cutting labels like tax-deductible or reimbursable — without changing the category.',
     },
     {
         icon: Upload,
         title: 'CSV Import',
         description:
-            'Import transactions from your bank with reusable column mappings. No manual data entry required.',
+            'Import transactions from any bank. Maybank, CIMB, RHB, and Public Bank formats are auto-detected. Map columns once, save the mapping, and reuse it every time.',
     },
     {
-        icon: Download,
-        title: 'Full Data Export',
+        icon: Bell,
+        title: 'Smart Notifications',
         description:
-            'Export your entire ledger to JSON or transactions to CSV at any time. Your data is always portable.',
+            'Automatic reminders for bills due today and overdue payments. Budget alerts the moment spending crosses your threshold. All surfaced on your dashboard, nothing buried in settings.',
     },
     {
-        icon: FileText,
+        icon: History,
         title: 'Activity Audit Trail',
         description:
-            'Every change is logged — who changed what, when, and the before/after values. Full transparency into your data.',
-    },
-    {
-        icon: FolderOpen,
-        title: 'CSV Import Workflows',
-        description:
-            'Bring bank exports into your ledgers with guided CSV imports, reusable mappings, and review before save.',
+            'Every change to your data is logged with a full before-and-after diff. See exactly what changed, when, and confirm nothing was altered without your knowledge.',
     },
 ] as const;
 
@@ -116,28 +113,28 @@ type PrivacyItem = {
 
 const privacyItems: readonly PrivacyItem[] = [
     {
-        icon: UserX,
-        title: 'No Admin Surveillance',
+        icon: ShieldCheck,
+        title: 'No Admin Dashboard',
         description:
-            'There is no admin panel. No one — not even the system operator — can browse, view, or access your financial data.',
+            'There is no interface for anyone at Feenans to view your financial data. Not a read-only view. Not an analytics panel. Nothing. Your ledger is invisible to us by design.',
     },
     {
-        icon: EyeOff,
+        icon: Lock,
         title: 'Complete Data Isolation',
         description:
-            'Your ledgers, transactions, and accounts are invisible to other users. Every query is scoped to your account only.',
+            "Every database query is scoped to your account through policy-based authorization. Your data never appears in another user's query results — not even by accident.",
     },
     {
-        icon: Trash2,
+        icon: Shield,
         title: 'Full Deletion Rights',
         description:
-            'Delete your account and all associated data at any time. Soft-deleted items are yours to restore or permanently remove.',
+            'Delete your account from settings at any time. Your data is gone — permanently. No soft deletes, no retention period, no "we may keep anonymized data" clause.',
     },
     {
         icon: Download,
         title: 'Data Portability',
         description:
-            'Export everything — accounts, transactions, categories, budgets, bills, tags — in a single JSON file. No lock-in, ever.',
+            'Export your entire ledger as a structured JSON file or download filtered transaction CSVs at any time. Your financial history belongs to you, not us.',
     },
 ] as const;
 
@@ -149,28 +146,61 @@ type SecurityItem = {
 
 const securityItems: readonly SecurityItem[] = [
     {
-        icon: KeyRound,
+        icon: Key,
         title: 'Two-Factor Authentication',
         description:
-            'Protect your account with TOTP-based 2FA. Recovery codes ensure you never lose access.',
+            'Protect your account with TOTP-based 2FA (Google Authenticator, Authy, or any authenticator app). Backup recovery codes included. Password confirmation required before any change to 2FA settings.',
     },
     {
         icon: Lock,
         title: 'Session-Based Protection',
         description:
-            'Authentication, password confirmation, and signed flows protect sensitive actions throughout the app.',
+            'Authentication is managed server-side using secure sessions. Sensitive actions require password confirmation, not just an active session.',
     },
     {
         icon: Shield,
-        title: 'Policy-Based Authorization',
-        description:
-            'Every action is checked against authorization policies. You can only access data you own.',
-    },
-    {
-        icon: Eye,
         title: 'Email Verification',
         description:
-            'Account verification ensures only real users access the platform. Password confirmation guards sensitive operations.',
+            'Every new account must verify their email address before accessing ledger data. No way to access your finances from an unverified address.',
+    },
+    {
+        icon: Upload,
+        title: 'Secure File Handling',
+        description:
+            'Transaction attachments (receipts, invoices) are served through the application — never via public URLs. Your documents are not accessible without authentication.',
+    },
+] as const;
+
+type TrustBannerItem = {
+    readonly icon: ComponentType<SVGAttributes<SVGElement>>;
+    readonly title: string;
+    readonly description: string;
+};
+
+const trustBannerItems: readonly TrustBannerItem[] = [
+    {
+        icon: ShieldCheck,
+        title: 'No admin panel',
+        description:
+            'Your data is yours alone. No one at Feenans can browse your transactions.',
+    },
+    {
+        icon: Lock,
+        title: 'End-to-end data isolation',
+        description:
+            "Every query is scoped to your account — your data never mingles with anyone else's.",
+    },
+    {
+        icon: Download,
+        title: 'Export anytime',
+        description:
+            'Take your data with you. Full JSON export and CSV downloads, any time.',
+    },
+    {
+        icon: Key,
+        title: 'Two-factor security',
+        description:
+            'Protect your account with TOTP-based two-factor authentication.',
     },
 ] as const;
 
@@ -245,7 +275,7 @@ export default function Welcome({
                                     {canRegister && (
                                         <Button asChild>
                                             <Link href={register.url()}>
-                                                Start Tracking for Free
+                                                Get started free
                                             </Link>
                                         </Button>
                                     )}
@@ -259,21 +289,19 @@ export default function Welcome({
                 <section className="flex flex-col items-center justify-center px-4 py-20 text-center sm:px-6 sm:py-32">
                     <div className="mb-6 inline-flex items-center gap-2 rounded-full border bg-muted/50 px-4 py-1.5 text-sm text-muted-foreground">
                         <ShieldCheck className="size-4" />
-                        <span>
-                            Private by design. No admin access to your data.
-                        </span>
+                        <span>Privacy-first personal finance</span>
                     </div>
                     <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-                        Your finances. Your control.{' '}
+                        Your finances. Your rules.{' '}
                         <span className="text-muted-foreground">
-                            No one watching.
+                            Nobody watching.
                         </span>
                     </h1>
                     <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-                        A powerful, private personal finance tracker with no
-                        admin dashboard, no data snooping, and no compromises.
-                        Track spending, manage budgets, and stay on top of bills
-                        — all on your terms.
+                        Feenans gives you complete control over your money —
+                        track spending, plan budgets, and understand your
+                        financial health. No ads, no data mining, no admin
+                        looking over your shoulder.
                     </p>
                     <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
                         {auth.user ? (
@@ -288,14 +316,14 @@ export default function Welcome({
                                 {canRegister && (
                                     <Button asChild size="lg">
                                         <Link href={register.url()}>
-                                            Start Tracking for Free
+                                            Get started free
                                             <ArrowRight className="ml-2 size-4" />
                                         </Link>
                                     </Button>
                                 )}
                                 <Button asChild variant="outline" size="lg">
                                     <Link href={login.url()}>
-                                        Already have an account? Log in
+                                        See how it works
                                     </Link>
                                 </Button>
                             </>
@@ -305,23 +333,23 @@ export default function Welcome({
 
                 {/* Trust Banner */}
                 <section className="border-y bg-muted/30 px-4 py-6 sm:px-6">
-                    <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                            <ShieldCheck className="size-4 text-primary" />
-                            <span>Two-factor authentication</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <UserX className="size-4 text-primary" />
-                            <span>No admin panel</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Lock className="size-4 text-primary" />
-                            <span>Encrypted sessions</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Download className="size-4 text-primary" />
-                            <span>Full data export</span>
-                        </div>
+                    <div className="mx-auto grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {trustBannerItems.map((item) => (
+                            <div
+                                key={item.title}
+                                className="flex items-start gap-3"
+                            >
+                                <item.icon className="mt-0.5 size-4 shrink-0 text-primary" />
+                                <div>
+                                    <p className="text-sm font-medium text-foreground">
+                                        {item.title}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {item.description}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </section>
 
@@ -408,15 +436,14 @@ export default function Welcome({
                                 <p className="mt-4 leading-relaxed text-muted-foreground">
                                     Every layer of Feenans is designed with
                                     security in mind. Two-factor authentication,
-                                    encrypted sessions, CSRF protection, rate
-                                    limiting, and scoped API tokens are all
-                                    built in — not bolted on.
+                                    encrypted sessions, CSRF protection, and
+                                    rate limiting on authentication endpoints
+                                    are all built in — not bolted on.
                                 </p>
                                 <p className="mt-4 leading-relaxed text-muted-foreground">
                                     Authorization policies enforce strict data
-                                    boundaries. API tokens are scoped to
-                                    individual ledgers with rate limits.
-                                    Sensitive actions require password
+                                    boundaries so you can only ever access data
+                                    you own. Sensitive actions require password
                                     confirmation. Your financial data deserves
                                     this level of protection.
                                 </p>
@@ -429,12 +456,12 @@ export default function Welcome({
                 <section className="border-t bg-muted/30 px-4 py-20 sm:px-6 sm:py-28">
                     <div className="mx-auto max-w-2xl text-center">
                         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                            Take control of your finances today
+                            Take control of your finances — privately.
                         </h2>
                         <p className="mt-4 text-lg text-muted-foreground">
-                            No credit card required. No data sold. No admin
-                            watching. Just a simple, secure way to manage your
-                            money.
+                            No ads. No data mining. No admin watching. Just a
+                            clean, powerful finance tracker built for people who
+                            value their privacy.
                         </p>
                         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                             {auth.user ? (
@@ -449,7 +476,7 @@ export default function Welcome({
                                     {canRegister && (
                                         <Button asChild size="lg">
                                             <Link href={register.url()}>
-                                                Start Tracking for Free
+                                                Create your free account
                                                 <ArrowRight className="ml-2 size-4" />
                                             </Link>
                                         </Button>
@@ -460,6 +487,9 @@ export default function Welcome({
                                 </>
                             )}
                         </div>
+                        <p className="mt-4 text-sm text-muted-foreground">
+                            No credit card required.
+                        </p>
                     </div>
                 </section>
 
