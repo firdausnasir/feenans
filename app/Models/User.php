@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -41,6 +42,17 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    protected static function booted(): void
+    {
+        static::created(function (User $user): void {
+            $user->membership()->create([
+                'tier' => 'free',
+                'status' => 'active',
+                'started_at' => now(),
+            ]);
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -53,11 +65,17 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'onboarding_data' => 'array',
+            'is_admin' => 'boolean',
         ];
     }
 
     public function ledgers(): HasMany
     {
         return $this->hasMany(Ledger::class);
+    }
+
+    public function membership(): HasOne
+    {
+        return $this->hasOne(UserMembership::class);
     }
 }

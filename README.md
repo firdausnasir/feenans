@@ -20,7 +20,7 @@ A private, self-hosted personal finance tracker. Manage multiple ledgers, track 
 - **Password Reset While Logged In** — Send reset link from security settings
 - **Timezone Support** — Configurable per-user timezone with `APP_TIMEZONE` env default
 - **Color-Coded Accounts** — Custom colors for account identification
-- **No Admin Panel** — Zero backdoor access to user financial data
+- **No Admin Access to User Data** — Operators can manage memberships and view service metrics, but cannot access ledgers, transactions, or budgets
 
 ## Tech Stack
 

@@ -4,7 +4,6 @@ use App\Models\DailyPageAnalytics;
 use App\Models\Ledger;
 use App\Models\MembershipChangeLog;
 use App\Models\User;
-use App\Models\UserMembership;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;

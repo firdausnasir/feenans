@@ -21,6 +21,7 @@ class EnsureOnboardingComplete
             $user !== null
             && $user->onboarding_step !== null
             && ! $request->is('onboarding*')
+            && ! $request->is('admin*')
             && ! $request->is('logout')
             && ! $request->expectsJson()
         ) {
