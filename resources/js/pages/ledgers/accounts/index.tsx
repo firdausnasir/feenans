@@ -870,6 +870,13 @@ export default function AccountsIndex() {
     const allAccounts = accountGroups.flatMap((g) => g.accounts);
     const canCreateAccount = isPremiumUser || allAccounts.length < 7;
 
+    const premiumBadge = !canCreateAccount && (
+        <Badge variant="secondary" className="gap-1 text-[10px] leading-none">
+            <Crown className="size-2.5" />
+            Premium
+        </Badge>
+    );
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger!.name, href: ledgerDashboard.url(ledger!.id) },
         { title: 'Accounts', href: accountsIndex.url(ledger!.id) },
@@ -1232,13 +1239,7 @@ export default function AccountsIndex() {
                                         className="gap-2"
                                     >
                                         New Account
-                                        <Badge
-                                            variant="secondary"
-                                            className="gap-1 text-[10px] leading-none"
-                                        >
-                                            <Crown className="size-2.5" />
-                                            Premium
-                                        </Badge>
+                                        {premiumBadge}
                                     </Link>
                                 </Button>
                             )}
@@ -1260,13 +1261,7 @@ export default function AccountsIndex() {
                             >
                                 <Link href={premium.url()} className="gap-2">
                                     New Account
-                                    <Badge
-                                        variant="secondary"
-                                        className="gap-1 text-[10px] leading-none"
-                                    >
-                                        <Crown className="size-2.5" />
-                                        Premium
-                                    </Badge>
+                                    {premiumBadge}
                                 </Link>
                             </Button>
                         )}
