@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, WalletCards } from 'lucide-react';
+import { Check, ChevronDown, Plus, WalletCards } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -46,15 +46,53 @@ export function LedgerSwitcher() {
         return (
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <SidebarMenuButton
-                        size="lg"
-                        className="text-sidebar-accent-foreground"
-                        asChild
-                    >
-                        <Link href={dashboard.url(currentLedger.id)}>
-                            {ledgerCardContent}
-                        </Link>
-                    </SidebarMenuButton>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <SidebarMenuButton
+                                size="lg"
+                                className="group text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent"
+                            >
+                                {ledgerCardContent}
+                                <ChevronDown className="ml-auto size-4" />
+                            </SidebarMenuButton>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent
+                            className="w-64 rounded-lg"
+                            align="start"
+                            side="bottom"
+                        >
+                            <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+
+                            <DropdownMenuItem asChild>
+                                <Link
+                                    href={dashboard.url(currentLedger.id)}
+                                    className="flex w-full items-center gap-2"
+                                >
+                                    <span className="flex-1 truncate">
+                                        {currentLedger.name}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {currentLedger.currency_code}
+                                    </span>
+                                    <Check className="size-4" />
+                                </Link>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem asChild>
+                                <Link
+                                    href={create.url()}
+                                    className="flex w-full items-center gap-2"
+                                    prefetch
+                                >
+                                    <Plus className="size-4" />
+                                    Create workspace
+                                </Link>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </SidebarMenuItem>
             </SidebarMenu>
         );
