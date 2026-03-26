@@ -2,6 +2,7 @@ import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     CreditCard,
+    Crown,
     ExternalLink,
     Pencil,
     Trash2,
@@ -48,6 +49,7 @@ import {
     formatDate,
 } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
+import { premium } from '@/routes';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
@@ -850,6 +852,7 @@ function EditAccountModal({
 
 export default function AccountsIndex() {
     const {
+        auth,
         currentLedger: ledger,
         accounts: accountGroups,
         accountTypes,
@@ -858,11 +861,14 @@ export default function AccountsIndex() {
         accountTypes: AccountType[];
     }>().props;
 
+    const isPremiumUser = auth.user?.membership.is_premium ?? false;
+
     function refetchData() {
         router.reload({ only: ['accounts', 'netWorth'] });
     }
 
     const allAccounts = accountGroups.flatMap((g) => g.accounts);
+    const canCreateAccount = isPremiumUser || allAccounts.length < 7;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger!.name, href: ledgerDashboard.url(ledger!.id) },
@@ -1213,18 +1219,57 @@ export default function AccountsIndex() {
                             description="Track balances across all ledger accounts."
                         />
                         <div className="hidden md:block">
-                            <Button onClick={() => setShowCreateModal(true)}>
-                                New Account
-                            </Button>
+                            {canCreateAccount ? (
+                                <Button
+                                    onClick={() => setShowCreateModal(true)}
+                                >
+                                    New Account
+                                </Button>
+                            ) : (
+                                <Button variant="outline" asChild>
+                                    <Link
+                                        href={premium.url()}
+                                        className="gap-2"
+                                    >
+                                        New Account
+                                        <Badge
+                                            variant="secondary"
+                                            className="gap-1 text-[10px] leading-none"
+                                        >
+                                            <Crown className="size-2.5" />
+                                            Premium
+                                        </Badge>
+                                    </Link>
+                                </Button>
+                            )}
                         </div>
                     </div>
                     <div className="md:hidden">
-                        <Button
-                            className="w-full"
-                            onClick={() => setShowCreateModal(true)}
-                        >
-                            New Account
-                        </Button>
+                        {canCreateAccount ? (
+                            <Button
+                                className="w-full"
+                                onClick={() => setShowCreateModal(true)}
+                            >
+                                New Account
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="outline"
+                                className="w-full"
+                                asChild
+                            >
+                                <Link href={premium.url()} className="gap-2">
+                                    New Account
+                                    <Badge
+                                        variant="secondary"
+                                        className="gap-1 text-[10px] leading-none"
+                                    >
+                                        <Crown className="size-2.5" />
+                                        Premium
+                                    </Badge>
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 </div>
 
