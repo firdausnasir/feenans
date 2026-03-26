@@ -95,13 +95,7 @@ const cycleOptions: readonly CycleOption[] = [
     { label: 'Custom (any day)', dates: 'Pick your own start date' },
 ] as const;
 
-type TrustGridItem = {
-    readonly icon: ComponentType<SVGAttributes<SVGElement>>;
-    readonly title: string;
-    readonly description: string;
-};
-
-const trustGridItems: readonly TrustGridItem[] = [
+const trustGridItems: readonly TrustBannerItem[] = [
     {
         icon: ShieldCheck,
         title: 'No Admin Access',

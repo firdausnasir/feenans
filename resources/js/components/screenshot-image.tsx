@@ -1,7 +1,6 @@
-import {  useCallback, useEffect, useRef } from 'react';
-import type {ImgHTMLAttributes} from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import type { ImgHTMLAttributes } from 'react';
 import { useAppearance } from '@/hooks/use-appearance';
-import { cn } from '@/lib/utils';
 
 type ScreenshotImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
     readonly name: string;
@@ -39,7 +38,7 @@ export default function ScreenshotImage({
         <img
             src={src}
             alt={alt}
-            className={cn(className)}
+            className={className}
             onError={handleError}
             {...props}
         />
