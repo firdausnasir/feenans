@@ -78,4 +78,10 @@ class User extends Authenticatable
     {
         return $this->hasOne(UserMembership::class);
     }
+
+    public function isPremium(): bool
+    {
+        return $this->membership?->tier === 'premium'
+            && in_array($this->membership->status, ['active', 'trialing'], true);
+    }
 }

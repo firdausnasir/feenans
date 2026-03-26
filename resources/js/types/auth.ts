@@ -7,6 +7,10 @@ export type User = {
     two_factor_enabled?: boolean;
     is_admin?: boolean;
     onboarding_step: number | null;
+    membership: {
+        tier: 'free' | 'premium';
+        is_premium: boolean;
+    };
     created_at: string;
     updated_at: string;
     [key: string]: unknown;

@@ -37,6 +37,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $user?->loadMissing('membership');
         $isAdminArea = str_starts_with($request->path(), 'admin');
         $availableLedgers = $user?->ledgers()->orderBy('name')->get(['id', 'name', 'currency_code']) ?? collect();
         $currentLedger = $request->route('ledger');
@@ -54,6 +55,10 @@ class HandleInertiaRequests extends Middleware
                     'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                     'onboarding_step' => $user->onboarding_step,
                     'is_admin' => (bool) $user->is_admin,
+                    'membership' => [
+                        'tier' => $user->membership?->tier ?? 'free',
+                        'is_premium' => $user->isPremium(),
+                    ],
                 ] : null,
             ],
             'flash' => [
