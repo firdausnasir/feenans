@@ -81,6 +81,10 @@ class User extends Authenticatable
 
     public function isPremium(): bool
     {
+        if (! config('app.paywall_enabled')) {
+            return true;
+        }
+
         return $this->membership?->tier === 'premium'
             && in_array($this->membership->status, ['active', 'trialing'], true);
     }

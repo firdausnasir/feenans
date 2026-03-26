@@ -1,5 +1,6 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import {
+    ArrowLeft,
     BarChart3,
     CreditCard,
     Crown,
@@ -63,6 +64,24 @@ export default function PremiumIndex() {
             <Head title="Premium" />
 
             <div className="mx-auto flex max-w-3xl flex-col gap-8 p-4 md:p-6 lg:p-8">
+                <div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => {
+                            if (window.history.length > 1) {
+                                window.history.back();
+                            } else {
+                                router.visit('/');
+                            }
+                        }}
+                    >
+                        <ArrowLeft className="size-4" />
+                        Back
+                    </Button>
+                </div>
+
                 {/* Header */}
                 <div className="text-center">
                     <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">

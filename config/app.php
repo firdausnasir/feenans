@@ -123,4 +123,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Paywall
+    |--------------------------------------------------------------------------
+    |
+    | When disabled, all users are treated as premium and feature gating is
+    | bypassed. Set to true to enforce premium membership restrictions.
+    |
+    */
+
+    'paywall_enabled' => (bool) env('PAYWALL_ENABLED', false),
+
 ];

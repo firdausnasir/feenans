@@ -6,6 +6,10 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\User;
 
+beforeEach(function () {
+    config()->set('app.paywall_enabled', true);
+});
+
 test('free user isPremium returns false', function () {
     $user = User::factory()->create();
 
@@ -247,4 +251,21 @@ test('free user can create transaction for account within first 7', function () 
             'transaction_date' => '2026-03-26',
         ])
         ->assertSessionHasNoErrors();
+});
+
+test('free user is treated as premium when paywall is disabled', function () {
+    config()->set('app.paywall_enabled', false);
+    $user = User::factory()->create();
+
+    expect($user->isPremium())->toBeTrue();
+});
+
+test('free user can access gated routes when paywall is disabled', function () {
+    config()->set('app.paywall_enabled', false);
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.index', $ledger))
+        ->assertSuccessful();
 });
