@@ -126,8 +126,8 @@ test('unread notification count is shared for authenticated users', function () 
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $user->notifyNow(new BillDueReminder($bill));
-    $user->notifyNow(new BillDueReminder($bill));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
 
     $this->actingAs($user)
         ->get(route('ledgers.index'))

@@ -14,8 +14,8 @@ test('index returns unread notifications for authenticated user', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $user->notifyNow(new BillDueReminder($bill));
-    $user->notifyNow(new BillDueReminder($bill));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
     $user->notifications()->latest()->first()->markAsRead();
 
     $response = $this->actingAs($user)->get(route('ledgers.index'));
@@ -32,7 +32,7 @@ test('markRead marks notification as read through the web flow', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $user->notifyNow(new BillDueReminder($bill));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
     $notification = $user->notifications()->first();
 
     $this->actingAs($user)
@@ -50,8 +50,8 @@ test('markAllRead clears all unread notifications through the web flow', functio
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $user->notifyNow(new BillDueReminder($bill));
-    $user->notifyNow(new BillDueReminder($bill));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
 
     $this->actingAs($user)
         ->from(route('ledgers.index'))
@@ -68,7 +68,7 @@ test('destroy removes the notification through the web flow', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $user->notifyNow(new BillDueReminder($bill));
+    $user->notifyNow(new BillDueReminder(collect(), collect([$bill]), collect()));
     $notification = $user->notifications()->first();
 
     $this->actingAs($user)
