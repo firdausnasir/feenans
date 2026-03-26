@@ -1,7 +1,12 @@
 <?php
 
+use App\Models\Account;
+use App\Models\AccountType;
+use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\MembershipChangeLog;
+use App\Models\Payee;
+use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
@@ -63,8 +68,24 @@ test('admin overview returns aggregate counts without ledger data', function () 
         'status' => 'active',
     ]);
 
-    Ledger::factory()->for($premiumUser)->create([
+    $ledger = Ledger::factory()->for($premiumUser)->create([
         'name' => 'Private Household Ledger',
+    ]);
+
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = $ledger->categories()->first() ?? Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+
+    // Create transactions: 2 today, 1 from 2 days ago (within week)
+    Transaction::factory()->for($ledger)->for($account)->for($category)->for($payee)->create([
+        'created_at' => now(),
+    ]);
+    Transaction::factory()->for($ledger)->for($account)->for($category)->for($payee)->create([
+        'created_at' => now(),
+    ]);
+    Transaction::factory()->for($ledger)->for($account)->for($category)->for($payee)->create([
+        'created_at' => now()->subDay(),
     ]);
 
     $response = $this->actingAs($admin)->getJson(route('admin.overview'));
@@ -72,9 +93,12 @@ test('admin overview returns aggregate counts without ledger data', function () 
     $response->assertOk()
         ->assertJsonPath('users.total', 3)
         ->assertJsonPath('users.verified', 3)
+        ->assertJsonPath('users.new_today', 3)
         ->assertJsonPath('memberships.by_tier.free', 2)
         ->assertJsonPath('memberships.by_tier.premium', 1)
-        ->assertJsonMissingPath('analytics')
+        ->assertJsonPath('ledgers.total', 1)
+        ->assertJsonPath('transactions.created_today', 2)
+        ->assertJsonPath('transactions.created_this_week', 3)
         ->assertJsonMissing(['Private Household Ledger']);
 });
 
