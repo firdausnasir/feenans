@@ -9,12 +9,13 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
+import { premium } from '@/routes';
 import type { NavGroup } from '@/types';
 
 export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
     const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
     const { auth } = usePage().props;
-    const isPremiumUser = auth.user?.membership?.is_premium ?? false;
+    const isPremiumUser = auth.user?.membership.is_premium ?? false;
 
     return (
         <>
@@ -28,7 +29,9 @@ export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
                         {group.items.map((item) => {
                             const needsUpgrade =
                                 item.isPremium && !isPremiumUser;
-                            const href = needsUpgrade ? '/premium' : item.href;
+                            const href = needsUpgrade
+                                ? premium.url()
+                                : item.href;
 
                             return (
                                 <SidebarMenuItem key={item.title}>
