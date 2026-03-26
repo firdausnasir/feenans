@@ -16,16 +16,9 @@ import {
 } from '@/components/ui/sidebar';
 import { premium } from '@/routes';
 import { create, dashboard, index } from '@/routes/ledgers';
-import type { Ledger } from '@/types';
-
-type LedgerSummary = Pick<Ledger, 'id' | 'name' | 'currency_code'>;
 
 export function LedgerSwitcher() {
-    const { currentLedger, availableLedgers, auth } = usePage().props as {
-        currentLedger: LedgerSummary | null;
-        availableLedgers: LedgerSummary[];
-        auth: { user?: { membership: { is_premium: boolean } } };
-    };
+    const { currentLedger, availableLedgers, auth } = usePage().props;
 
     const isSingleLedger = availableLedgers.length <= 1;
     const isPremiumUser = auth.user?.membership.is_premium ?? false;
@@ -33,6 +26,16 @@ export function LedgerSwitcher() {
     const createWorkspaceHref = canCreateWorkspace
         ? create.url()
         : premium.url();
+
+    const premiumBadge = !canCreateWorkspace && (
+        <Badge
+            variant="secondary"
+            className="ml-auto gap-1 text-[10px] leading-none"
+        >
+            <Crown className="size-2.5" />
+            Premium
+        </Badge>
+    );
 
     const ledgerCardContent = (
         <>
@@ -97,15 +100,7 @@ export function LedgerSwitcher() {
                                 >
                                     <Plus className="size-4" />
                                     Create workspace
-                                    {!canCreateWorkspace && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="ml-auto gap-1 text-[10px] leading-none"
-                                        >
-                                            <Crown className="size-2.5" />
-                                            Premium
-                                        </Badge>
-                                    )}
+                                    {premiumBadge}
                                 </Link>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -169,15 +164,7 @@ export function LedgerSwitcher() {
                                 prefetch={canCreateWorkspace}
                             >
                                 Create workspace
-                                {!canCreateWorkspace && (
-                                    <Badge
-                                        variant="secondary"
-                                        className="ml-auto gap-1 text-[10px] leading-none"
-                                    >
-                                        <Crown className="size-2.5" />
-                                        Premium
-                                    </Badge>
-                                )}
+                                {premiumBadge}
                             </Link>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
