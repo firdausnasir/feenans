@@ -7,13 +7,13 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class AdminPageController extends Controller
+class AdminUserPageController extends Controller
 {
     /**
      * Handle the incoming request.
      */
     public function __invoke(Request $request): Response
     {
-        return Inertia::render('admin/index');
+        return Inertia::render('admin/users/index');
     }
 }

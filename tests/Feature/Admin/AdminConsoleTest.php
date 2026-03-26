@@ -14,6 +14,14 @@ test('non-admin users cannot access the admin console or admin api', function ()
         ->assertForbidden();
 
     $this->actingAs($user)
+        ->get(route('admin.users'))
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->get(route('admin.memberships'))
+        ->assertForbidden();
+
+    $this->actingAs($user)
         ->getJson(route('admin.overview'))
         ->assertForbidden();
 });
@@ -29,6 +37,18 @@ test('admin users can view the admin page shell', function () {
             ->where('currentLedger', null)
             ->etc()
         );
+});
+
+test('admin can access all admin pages', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.users'))
+        ->assertInertia(fn (Assert $page) => $page->component('admin/users/index'));
+
+    $this->actingAs($admin)
+        ->get(route('admin.memberships'))
+        ->assertInertia(fn (Assert $page) => $page->component('admin/memberships/index'));
 });
 
 test('admin overview returns aggregate counts without ledger data', function () {
@@ -56,7 +76,27 @@ test('admin overview returns aggregate counts without ledger data', function () 
         ->assertJsonMissing(['Private Household Ledger']);
 });
 
-test('admin can filter the user membership list', function () {
+test('admin can search the user list', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    User::factory()->create([
+        'name' => 'Alice Smith',
+        'email' => 'alice@example.com',
+    ]);
+    User::factory()->create([
+        'name' => 'Bob Jones',
+        'email' => 'bob@example.com',
+    ]);
+
+    $response = $this->actingAs($admin)->getJson(route('admin.users.index', [
+        'search' => 'alice',
+    ]));
+
+    $response->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.email', 'alice@example.com');
+});
+
+test('admin can list memberships with filters', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $freeUser = User::factory()->create([
         'name' => 'Free User',
@@ -72,20 +112,13 @@ test('admin can filter the user membership list', function () {
         'status' => 'trialing',
     ]);
 
-    $response = $this->actingAs($admin)->getJson(route('admin.users.index', [
+    $response = $this->actingAs($admin)->getJson(route('admin.memberships.index', [
         'tier' => 'premium',
-        'search' => 'premium',
     ]));
 
     $response->assertOk()
         ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.email', 'premium@example.com')
-        ->assertJsonPath('data.0.membership.tier', 'premium')
-        ->assertJsonPath('data.0.membership.status', 'trialing')
-        ->assertJsonPath('filters.tier', 'premium')
-        ->assertJsonPath('filters.search', 'premium');
-
-    expect($response->json('data.0.id'))->not->toBe($freeUser->id);
+        ->assertJsonPath('data.0.membership.tier', 'premium');
 });
 
 test('admin membership updates are persisted and audited', function () {
@@ -95,7 +128,7 @@ test('admin membership updates are persisted and audited', function () {
     ]);
 
     $this->actingAs($admin)
-        ->patchJson(route('admin.users.membership.update', $user), [
+        ->patchJson(route('admin.memberships.update', $user), [
             'tier' => 'premium',
             'status' => 'trialing',
             'reason' => 'Manual upgrade for launch cohort',

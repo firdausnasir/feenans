@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\UpdateMembershipRequest;
+use App\Models\MembershipChangeLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class AdminUserController extends Controller
+class AdminMembershipController extends Controller
 {
     /**
      * @return array{
@@ -50,6 +52,20 @@ class AdminUserController extends Controller
             });
         }
 
+        $tier = $request->query('tier');
+        if (is_string($tier) && $tier !== '') {
+            $query->whereHas('membership', function ($q) use ($tier): void {
+                $q->where('tier', $tier);
+            });
+        }
+
+        $status = $request->query('status');
+        if (is_string($status) && $status !== '') {
+            $query->whereHas('membership', function ($q) use ($status): void {
+                $q->where('status', $status);
+            });
+        }
+
         $users = $query->orderBy('created_at', 'desc')->paginate(15);
 
         return response()->json([
@@ -62,6 +78,37 @@ class AdminUserController extends Controller
             ],
             'filters' => [
                 'search' => $search,
+                'tier' => $tier,
+                'status' => $status,
+            ],
+        ]);
+    }
+
+    public function update(UpdateMembershipRequest $request, User $user): JsonResponse
+    {
+        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
+
+        $previousTier = $membership->tier;
+        $previousStatus = $membership->status;
+
+        $membership->update($request->safe()->only(['tier', 'status']));
+
+        MembershipChangeLog::query()->create([
+            'user_id' => $user->id,
+            'changed_by_user_id' => $request->user()->id,
+            'previous_tier' => $previousTier,
+            'previous_status' => $previousStatus,
+            'new_tier' => $membership->tier,
+            'new_status' => $membership->status,
+            'reason' => $request->validated('reason'),
+        ]);
+
+        return response()->json([
+            'membership' => [
+                'tier' => $membership->tier,
+                'status' => $membership->status,
+                'started_at' => $membership->started_at?->toIso8601String(),
+                'ends_at' => $membership->ends_at?->toIso8601String(),
             ],
         ]);
     }

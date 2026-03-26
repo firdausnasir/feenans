@@ -1,6 +1,8 @@
 <?php
 
-use App\Http\Controllers\Admin\AdminPageController;
+use App\Http\Controllers\Admin\AdminDashboardPageController;
+use App\Http\Controllers\Admin\AdminMembershipPageController;
+use App\Http\Controllers\Admin\AdminUserPageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
@@ -22,7 +24,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->group(function () {
-    Route::get('/', AdminPageController::class)->name('admin.index');
+    Route::get('/', AdminDashboardPageController::class)->name('admin.index');
+    Route::get('users', AdminUserPageController::class)->name('admin.users');
+    Route::get('memberships', AdminMembershipPageController::class)->name('admin.memberships');
 });
 
 require __DIR__.'/ledger.php';
