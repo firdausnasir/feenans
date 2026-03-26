@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, Plus, WalletCards } from 'lucide-react';
+import { Check, ChevronDown, Crown, Plus, WalletCards } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -13,18 +14,25 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { premium } from '@/routes';
 import { create, dashboard, index } from '@/routes/ledgers';
 import type { Ledger } from '@/types';
 
 type LedgerSummary = Pick<Ledger, 'id' | 'name' | 'currency_code'>;
 
 export function LedgerSwitcher() {
-    const { currentLedger, availableLedgers } = usePage().props as {
+    const { currentLedger, availableLedgers, auth } = usePage().props as {
         currentLedger: LedgerSummary | null;
         availableLedgers: LedgerSummary[];
+        auth: { user?: { membership: { is_premium: boolean } } };
     };
 
     const isSingleLedger = availableLedgers.length <= 1;
+    const isPremiumUser = auth.user?.membership.is_premium ?? false;
+    const canCreateWorkspace = isPremiumUser || availableLedgers.length < 1;
+    const createWorkspaceHref = canCreateWorkspace
+        ? create.url()
+        : premium.url();
 
     const ledgerCardContent = (
         <>
@@ -83,12 +91,21 @@ export function LedgerSwitcher() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem asChild>
                                 <Link
-                                    href={create.url()}
+                                    href={createWorkspaceHref}
                                     className="flex w-full items-center gap-2"
-                                    prefetch
+                                    prefetch={canCreateWorkspace}
                                 >
                                     <Plus className="size-4" />
                                     Create workspace
+                                    {!canCreateWorkspace && (
+                                        <Badge
+                                            variant="secondary"
+                                            className="ml-auto gap-1 text-[10px] leading-none"
+                                        >
+                                            <Crown className="size-2.5" />
+                                            Premium
+                                        </Badge>
+                                    )}
                                 </Link>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -147,8 +164,20 @@ export function LedgerSwitcher() {
                             </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                            <Link href={create.url()} prefetch>
+                            <Link
+                                href={createWorkspaceHref}
+                                prefetch={canCreateWorkspace}
+                            >
                                 Create workspace
+                                {!canCreateWorkspace && (
+                                    <Badge
+                                        variant="secondary"
+                                        className="ml-auto gap-1 text-[10px] leading-none"
+                                    >
+                                        <Crown className="size-2.5" />
+                                        Premium
+                                    </Badge>
+                                )}
                             </Link>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
