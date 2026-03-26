@@ -278,7 +278,9 @@ export default function Welcome({
                                         <div className="bg-gradient-to-br from-muted/80 via-background to-muted/80 p-4 dark:from-muted/50 dark:via-background dark:to-muted/50">
                                             <ScreenshotImage
                                                 name={feature.screenshot}
-                                                alt={feature.title}
+                                                alt=""
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="w-full rounded-lg border border-border shadow-2xl"
                                             />
                                         </div>

@@ -17,7 +17,7 @@ export default function ScreenshotImage({
 
     useEffect(() => {
         hasFallbackAttempted.current = false;
-    }, [name]);
+    }, [name, resolvedAppearance]);
 
     const src =
         resolvedAppearance === 'light'
