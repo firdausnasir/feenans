@@ -221,8 +221,8 @@ export default function Welcome({
                         </div>
                         <div className="relative">
                             <ScreenshotImage
-                                name="account"
-                                alt="Feenans account tracking showing assets, liabilities, and net worth"
+                                name="dashboard"
+                                alt="Feenans dashboard screenshot showing an overview of accounts, budgets, and recent transactions."
                                 className="w-full rounded-xl border border-border shadow-2xl"
                             />
                         </div>
@@ -251,10 +251,10 @@ export default function Welcome({
                     </div>
                 </section>
 
-                {/* Features Gallery */}
-                <section className="bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
+                {/* Features */}
+                <section className="px-4 py-16 sm:px-6 sm:py-24">
                     <div className="mx-auto max-w-6xl">
-                        <div className="mx-auto mb-12 max-w-2xl text-center">
+                        <div className="mx-auto mb-16 max-w-2xl text-center">
                             <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
                                 Features
                             </p>
@@ -263,35 +263,34 @@ export default function Welcome({
                             </h2>
                             <p className="mt-4 text-muted-foreground">
                                 From daily tracking to long-term budgeting.
-                                Scroll to explore.
                             </p>
                         </div>
-                    </div>
-                    <div className="mx-auto max-w-7xl px-2">
-                        <div className="-mx-2 flex snap-x snap-mandatory gap-6 overflow-x-auto pb-6 sm:px-2">
-                            {galleryFeatures.map((feature) => (
+                        <div className="flex flex-col gap-20 sm:gap-28">
+                            {galleryFeatures.map((feature, index) => (
                                 <div
                                     key={feature.screenshot}
-                                    className="w-[300px] shrink-0 snap-start sm:w-[340px] lg:w-[380px]"
+                                    className={`grid items-center gap-8 lg:grid-cols-2 lg:gap-16 ${
+                                        index % 2 === 1
+                                            ? 'lg:[&>:first-child]:order-2'
+                                            : ''
+                                    }`}
                                 >
-                                    <div className="overflow-hidden rounded-xl bg-card shadow-lg transition-transform hover:-translate-y-1">
-                                        <div className="bg-gradient-to-br from-muted/80 via-background to-muted/80 p-4 dark:from-muted/50 dark:via-background dark:to-muted/50">
-                                            <ScreenshotImage
-                                                name={feature.screenshot}
-                                                alt=""
-                                                loading="lazy"
-                                                decoding="async"
-                                                className="w-full rounded-lg border border-border shadow-2xl"
-                                            />
-                                        </div>
-                                        <div className="p-5">
-                                            <h3 className="font-semibold text-card-foreground">
-                                                {feature.title}
-                                            </h3>
-                                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                                                {feature.description}
-                                            </p>
-                                        </div>
+                                    <div>
+                                        <ScreenshotImage
+                                            name={feature.screenshot}
+                                            alt=""
+                                            loading="lazy"
+                                            decoding="async"
+                                            className="w-full rounded-xl border border-border shadow-2xl"
+                                        />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                                            {feature.title}
+                                        </h3>
+                                        <p className="mt-3 leading-relaxed text-muted-foreground">
+                                            {feature.description}
+                                        </p>
                                     </div>
                                 </div>
                             ))}
@@ -300,7 +299,7 @@ export default function Welcome({
                 </section>
 
                 {/* Cycle Flexibility */}
-                <section className="px-4 py-16 sm:px-6 sm:py-24">
+                <section className="bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
                     <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
                         <div>
                             <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
