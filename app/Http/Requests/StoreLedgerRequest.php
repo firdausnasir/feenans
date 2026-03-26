@@ -13,7 +13,7 @@ class StoreLedgerRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return $this->user()->isPremium() || ! $this->user()->ledgers()->exists();
     }
 
     /**

@@ -20,8 +20,12 @@ class LedgerController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(Request $request): Response|RedirectResponse
     {
+        if (! $request->user()->isPremium() && $request->user()->ledgers()->exists()) {
+            return to_route('premium');
+        }
+
         return Inertia::render('ledgers/create', [
             'defaults' => [
                 'currency_code' => 'MYR',

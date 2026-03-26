@@ -14,7 +14,14 @@ class StoreAccountRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        if ($this->user()->isPremium()) {
+            return true;
+        }
+
+        /** @var Ledger $ledger */
+        $ledger = $this->route('ledger');
+
+        return $ledger instanceof Ledger && $ledger->accounts()->count() < 7;
     }
 
     /**

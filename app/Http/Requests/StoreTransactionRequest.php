@@ -117,6 +117,34 @@ class StoreTransactionRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
+                if ($this->user()->isPremium()) {
+                    return;
+                }
+
+                /** @var Ledger $ledger */
+                $ledger = $this->route('ledger');
+
+                if (! $ledger instanceof Ledger) {
+                    return;
+                }
+
+                $allowedAccountIds = $ledger->accounts()
+                    ->orderBy('position')
+                    ->orderBy('id')
+                    ->limit(7)
+                    ->pluck('id');
+
+                $accountId = (int) $this->input('account_id');
+                if ($accountId && ! $allowedAccountIds->contains($accountId)) {
+                    $validator->errors()->add('account_id', 'This account is not available on the free plan.');
+                }
+
+                $toAccountId = (int) $this->input('to_account_id');
+                if ($toAccountId && ! $allowedAccountIds->contains($toAccountId)) {
+                    $validator->errors()->add('to_account_id', 'This account is not available on the free plan.');
+                }
+            },
+            function (Validator $validator): void {
                 $splits = $this->input('splits');
 
                 if (! is_array($splits) || $splits === []) {
