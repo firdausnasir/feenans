@@ -1,10 +1,8 @@
 <?php
 
-use App\Models\DailyPageAnalytics;
 use App\Models\Ledger;
 use App\Models\MembershipChangeLog;
 use App\Models\User;
-use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
@@ -47,22 +45,6 @@ test('admin overview returns aggregate counts without ledger data', function () 
         'name' => 'Private Household Ledger',
     ]);
 
-    DailyPageAnalytics::query()->create([
-        'metric_date' => now()->toDateString(),
-        'page_key' => 'home',
-        'audience' => 'guest',
-        'membership_tier' => 'none',
-        'hits' => 4,
-    ]);
-
-    DailyPageAnalytics::query()->create([
-        'metric_date' => now()->toDateString(),
-        'page_key' => 'profile.edit',
-        'audience' => 'authenticated',
-        'membership_tier' => 'premium',
-        'hits' => 3,
-    ]);
-
     $response = $this->actingAs($admin)->getJson(route('admin.overview'));
 
     $response->assertOk()
@@ -70,9 +52,7 @@ test('admin overview returns aggregate counts without ledger data', function () 
         ->assertJsonPath('users.verified', 3)
         ->assertJsonPath('memberships.by_tier.free', 2)
         ->assertJsonPath('memberships.by_tier.premium', 1)
-        ->assertJsonPath('analytics.today_hits', 7)
-        ->assertJsonPath('analytics.last_30_days_hits', 7)
-        ->assertJsonMissingPath('ledgers')
+        ->assertJsonMissingPath('analytics')
         ->assertJsonMissing(['Private Household Ledger']);
 });
 
@@ -154,59 +134,4 @@ test('new registrations create a default free active membership', function () {
         ->not->toBeNull()
         ->tier->toBe('free')
         ->status->toBe('active');
-});
-
-test('analytics middleware stores aggregate page hits by route name only', function () {
-    Carbon::setTestNow('2026-03-26 08:00:00');
-
-    $user = User::factory()->create();
-    $user->membership()->update([
-        'tier' => 'premium',
-        'status' => 'active',
-    ]);
-    $ledger = Ledger::factory()->for($user)->create();
-
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger).'?view=month')
-        ->assertOk();
-
-    $this->actingAs($user)
-        ->get(route('ledgers.dashboard', $ledger).'?view=year')
-        ->assertOk();
-
-    $analytics = DailyPageAnalytics::query()->firstOrFail();
-
-    expect(DailyPageAnalytics::query()->count())->toBe(1)
-        ->and($analytics->metric_date->toDateString())->toBe('2026-03-26')
-        ->and($analytics->page_key)->toBe('ledgers.dashboard')
-        ->and($analytics->page_key)->not->toContain((string) $ledger->id)
-        ->and($analytics->page_key)->not->toContain('?')
-        ->and($analytics->audience)->toBe('authenticated')
-        ->and($analytics->membership_tier)->toBe('premium')
-        ->and($analytics->hits)->toBe(2);
-});
-
-test('analytics middleware ignores admin and api requests', function () {
-    Carbon::setTestNow('2026-03-26 08:00:00');
-
-    $admin = User::factory()->create(['is_admin' => true]);
-
-    $this->get(route('home'))->assertOk();
-
-    $this->actingAs($admin)
-        ->get(route('admin.index'))
-        ->assertOk();
-
-    $this->actingAs($admin)
-        ->getJson(route('admin.overview'))
-        ->assertOk();
-
-    expect(DailyPageAnalytics::query()->count())->toBe(1);
-
-    $analytics = DailyPageAnalytics::query()->firstOrFail();
-
-    expect($analytics->page_key)->toBe('home')
-        ->and($analytics->audience)->toBe('guest')
-        ->and($analytics->membership_tier)->toBe('none')
-        ->and($analytics->hits)->toBe(1);
 });

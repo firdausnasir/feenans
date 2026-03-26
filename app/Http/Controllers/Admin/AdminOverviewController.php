@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\DailyPageAnalytics;
 use App\Models\User;
 use App\Models\UserMembership;
 use Illuminate\Http\JsonResponse;
@@ -31,14 +30,6 @@ class AdminOverviewController extends Controller
             ->pluck('total', 'status')
             ->toArray();
 
-        $todayHits = DailyPageAnalytics::query()
-            ->whereDate('metric_date', now())
-            ->sum('hits');
-
-        $last30DaysHits = DailyPageAnalytics::query()
-            ->whereDate('metric_date', '>=', now()->subDays(30))
-            ->sum('hits');
-
         return response()->json([
             'users' => [
                 'total' => $totalUsers,
@@ -47,10 +38,6 @@ class AdminOverviewController extends Controller
             'memberships' => [
                 'by_tier' => $membershipsByTier,
                 'by_status' => $membershipsByStatus,
-            ],
-            'analytics' => [
-                'today_hits' => (int) $todayHits,
-                'last_30_days_hits' => (int) $last30DaysHits,
             ],
         ]);
     }

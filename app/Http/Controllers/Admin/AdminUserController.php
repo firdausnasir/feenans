@@ -18,23 +18,25 @@ class AdminUserController extends Controller
      *     email: string,
      *     email_verified_at: string|null,
      *     created_at: string,
-     *     membership: array{tier: string, status: string, started_at: string|null, ends_at: string|null}|null,
+     *     membership: array{tier: string, status: string, started_at: string|null, ends_at: string|null},
      * }
      */
     private function formatUserRow(User $user): array
     {
+        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
+
         return [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'email_verified_at' => $user->email_verified_at?->toIso8601String(),
             'created_at' => $user->created_at->toIso8601String(),
-            'membership' => $user->membership ? [
-                'tier' => $user->membership->tier,
-                'status' => $user->membership->status,
-                'started_at' => $user->membership->started_at?->toIso8601String(),
-                'ends_at' => $user->membership->ends_at?->toIso8601String(),
-            ] : null,
+            'membership' => [
+                'tier' => $membership->tier,
+                'status' => $membership->status,
+                'started_at' => $membership->started_at?->toIso8601String(),
+                'ends_at' => $membership->ends_at?->toIso8601String(),
+            ],
         ];
     }
 
@@ -84,11 +86,7 @@ class AdminUserController extends Controller
 
     public function updateMembership(UpdateMembershipRequest $request, User $user): JsonResponse
     {
-        $membership = $user->membership;
-
-        if (! $membership) {
-            abort(404, 'User has no membership record.');
-        }
+        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
 
         $previousTier = $membership->tier;
         $previousStatus = $membership->status;
