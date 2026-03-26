@@ -25,18 +25,13 @@ import {
 import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
@@ -414,8 +409,8 @@ function DateRangeSelector({
         onCompareToggle();
     }
 
-    function handleAccountChange(value: string) {
-        const accountId = value === 'all' ? null : value;
+    function handleAccountChange(value: string | null) {
+        const accountId = value === 'all' || value === null ? null : value;
         onFiltersChange({ account_id: accountId });
     }
 
@@ -512,27 +507,20 @@ function DateRangeSelector({
                             {allAccounts.length > 0 && (
                                 <div className="grid gap-1">
                                     <Label className="text-xs">Account</Label>
-                                    <Select
-                                        value={filters.account_id ?? 'all'}
-                                        onValueChange={handleAccountChange}
-                                    >
-                                        <SelectTrigger className="h-8 w-full text-xs sm:w-40">
-                                            <SelectValue placeholder="All accounts" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">
-                                                All accounts
-                                            </SelectItem>
-                                            {allAccounts.map((account) => (
-                                                <SelectItem
-                                                    key={account.id}
-                                                    value={account.id.toString()}
-                                                >
-                                                    {account.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect
+                                        options={allAccounts.map((account) => ({
+                                            value: account.id.toString(),
+                                            label: account.name,
+                                        }))}
+                                        value={filters.account_id}
+                                        onValueChange={(value) =>
+                                            handleAccountChange(value ?? 'all')
+                                        }
+                                        placeholder="All accounts"
+                                        searchPlaceholder="Search accounts..."
+                                        allOption="All accounts"
+                                        className="h-8 text-xs sm:w-40"
+                                    />
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">

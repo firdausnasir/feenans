@@ -7,6 +7,7 @@ use App\Models\Bill;
 use App\Models\Ledger;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('bill index renders successfully', function () {
     $user = User::factory()->create();
@@ -23,6 +24,38 @@ test('bill index renders successfully', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/index')
+    );
+});
+
+test('bill index deferred bills include account data as a plain array', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $sourceAccount = Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Main Checking']);
+    $destinationAccount = Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Savings']);
+
+    Bill::factory()->for($ledger)->for($sourceAccount)->create([
+        'name' => 'Allowance Transfer',
+        'transaction_type' => 'transfer',
+        'to_account_id' => $destinationAccount->id,
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.bills.index', $ledger));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('ledgers/bills/index')
+        ->missing('bills')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('bills', 1, fn (Assert $bill) => $bill
+                ->where('name', 'Allowance Transfer')
+                ->where('account.name', 'Main Checking')
+                ->where('to_account.name', 'Savings')
+                ->etc()
+            )
+        )
     );
 });
 

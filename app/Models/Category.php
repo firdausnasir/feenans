@@ -27,6 +27,7 @@ class Category extends Model
         'color',
         'icon',
         'position',
+        'is_system',
     ];
 
     public function ledger(): BelongsTo
@@ -52,5 +53,17 @@ class Category extends Model
     public function scopeParents(Builder $query): Builder
     {
         return $query->whereNull('parent_id');
+    }
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_system' => 'boolean',
+        ];
     }
 }

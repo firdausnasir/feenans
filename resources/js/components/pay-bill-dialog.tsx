@@ -15,13 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+
 import type { Account, Bill } from '@/types';
 
 type PayBillDialogProps = {
@@ -148,21 +142,17 @@ export function PayBillDialog({
 
                     <div className="grid gap-2">
                         <Label htmlFor="pay-account">Account</Label>
-                        <Select value={accountId} onValueChange={setAccountId}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {accounts.map((account) => (
-                                    <SelectItem
-                                        key={account.id}
-                                        value={String(account.id)}
-                                    >
-                                        {account.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                            options={accounts.map((account) => ({
+                                value: String(account.id),
+                                label: account.name,
+                                color: account.color,
+                            }))}
+                            value={accountId || null}
+                            onValueChange={(value) => setAccountId(value ?? '')}
+                            placeholder="Select account"
+                            searchPlaceholder="Search accounts..."
+                        />
                     </div>
 
                     {isTransfer && (

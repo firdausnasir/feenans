@@ -5,6 +5,7 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Category;
 use App\Models\Ledger;
+use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\TransactionService;
@@ -166,14 +167,30 @@ test('service convertSingleToTransfer creates paired transaction', function () {
         'transaction_date' => '2026-03-01',
     ]);
 
+    // Verify transfer has the Transfer category and payees reference the other account
+    $transferCategory = Category::where('ledger_id', $ledger->id)
+        ->where('name', 'Transfer')
+        ->where('is_system', true)
+        ->first();
+
+    $fromAccountPayee = Payee::where('ledger_id', $ledger->id)
+        ->where('name', $fromAccount->name)
+        ->first();
+
+    $toAccountPayee = Payee::where('ledger_id', $ledger->id)
+        ->where('name', $toAccount->name)
+        ->first();
+
     expect($updated->transaction_type)->toBe(TransactionType::Transfer)
         ->and($updated->transfer_pair_id)->not->toBeNull()
         ->and((float) $updated->amount)->toBe(-120.00)
-        ->and($updated->category_id)->toBeNull()
-        ->and($updated->payee_id)->toBeNull()
+        ->and($updated->category_id)->toBe($transferCategory->id)
+        ->and($updated->payee_id)->toBe($toAccountPayee->id)
         ->and((float) $incoming->amount)->toBe(120.00)
         ->and($incoming->account_id)->toBe($toAccount->id)
         ->and($incoming->transfer_pair_id)->toBe($updated->transfer_pair_id)
+        ->and($incoming->category_id)->toBe($transferCategory->id)
+        ->and($incoming->payee_id)->toBe($fromAccountPayee->id)
         ->and($ledger->transactions()->count())->toBe(2);
 });
 

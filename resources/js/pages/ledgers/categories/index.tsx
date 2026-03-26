@@ -9,6 +9,7 @@ import {
     update as updateCategory,
 } from '@/actions/App/Http/Controllers/Ledger/CategoryController';
 import Heading from '@/components/heading';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -22,13 +23,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
@@ -220,23 +215,20 @@ function InlineEditForm({
                 className="h-7 w-24 text-sm"
             />
             {isSubcategory && availableParents.length > 0 && (
-                <Select
-                    value={String(edit.parentId ?? '')}
+                <SearchableSelect
+                    options={availableParents.map((p) => ({
+                        value: String(p.id),
+                        label: p.name,
+                        color: p.color,
+                    }))}
+                    value={edit.parentId ? String(edit.parentId) : null}
                     onValueChange={(v) =>
                         onChangeParentId(v ? Number(v) : null)
                     }
-                >
-                    <SelectTrigger className="h-7 w-40 text-xs" size="sm">
-                        <SelectValue placeholder="Parent..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {availableParents.map((p) => (
-                            <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    placeholder="Parent..."
+                    searchPlaceholder="Search parents..."
+                    className="h-7 w-40 text-xs"
+                />
             )}
             <Button size="sm" className="h-7 px-2 text-xs" onClick={onSave}>
                 Save
@@ -534,31 +526,28 @@ function DeleteCategoryDialog({
 
                                 {deleteAction === 'reassign' && (
                                     <div className="pt-1 pl-3">
-                                        <Select
-                                            value={reassignCategoryId}
-                                            onValueChange={
-                                                setReassignCategoryId
+                                        <SearchableSelect
+                                            options={reassignableCategories.map(
+                                                (c) => ({
+                                                    value: String(c.id),
+                                                    label:
+                                                        c.parent_id !== null
+                                                            ? `  ${c.name}`
+                                                            : c.name,
+                                                    color: c.color,
+                                                }),
+                                            )}
+                                            value={
+                                                reassignCategoryId
+                                                    ? reassignCategoryId
+                                                    : null
                                             }
-                                        >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a category..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {reassignableCategories.map(
-                                                    (c) => (
-                                                        <SelectItem
-                                                            key={c.id}
-                                                            value={String(c.id)}
-                                                        >
-                                                            {c.parent_id !==
-                                                            null
-                                                                ? `\u00A0\u00A0${c.name}`
-                                                                : c.name}
-                                                        </SelectItem>
-                                                    ),
-                                                )}
-                                            </SelectContent>
-                                        </Select>
+                                            onValueChange={(v) =>
+                                                setReassignCategoryId(v ?? '')
+                                            }
+                                            placeholder="Select a category..."
+                                            searchPlaceholder="Search categories..."
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -1125,7 +1114,10 @@ export default function CategoriesIndex() {
                     </Button>
                 </div>
 
-                <Deferred data="categories" fallback={<CategoriesLoadingSkeleton />}>
+                <Deferred
+                    data="categories"
+                    fallback={<CategoriesLoadingSkeleton />}
+                >
                     <Tabs
                         defaultValue="expense"
                         onValueChange={(v) => {

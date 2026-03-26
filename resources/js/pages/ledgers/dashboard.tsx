@@ -367,7 +367,7 @@ export default function LedgerDashboard() {
                 <Deferred
                     data="upcomingBills"
                     fallback={
-                        <Card className="p-0">
+                        <Card className="p-0 border-amber-500 dark:border-amber-400">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
                                     <Bell className="size-4 text-muted-foreground" />
@@ -389,7 +389,7 @@ export default function LedgerDashboard() {
                     }
                 >
                     {hasAnyBills && (
-                        <Card className="p-0">
+                        <Card className="p-0 border-amber-500 dark:border-amber-400">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
                                     <Bell className="size-4 text-muted-foreground" />

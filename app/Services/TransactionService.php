@@ -27,6 +27,34 @@ class TransactionService
     }
 
     /**
+     * Get or create a payee representing an account (for transfer references).
+     */
+    protected function getOrCreateAccountPayee(Ledger $ledger, Account $account): Payee
+    {
+        $payeeName = $account->name;
+
+        return Payee::firstOrCreate(
+            ['ledger_id' => $ledger->id, 'name' => $payeeName],
+            ['is_active' => true]
+        );
+    }
+
+    /**
+     * Get or create the Transfer system category.
+     */
+    protected function getOrCreateTransferCategory(Ledger $ledger): Category
+    {
+        return Category::firstOrCreate(
+            ['ledger_id' => $ledger->id, 'name' => 'Transfer', 'transaction_type' => 'transfer'],
+            [
+                'color' => '#6B7280',
+                'position' => 0,
+                'is_system' => true,
+            ]
+        );
+    }
+
+    /**
      * @param  array<int, array{amount:mixed,category_id:mixed,description:mixed,payee_id?:mixed}>|null  $splits
      * @return array<int, array{amount:float,category_id:mixed,description:mixed,payee_id:mixed}>
      */
@@ -98,9 +126,16 @@ class TransactionService
             $pairId = (string) Str::uuid();
             $amount = abs((float) $attributes['amount']);
 
+            // Create payees for account references and get transfer category
+            $toAccountPayee = $this->getOrCreateAccountPayee($ledger, $toAccount);
+            $fromAccountPayee = $this->getOrCreateAccountPayee($ledger, $fromAccount);
+            $transferCategory = $this->getOrCreateTransferCategory($ledger);
+
             $outgoing = $this->store([
                 'ledger' => $ledger,
                 'account' => $fromAccount,
+                'category' => $transferCategory,
+                'payee' => $toAccountPayee,
                 'transaction_type' => TransactionType::Transfer,
                 'amount' => -1 * $amount,
                 'description' => $attributes['description'] ?? null,
@@ -113,6 +148,8 @@ class TransactionService
             $incoming = $this->store([
                 'ledger' => $ledger,
                 'account' => $toAccount,
+                'category' => $transferCategory,
+                'payee' => $fromAccountPayee,
                 'transaction_type' => TransactionType::Transfer,
                 'amount' => $amount,
                 'description' => $attributes['description'] ?? null,
@@ -152,14 +189,19 @@ class TransactionService
                     $destination = $transaction;
                 }
 
+                // Create payees for account references and get transfer category
+                $toAccountPayee = $this->getOrCreateAccountPayee($transaction->ledger, $toAccount);
+                $fromAccountPayee = $this->getOrCreateAccountPayee($transaction->ledger, $fromAccount);
+                $transferCategory = $this->getOrCreateTransferCategory($transaction->ledger);
+
                 $source->update([
                     'account_id' => $fromAccount->id,
                     'amount' => -1 * $amount,
                     'transaction_date' => $data['transaction_date'],
                     'description' => $data['description'] ?? null,
                     'notes' => $data['notes'] ?? null,
-                    'category_id' => null,
-                    'payee_id' => $data['payee_id'] ?? null,
+                    'category_id' => $transferCategory->id,
+                    'payee_id' => $toAccountPayee->id,
                 ]);
 
                 $destination->update([
@@ -168,6 +210,8 @@ class TransactionService
                     'transaction_date' => $data['transaction_date'],
                     'description' => $data['description'] ?? null,
                     'notes' => $data['notes'] ?? null,
+                    'category_id' => $transferCategory->id,
+                    'payee_id' => $fromAccountPayee->id,
                 ]);
 
                 return $transaction->fresh();
@@ -239,11 +283,22 @@ class TransactionService
             $pairId = (string) Str::uuid();
             $amount = abs((float) $data['amount']);
 
+            /** @var Account $fromAccount */
+            $fromAccount = $data['from_account'];
+
+            /** @var Account $toAccount */
+            $toAccount = $data['to_account'];
+
+            // Create payees for account references and get transfer category
+            $toAccountPayee = $this->getOrCreateAccountPayee($ledger, $toAccount);
+            $fromAccountPayee = $this->getOrCreateAccountPayee($ledger, $fromAccount);
+            $transferCategory = $this->getOrCreateTransferCategory($ledger);
+
             // Update existing transaction as outgoing side
             $transaction->update([
-                'account_id' => $data['from_account']->id,
-                'category_id' => null,
-                'payee_id' => null,
+                'account_id' => $fromAccount->id,
+                'category_id' => $transferCategory->id,
+                'payee_id' => $toAccountPayee->id,
                 'transaction_type' => TransactionType::Transfer,
                 'amount' => -1 * $amount,
                 'description' => $data['description'] ?? null,
@@ -255,7 +310,9 @@ class TransactionService
             // Create the incoming paired transaction
             $incoming = $this->store([
                 'ledger' => $ledger,
-                'account' => $data['to_account'],
+                'account' => $toAccount,
+                'category' => $transferCategory,
+                'payee' => $fromAccountPayee,
                 'transaction_type' => TransactionType::Transfer,
                 'amount' => $amount,
                 'description' => $data['description'] ?? null,

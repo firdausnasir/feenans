@@ -1950,14 +1950,14 @@ export default function TransactionsIndex() {
                                 />
                             </TableHead>
                             <TableHead>Date</TableHead>
-                            <TableHead>Payee</TableHead>
-                            <TableHead>Description</TableHead>
                             <TableHead className="hidden md:table-cell">
                                 Account
                             </TableHead>
                             <TableHead className="hidden lg:table-cell">
                                 Category
                             </TableHead>
+                            <TableHead>Payee</TableHead>
+                            <TableHead>Description</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
                             <TableHead className="w-16 text-center">
                                 Files
@@ -1996,18 +1996,14 @@ export default function TransactionsIndex() {
                                     <TableCell className="whitespace-nowrap">
                                         {formatDate(tx.transaction_date)}
                                     </TableCell>
-                                    <TableCell>
-                                        {tx.payee?.name ?? '-'}
-                                    </TableCell>
-                                    <TableCell>
-                                        {tx.description ?? '-'}
-                                    </TableCell>
                                     <TableCell className="hidden md:table-cell">
-                                        {tx.account?.name ?? '-'}
+                                        {tx.account?.name}
                                     </TableCell>
                                     <TableCell className="hidden lg:table-cell">
-                                        {tx.category?.name ?? '-'}
+                                        {tx.category?.name}
                                     </TableCell>
+                                    <TableCell>{tx.payee?.name}</TableCell>
+                                    <TableCell>{tx.description}</TableCell>
                                     <TableCell
                                         className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
                                     >

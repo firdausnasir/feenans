@@ -9,6 +9,7 @@ import {
     storeMapping as storeImportMapping,
 } from '@/actions/App/Http/Controllers/Ledger/ImportController';
 import Heading from '@/components/heading';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,13 +22,7 @@ import {
 } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
@@ -212,12 +207,14 @@ export default function ImportIndex() {
         ? deriveMapping(latestParseResult)
         : { mapping: emptyMapping(), detectedBank: null };
 
-    const [step, setStep] = useState<1 | 2 | 3>(
-        latestParseResult ? 2 : 1,
-    );
+    const [step, setStep] = useState<1 | 2 | 3>(latestParseResult ? 2 : 1);
     const [isLoading, setIsLoading] = useState(false);
-    const [parseResult, setParseResult] = useState<ParseResult | null>(latestParseResult);
-    const [mapping, setMapping] = useState<Mapping>(initialMappingState.mapping);
+    const [parseResult, setParseResult] = useState<ParseResult | null>(
+        latestParseResult,
+    );
+    const [mapping, setMapping] = useState<Mapping>(
+        initialMappingState.mapping,
+    );
     const [accountId, setAccountId] = useState<string>('');
     const [skipDuplicates, setSkipDuplicates] = useState(true);
     const [dragOver, setDragOver] = useState(false);
@@ -484,8 +481,7 @@ export default function ImportIndex() {
                         mapping.category !== NOT_MAPPED
                             ? mapping.category
                             : null,
-                    payee:
-                        mapping.payee !== NOT_MAPPED ? mapping.payee : null,
+                    payee: mapping.payee !== NOT_MAPPED ? mapping.payee : null,
                     type: mapping.type !== NOT_MAPPED ? mapping.type : null,
                 },
                 skip_duplicates: skipDuplicates,
@@ -526,73 +522,73 @@ export default function ImportIndex() {
                 <>
                     {/* Step indicator */}
                     <div className="flex items-center justify-center gap-2 sm:gap-4">
-                            {[
-                                {
-                                    num: 1,
-                                    label: 'Upload CSV',
-                                    description:
-                                        'Select or drag your bank statement CSV file',
-                                },
-                                {
-                                    num: 2,
-                                    label: 'Map Columns',
-                                    description:
-                                        'Match your CSV columns to transaction fields',
-                                },
-                                {
-                                    num: 3,
-                                    label: 'Preview & Confirm',
-                                    description:
-                                        'Review your data and import into your account',
-                                },
-                            ].map(({ num, label, description }, idx) => (
-                                <div
-                                    key={num}
-                                    className="flex items-center gap-1 sm:gap-2"
-                                >
-                                    <div className="relative">
-                                        {step === num && (
-                                            <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
-                                        )}
-                                        <div
-                                            className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
-                                                step === num
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : step > num
-                                                      ? 'bg-emerald-500 text-white'
-                                                      : 'bg-muted text-muted-foreground'
-                                            }`}
-                                        >
-                                            {step > num ? (
-                                                <Check className="size-4" />
-                                            ) : (
-                                                num
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <span
-                                            className={`text-sm ${step === num ? 'font-medium' : step > num ? 'font-medium text-emerald-500' : 'text-muted-foreground'}`}
-                                        >
-                                            {label}
-                                        </span>
-                                        <p
-                                            className={`text-xs ${step === num ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
-                                        >
-                                            {description}
-                                        </p>
-                                    </div>
-                                    {idx < 2 && (
-                                        <div
-                                            className={`mx-1 h-px w-4 sm:mx-2 sm:w-8 ${
-                                                step > idx + 1
-                                                    ? 'bg-emerald-500'
-                                                    : 'border-t border-dashed border-border bg-transparent'
-                                            }`}
-                                        />
+                        {[
+                            {
+                                num: 1,
+                                label: 'Upload CSV',
+                                description:
+                                    'Select or drag your bank statement CSV file',
+                            },
+                            {
+                                num: 2,
+                                label: 'Map Columns',
+                                description:
+                                    'Match your CSV columns to transaction fields',
+                            },
+                            {
+                                num: 3,
+                                label: 'Preview & Confirm',
+                                description:
+                                    'Review your data and import into your account',
+                            },
+                        ].map(({ num, label, description }, idx) => (
+                            <div
+                                key={num}
+                                className="flex items-center gap-1 sm:gap-2"
+                            >
+                                <div className="relative">
+                                    {step === num && (
+                                        <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
                                     )}
+                                    <div
+                                        className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:h-8 sm:w-8 sm:text-sm ${
+                                            step === num
+                                                ? 'bg-primary text-primary-foreground'
+                                                : step > num
+                                                  ? 'bg-emerald-500 text-white'
+                                                  : 'bg-muted text-muted-foreground'
+                                        }`}
+                                    >
+                                        {step > num ? (
+                                            <Check className="size-4" />
+                                        ) : (
+                                            num
+                                        )}
+                                    </div>
                                 </div>
-                            ))}
+                                <div>
+                                    <span
+                                        className={`text-sm ${step === num ? 'font-medium' : step > num ? 'font-medium text-emerald-500' : 'text-muted-foreground'}`}
+                                    >
+                                        {label}
+                                    </span>
+                                    <p
+                                        className={`text-xs ${step === num ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
+                                    >
+                                        {description}
+                                    </p>
+                                </div>
+                                {idx < 2 && (
+                                    <div
+                                        className={`mx-1 h-px w-4 sm:mx-2 sm:w-8 ${
+                                            step > idx + 1
+                                                ? 'bg-emerald-500'
+                                                : 'border-t border-dashed border-border bg-transparent'
+                                        }`}
+                                    />
+                                )}
+                            </div>
+                        ))}
                     </div>
 
                     {/* Step 1: Upload */}
@@ -611,7 +607,9 @@ export default function ImportIndex() {
                                     onDrop={handleDrop}
                                     onDragOver={handleDragOver}
                                     onDragLeave={handleDragLeave}
-                                    onClick={() => fileInputRef.current?.click()}
+                                    onClick={() =>
+                                        fileInputRef.current?.click()
+                                    }
                                 >
                                     <input
                                         ref={fileInputRef}
@@ -631,10 +629,12 @@ export default function ImportIndex() {
                                             </div>
                                             <div className="text-center">
                                                 <p className="font-medium">
-                                                    Drop your CSV file here, or click to browse
+                                                    Drop your CSV file here, or
+                                                    click to browse
                                                 </p>
                                                 <p className="mt-1 text-sm text-muted-foreground">
-                                                    Supports .csv and .txt files up to 5MB
+                                                    Supports .csv and .txt files
+                                                    up to 5MB
                                                 </p>
                                             </div>
                                         </>
@@ -673,8 +673,8 @@ export default function ImportIndex() {
                                                 Bank format detected
                                             </AlertTitle>
                                             <AlertDescription>
-                                                Detected {detectedBank} format
-                                                — mapping auto-applied.
+                                                Detected {detectedBank} format —
+                                                mapping auto-applied.
                                             </AlertDescription>
                                         </Alert>
                                     )}
@@ -684,62 +684,51 @@ export default function ImportIndex() {
                                         <div className="flex flex-col gap-2">
                                             <Label>Load saved mapping</Label>
                                             <div className="flex items-center gap-2">
-                                                <Select
-                                                    onValueChange={
-                                                        handleLoadSavedMapping
-                                                    }
-                                                >
-                                                    <SelectTrigger className="w-full max-w-xs">
-                                                        <SelectValue placeholder="Select a saved mapping..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {savedMappings.map(
-                                                            (sm) => (
-                                                                <SelectItem
-                                                                    key={sm.id}
-                                                                    value={String(
-                                                                        sm.id,
-                                                                    )}
-                                                                >
-                                                                    {sm.name}
-                                                                </SelectItem>
+                                                <SearchableSelect
+                                                    options={savedMappings.map(
+                                                        (sm) => ({
+                                                            value: String(
+                                                                sm.id,
                                                             ),
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
-                                                {savedMappings.length > 0 && (
-                                                    <Select
-                                                        onValueChange={(val) =>
-                                                            void handleDeleteMapping(
-                                                                Number(val),
-                                                            )
+                                                            label: sm.name,
+                                                        }),
+                                                    )}
+                                                    value={null}
+                                                    onValueChange={(val) => {
+                                                        if (val) {
+                                                            handleLoadSavedMapping(
+                                                                val,
+                                                            );
                                                         }
-                                                    >
-                                                        <SelectTrigger className="w-auto">
-                                                            <SelectValue placeholder="Delete..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {savedMappings.map(
-                                                                (sm) => (
-                                                                    <SelectItem
-                                                                        key={
-                                                                            sm.id
-                                                                        }
-                                                                        value={String(
-                                                                            sm.id,
-                                                                        )}
-                                                                    >
-                                                                        Delete
-                                                                        &quot;
-                                                                        {
-                                                                            sm.name
-                                                                        }
-                                                                        &quot;
-                                                                    </SelectItem>
+                                                    }}
+                                                    placeholder="Select a saved mapping..."
+                                                    searchPlaceholder="Search mappings..."
+                                                    className="w-full max-w-xs"
+                                                />
+                                                {savedMappings.length > 0 && (
+                                                    <SearchableSelect
+                                                        options={savedMappings.map(
+                                                            (sm) => ({
+                                                                value: String(
+                                                                    sm.id,
                                                                 ),
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
+                                                                label: `Delete "${sm.name}"`,
+                                                            }),
+                                                        )}
+                                                        value={null}
+                                                        onValueChange={(
+                                                            val,
+                                                        ) => {
+                                                            if (val) {
+                                                                void handleDeleteMapping(
+                                                                    Number(val),
+                                                                );
+                                                            }
+                                                        }}
+                                                        placeholder="Delete..."
+                                                        searchPlaceholder="Search mappings..."
+                                                        className="w-auto"
+                                                    />
                                                 )}
                                             </div>
                                         </div>
@@ -753,85 +742,83 @@ export default function ImportIndex() {
                                                 *
                                             </span>
                                         </Label>
-                                        <Select
-                                            value={accountId}
-                                            onValueChange={setAccountId}
-                                        >
-                                            <SelectTrigger className="w-full max-w-xs">
-                                                <SelectValue placeholder="Select account..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {accounts.map((account) => (
-                                                    <SelectItem
-                                                        key={account.id}
-                                                        value={String(
-                                                            account.id,
-                                                        )}
-                                                    >
-                                                        {account.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <SearchableSelect
+                                            options={accounts.map(
+                                                (account) => ({
+                                                    value: String(account.id),
+                                                    label: account.name,
+                                                    color: account.color,
+                                                }),
+                                            )}
+                                            value={accountId || null}
+                                            onValueChange={(val) =>
+                                                setAccountId(val ?? '')
+                                            }
+                                            placeholder="Select account..."
+                                            searchPlaceholder="Search accounts..."
+                                            className="w-full max-w-xs"
+                                        />
                                     </div>
 
                                     {/* Field mappings */}
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         {TARGET_FIELDS.map(
-                                            ({ key, label, required }) => (
-                                                <div
-                                                    key={key}
-                                                    className="flex flex-col gap-2"
-                                                >
-                                                    <Label>
-                                                        {label}{' '}
-                                                        {required && (
-                                                            <span className="text-destructive">
-                                                                *
-                                                            </span>
-                                                        )}
-                                                    </Label>
-                                                    <Select
-                                                        value={mapping[key]}
-                                                        onValueChange={(val) =>
-                                                            handleMappingChange(
-                                                                key,
-                                                                val,
-                                                            )
-                                                        }
+                                            ({ key, label, required }) => {
+                                                const headerOptions =
+                                                    parseResult.headers.map(
+                                                        (header) => ({
+                                                            value: header,
+                                                            label: header,
+                                                        }),
+                                                    );
+
+                                                const options = !required
+                                                    ? [
+                                                          {
+                                                              value: NOT_MAPPED,
+                                                              label: '— not mapped —',
+                                                          },
+                                                          ...headerOptions,
+                                                      ]
+                                                    : headerOptions;
+
+                                                const currentValue =
+                                                    mapping[key] ===
+                                                        NOT_MAPPED && required
+                                                        ? null
+                                                        : mapping[key];
+
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className="flex flex-col gap-2"
                                                     >
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="— not mapped —" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {!required && (
-                                                                <SelectItem
-                                                                    value={
-                                                                        NOT_MAPPED
-                                                                    }
-                                                                >
-                                                                    — not mapped
-                                                                    —
-                                                                </SelectItem>
+                                                        <Label>
+                                                            {label}{' '}
+                                                            {required && (
+                                                                <span className="text-destructive">
+                                                                    *
+                                                                </span>
                                                             )}
-                                                            {parseResult.headers.map(
-                                                                (header) => (
-                                                                    <SelectItem
-                                                                        key={
-                                                                            header
-                                                                        }
-                                                                        value={
-                                                                            header
-                                                                        }
-                                                                    >
-                                                                        {header}
-                                                                    </SelectItem>
-                                                                ),
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            ),
+                                                        </Label>
+                                                        <SearchableSelect
+                                                            options={options}
+                                                            value={currentValue}
+                                                            onValueChange={(
+                                                                val,
+                                                            ) =>
+                                                                handleMappingChange(
+                                                                    key,
+                                                                    val ??
+                                                                        NOT_MAPPED,
+                                                                )
+                                                            }
+                                                            placeholder="— not mapped —"
+                                                            searchPlaceholder="Search columns..."
+                                                        />
+                                                    </div>
+                                                );
+                                            },
                                         )}
                                     </div>
 
@@ -885,9 +872,7 @@ export default function ImportIndex() {
                                                     }
                                                     className="max-w-xs"
                                                     onKeyDown={(e) => {
-                                                        if (
-                                                            e.key === 'Enter'
-                                                        ) {
+                                                        if (e.key === 'Enter') {
                                                             void handleSaveMapping();
                                                         }
                                                     }}
@@ -943,7 +928,10 @@ export default function ImportIndex() {
 
                     {/* Step 3: Preview */}
                     {step === 3 && parseResult && (
-                        <Deferred data="accounts" fallback={<ImportLoadingSkeleton />}>
+                        <Deferred
+                            data="accounts"
+                            fallback={<ImportLoadingSkeleton />}
+                        >
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Preview & Confirm</CardTitle>
