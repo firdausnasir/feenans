@@ -5,6 +5,7 @@ declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
             name: string;
+            isAdminArea: boolean;
             auth: {
                 user: User | null;
             };

@@ -13,7 +13,7 @@ export function AppSidebarHeader({
 }: {
     breadcrumbs?: BreadcrumbItemType[];
 }) {
-    const { currentLedger } = usePage().props;
+    const { currentLedger, isAdminArea } = usePage().props;
     const [addTxOpen, setAddTxOpen] = useState(false);
 
     return (
@@ -23,8 +23,8 @@ export function AppSidebarHeader({
                 <Breadcrumbs breadcrumbs={breadcrumbs} />
             </div>
             <div className="ml-auto flex items-center gap-2">
-                <NotificationBell />
-                {currentLedger && (
+                {!isAdminArea && <NotificationBell />}
+                {!isAdminArea && currentLedger && (
                     <>
                         <Button
                             size="sm"

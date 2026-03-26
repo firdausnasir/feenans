@@ -1,16 +1,19 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
+    ArrowLeft,
     BarChart3,
     CreditCard,
     Hash,
+    LayoutDashboard,
     LayoutGrid,
     PiggyBank,
     Receipt,
     RefreshCw,
     Settings,
+    Shield,
     Tag,
     Upload,
-    Users,
+    Users as UsersIcon,
 } from 'lucide-react';
 import { LedgerSwitcher } from '@/components/ledger-switcher';
 import { NavMain } from '@/components/nav-main';
@@ -40,99 +43,127 @@ import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { NavGroup } from '@/types';
 
 export function AppSidebar() {
-    const { currentLedger } = usePage().props as {
-        currentLedger: {
-            id: number;
-            name: string;
-            currency_code: string;
-        } | null;
-    };
+    const { currentLedger, isAdminArea } = usePage().props;
 
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     const ledgerId = currentLedger?.id;
 
-    const navGroups: NavGroup[] = ledgerId
+    const navGroups: NavGroup[] = isAdminArea
         ? [
               {
-                  label: 'Overview',
+                  label: 'Admin',
                   items: [
                       {
                           title: 'Dashboard',
-                          href: dashboard.url(ledgerId),
-                          icon: LayoutGrid,
+                          href: '/admin',
+                          icon: LayoutDashboard,
                       },
                       {
-                          title: 'Reports',
-                          href: reportsIndex.url(ledgerId),
-                          icon: BarChart3,
-                      },
-                  ],
-              },
-              {
-                  label: 'Activity',
-                  items: [
-                      {
-                          title: 'Accounts',
-                          href: accountsIndex.url(ledgerId),
-                          icon: CreditCard,
+                          title: 'Users',
+                          href: '/admin/users',
+                          icon: UsersIcon,
                       },
                       {
-                          title: 'Transactions',
-                          href: transactionsIndex.url(ledgerId),
-                          icon: Receipt,
-                      },
-                      {
-                          title: 'Recurring',
-                          href: billsIndex.url(ledgerId),
-                          icon: RefreshCw,
-                      },
-                  ],
-              },
-              {
-                  label: 'Plan',
-                  items: [
-                      {
-                          title: 'Budgets',
-                          href: budgetsIndex.url(ledgerId),
-                          icon: PiggyBank,
-                      },
-                      {
-                          title: 'Payees',
-                          href: payeesIndex.url(ledgerId),
-                          icon: Users,
-                      },
-                  ],
-              },
-              {
-                  label: 'Manage',
-                  items: [
-                      {
-                          title: 'Categories',
-                          href: categoriesIndex.url(ledgerId),
-                          icon: Tag,
-                      },
-                      {
-                          title: 'Tags',
-                          href: tagsIndex.url(ledgerId),
-                          icon: Hash,
-                      },
-                      {
-                          title: 'Import',
-                          href: importCreate.url(ledgerId),
-                          icon: Upload,
+                          title: 'Memberships',
+                          href: '/admin/memberships',
+                          icon: Shield,
                       },
                   ],
               },
           ]
-        : [];
+        : ledgerId
+          ? [
+                {
+                    label: 'Overview',
+                    items: [
+                        {
+                            title: 'Dashboard',
+                            href: dashboard.url(ledgerId),
+                            icon: LayoutGrid,
+                        },
+                        {
+                            title: 'Reports',
+                            href: reportsIndex.url(ledgerId),
+                            icon: BarChart3,
+                        },
+                    ],
+                },
+                {
+                    label: 'Activity',
+                    items: [
+                        {
+                            title: 'Accounts',
+                            href: accountsIndex.url(ledgerId),
+                            icon: CreditCard,
+                        },
+                        {
+                            title: 'Transactions',
+                            href: transactionsIndex.url(ledgerId),
+                            icon: Receipt,
+                        },
+                        {
+                            title: 'Recurring',
+                            href: billsIndex.url(ledgerId),
+                            icon: RefreshCw,
+                        },
+                    ],
+                },
+                {
+                    label: 'Plan',
+                    items: [
+                        {
+                            title: 'Budgets',
+                            href: budgetsIndex.url(ledgerId),
+                            icon: PiggyBank,
+                        },
+                        {
+                            title: 'Payees',
+                            href: payeesIndex.url(ledgerId),
+                            icon: UsersIcon,
+                        },
+                    ],
+                },
+                {
+                    label: 'Manage',
+                    items: [
+                        {
+                            title: 'Categories',
+                            href: categoriesIndex.url(ledgerId),
+                            icon: Tag,
+                        },
+                        {
+                            title: 'Tags',
+                            href: tagsIndex.url(ledgerId),
+                            icon: Hash,
+                        },
+                        {
+                            title: 'Import',
+                            href: importCreate.url(ledgerId),
+                            icon: Upload,
+                        },
+                    ],
+                },
+            ]
+          : [];
 
     const settingsHref = ledgerId ? settingsIndex.url(ledgerId) : null;
 
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
-                <LedgerSwitcher />
+                {isAdminArea ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                            <Shield className="size-4" />
+                        </div>
+                        <span className="truncate text-sm font-semibold">
+                            Admin Console
+                        </span>
+                    </div>
+                ) : (
+                    <LedgerSwitcher />
+                )}
             </SidebarHeader>
 
             <SidebarContent>
@@ -140,7 +171,24 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                {settingsHref && (
+                {isAdminArea ? (
+                    <>
+                        <SidebarSeparator />
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    tooltip={{ children: 'Back to App' }}
+                                >
+                                    <Link href="/dashboard">
+                                        <ArrowLeft />
+                                        <span>Back to App</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </>
+                ) : settingsHref ? (
                     <>
                         <SidebarSeparator />
                         <SidebarMenu>
@@ -160,7 +208,7 @@ export function AppSidebar() {
                             </SidebarMenuItem>
                         </SidebarMenu>
                     </>
-                )}
+                ) : null}
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

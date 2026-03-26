@@ -37,12 +37,14 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $isAdminArea = str_starts_with($request->path(), 'admin');
         $availableLedgers = $user?->ledgers()->orderBy('name')->get(['id', 'name', 'currency_code']) ?? collect();
         $currentLedger = $request->route('ledger');
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'isAdminArea' => $isAdminArea,
             'auth' => [
                 'user' => $user ? [
                     'id' => $user->id,
@@ -68,7 +70,7 @@ class HandleInertiaRequests extends Middleware
                 'currency_code' => $currentLedger->currency_code,
                 'cycle_start_day' => $currentLedger->cycle_start_day,
             ] : null,
-            'availableLedgers' => $availableLedgers->values(),
+            'availableLedgers' => $isAdminArea ? [] : $availableLedgers->values(),
             'unread_notifications_count' => $user?->unreadNotifications()->count() ?? 0,
             'notifications' => Inertia::optional(function () use ($user) {
                 if ($user === null) {
@@ -89,7 +91,7 @@ class HandleInertiaRequests extends Middleware
                 ];
             }),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'transactionModalData' => Inertia::optional(function () use ($currentLedger) {
+            'transactionModalData' => $isAdminArea ? null : Inertia::optional(function () use ($currentLedger) {
                 if (! $currentLedger) {
                     return null;
                 }

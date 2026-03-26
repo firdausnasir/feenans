@@ -34,7 +34,9 @@ test('admin users can view the admin page shell', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/index')
             ->where('auth.user.is_admin', true)
+            ->where('isAdminArea', true)
             ->where('currentLedger', null)
+            ->where('availableLedgers', [])
             ->etc()
         );
 });
