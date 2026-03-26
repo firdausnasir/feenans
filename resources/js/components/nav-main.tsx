@@ -1,4 +1,6 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
+import { Crown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import {
     SidebarGroup,
     SidebarGroupLabel,
@@ -11,6 +13,8 @@ import type { NavGroup } from '@/types';
 
 export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
     const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
+    const { auth } = usePage().props;
+    const isPremiumUser = auth.user?.membership?.is_premium ?? false;
 
     return (
         <>
@@ -21,24 +25,50 @@ export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
                 >
                     <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                     <SidebarMenu>
-                        {group.items.map((item) => (
-                            <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton
-                                    asChild
-                                    isActive={
-                                        item.title === 'Dashboard'
-                                            ? isCurrentUrl(item.href)
-                                            : isCurrentOrParentUrl(item.href)
-                                    }
-                                    tooltip={{ children: item.title }}
-                                >
-                                    <Link href={item.href} prefetch>
-                                        {item.icon && <item.icon />}
-                                        <span>{item.title}</span>
-                                    </Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
+                        {group.items.map((item) => {
+                            const needsUpgrade =
+                                item.isPremium && !isPremiumUser;
+                            const href = needsUpgrade ? '/premium' : item.href;
+
+                            return (
+                                <SidebarMenuItem key={item.title}>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={
+                                            needsUpgrade
+                                                ? false
+                                                : item.title === 'Dashboard'
+                                                  ? isCurrentUrl(item.href)
+                                                  : isCurrentOrParentUrl(
+                                                        item.href,
+                                                    )
+                                        }
+                                        tooltip={{
+                                            children: needsUpgrade
+                                                ? `${item.title} (Premium)`
+                                                : item.title,
+                                        }}
+                                    >
+                                        <Link
+                                            href={href}
+                                            prefetch={!needsUpgrade}
+                                        >
+                                            {item.icon && <item.icon />}
+                                            <span>{item.title}</span>
+                                            {needsUpgrade && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="ml-auto gap-1 text-[10px] leading-none"
+                                                >
+                                                    <Crown className="size-2.5" />
+                                                    Premium
+                                                </Badge>
+                                            )}
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            );
+                        })}
                     </SidebarMenu>
                 </SidebarGroup>
             ))}

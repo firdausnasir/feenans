@@ -86,6 +86,7 @@ export function AppSidebar() {
                             title: 'Reports',
                             href: reportsIndex.url(ledgerId),
                             icon: BarChart3,
+                            isPremium: true,
                         },
                     ],
                 },
@@ -106,6 +107,7 @@ export function AppSidebar() {
                             title: 'Recurring',
                             href: billsIndex.url(ledgerId),
                             icon: RefreshCw,
+                            isPremium: true,
                         },
                     ],
                 },
@@ -116,6 +118,7 @@ export function AppSidebar() {
                             title: 'Budgets',
                             href: budgetsIndex.url(ledgerId),
                             icon: PiggyBank,
+                            isPremium: true,
                         },
                         {
                             title: 'Payees',
