@@ -72,6 +72,8 @@ public function authorize(): bool
 
 The `authorize()` returning false will produce a 403. The frontend prevents this from being reached by hiding the "Create workspace" action behind a premium gate in `LedgerSwitcher`.
 
+Additionally, in `LedgerController::create`, redirect free users who already have 1+ ledgers to `/premium` for a smoother UX (prevents them from seeing the form only to get a 403 on submit).
+
 ### 5. Account Limit (Max 7 for Free Users)
 
 In `StoreAccountRequest::authorize()`:
@@ -200,7 +202,7 @@ Content:
 ### Feature Tests
 
 1. **EnsurePremium middleware**: Free user gets redirected to `/premium` on report/bill/budget routes. Premium user passes through.
-2. **Workspace limit**: Free user with 1 ledger cannot create another (403). Premium user can.
+2. **Workspace limit**: Free user with 1 ledger gets redirected from create page and cannot POST another (403). Premium user can.
 3. **Account limit**: Free user with 7 accounts cannot create an 8th (403). Premium user can.
 4. **Transaction gating**: Free user cannot create a transaction targeting account #8+. Premium user can.
 5. **Premium page**: Renders correctly for both free and premium users.
@@ -226,6 +228,7 @@ Content:
 - `bootstrap/app.php` -- register `premium` middleware alias
 - `routes/web.php` -- add `/premium` route
 - `routes/ledger.php` -- wrap premium routes in middleware group
+- `app/Http/Controllers/LedgerController.php` -- redirect free users from create page
 - `app/Http/Requests/StoreLedgerRequest.php` -- add ledger count check in `authorize()`
 - `app/Http/Requests/StoreAccountRequest.php` -- add account count check in `authorize()`
 - `app/Http/Requests/StoreTransactionRequest.php` -- add account limit check in `after()`
