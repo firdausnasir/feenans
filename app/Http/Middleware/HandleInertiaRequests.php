@@ -51,6 +51,7 @@ class HandleInertiaRequests extends Middleware
                     'avatar' => $user->avatar ?? null,
                     'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                     'onboarding_step' => $user->onboarding_step,
+                    'is_admin' => (bool) $user->is_admin,
                 ] : null,
             ],
             'flash' => [

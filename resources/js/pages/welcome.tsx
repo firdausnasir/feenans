@@ -114,9 +114,9 @@ type PrivacyItem = {
 const privacyItems: readonly PrivacyItem[] = [
     {
         icon: ShieldCheck,
-        title: 'No Admin Dashboard',
+        title: 'No Admin Access to Your Data',
         description:
-            'There is no interface for anyone at Feenans to view your financial data. Not a read-only view. Not an analytics panel. Nothing. Your ledger is invisible to us by design.',
+            'Operators can manage memberships and view aggregate service metrics, but no admin interface can browse, search, or export your ledgers, transactions, or budgets. Your financial data is invisible to everyone but you.',
     },
     {
         icon: Lock,
@@ -180,9 +180,9 @@ type TrustBannerItem = {
 const trustBannerItems: readonly TrustBannerItem[] = [
     {
         icon: ShieldCheck,
-        title: 'No admin panel',
+        title: 'No admin access to your data',
         description:
-            'Your data is yours alone. No one at Feenans can browse your transactions.',
+            'Operators can never browse your transactions, ledgers, or budgets.',
     },
     {
         icon: Lock,
@@ -392,12 +392,13 @@ export default function Welcome({
                                 <p className="mt-4 leading-relaxed text-muted-foreground">
                                     Unlike most finance apps, Feenans has{' '}
                                     <strong className="text-foreground">
-                                        no admin panel
+                                        no admin access to your financial data
                                     </strong>
-                                    . There is no backdoor, no dashboard where
-                                    someone can browse your transactions, and no
-                                    way for anyone to access your financial
-                                    data. Every piece of information you enter
+                                    . Operators can manage memberships and view
+                                    aggregate service health metrics, but there
+                                    is no interface that can browse, search, or
+                                    export your ledgers, transactions, or
+                                    budgets. Every piece of information you enter
                                     is isolated to your account and protected by
                                     policy-based access controls.
                                 </p>
@@ -459,9 +460,9 @@ export default function Welcome({
                             Take control of your finances — privately.
                         </h2>
                         <p className="mt-4 text-lg text-muted-foreground">
-                            No ads. No data mining. No admin watching. Just a
-                            clean, powerful finance tracker built for people who
-                            value their privacy.
+                            No ads. No data mining. No admin access to your
+                            ledgers. Just a clean, powerful finance tracker
+                            built for people who value their privacy.
                         </p>
                         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                             {auth.user ? (

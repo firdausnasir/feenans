@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminPageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
@@ -18,6 +19,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('onboarding/step/{step}', [OnboardingController::class, 'saveStep'])->name('onboarding.step')->where('step', '[12]');
     Route::post('onboarding/autosave', [OnboardingController::class, 'autosave'])->name('onboarding.autosave');
     Route::post('onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
+});
+
+Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/', AdminPageController::class)->name('admin.index');
 });
 
 require __DIR__.'/ledger.php';
