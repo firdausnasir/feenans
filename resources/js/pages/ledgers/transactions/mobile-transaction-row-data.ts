@@ -6,7 +6,8 @@ export function resolveTransferCounterpart(
 ): string | null {
     return (
         transaction.transfer_pair?.account?.name ??
-        pairedTransactions.find((item) => item.id !== transaction.id)?.account?.name ??
+        pairedTransactions.find((item) => item.id !== transaction.id)?.account
+            ?.name ??
         null
     );
 }
@@ -16,10 +17,29 @@ export function resolveMobileTransactionTitle(
     pairedTransactions: Transaction[] = [],
 ): string {
     if (transaction.transaction_type === 'transfer') {
-        const counterpart = resolveTransferCounterpart(transaction, pairedTransactions);
+        const counterpart = resolveTransferCounterpart(
+            transaction,
+            pairedTransactions,
+        );
 
-        return counterpart ? `${parseFloat(transaction.amount || '0') < 0 ? 'To' : 'From'} ${counterpart}` : 'Transfer';
+        return counterpart
+            ? `${parseFloat(transaction.amount || '0') < 0 ? 'To' : 'From'} ${counterpart}`
+            : 'Transfer';
     }
 
     return transaction.category?.name ?? 'Uncategorized';
+}
+
+export function resolveTransferPairTitle(transactions: Transaction[]): string {
+    const outgoing = transactions.find((t) => parseFloat(t.amount ?? '0') < 0);
+    const incoming = transactions.find((t) => parseFloat(t.amount ?? '0') > 0);
+
+    const fromName = outgoing?.account?.name;
+    const toName = incoming?.account?.name;
+
+    if (fromName && toName) {
+        return `${fromName} → ${toName}`;
+    }
+
+    return 'Transfer';
 }
