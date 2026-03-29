@@ -1428,8 +1428,8 @@ export default function TransactionsIndex() {
         const sentinel = infiniteScrollSentinelRef.current;
 
         if (!sentinel) {
-return;
-}
+            return;
+        }
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -1451,6 +1451,7 @@ return;
                     router.get(transactionsIndex.url(ledger.id), params, {
                         only: ['transactions'],
                         preserveState: true,
+                        preserveScroll: true,
                         replace: true,
                         onFinish: () => {
                             infiniteScrollLoadingRef.current = false;
@@ -1991,9 +1992,14 @@ return;
                                     const pairTitle = resolveTransferPairTitle(
                                         item.transactions,
                                     );
-                                    const isOutgoingSelected = allAcrossPages
-                                        ? !excludedIds.includes(outgoing.id)
-                                        : selectedIds.includes(outgoing.id);
+                                    const isPairSelected = allAcrossPages
+                                        ? item.transactions.every(
+                                              (t) =>
+                                                  !excludedIds.includes(t.id),
+                                          )
+                                        : item.transactions.every((t) =>
+                                              selectedIds.includes(t.id),
+                                          );
 
                                     const rows: ReactElement[] = [
                                         <TableRow
@@ -2009,11 +2015,14 @@ return;
                                                 }
                                             >
                                                 <Checkbox
-                                                    checked={isOutgoingSelected}
+                                                    checked={isPairSelected}
                                                     onCheckedChange={(c) =>
-                                                        handleSelectOne(
-                                                            outgoing.id,
-                                                            c,
+                                                        item.transactions.forEach(
+                                                            (t) =>
+                                                                handleSelectOne(
+                                                                    t.id,
+                                                                    c,
+                                                                ),
                                                         )
                                                     }
                                                 />
