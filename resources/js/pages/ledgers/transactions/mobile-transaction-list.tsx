@@ -22,7 +22,10 @@ import { amountColor, formatAbsAmount, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
 import { groupTransactionsForMobile } from './mobile-transaction-groups';
-import { resolveMobileTransactionTitle } from './mobile-transaction-row-data';
+import {
+    resolveMobileTransactionTitle,
+    resolveTransferPairTitle,
+} from './mobile-transaction-row-data';
 
 type MobileTransactionListProps = {
     transactions: Transaction[];
@@ -57,6 +60,9 @@ export function MobileTransactionList({
 }: MobileTransactionListProps) {
     const { privacyMode } = usePrivacyMode();
     const [expandedSplitIds, setExpandedSplitIds] = useState<number[]>([]);
+    const [expandedTransferPairIds, setExpandedTransferPairIds] = useState<
+        string[]
+    >([]);
     const groups = groupTransactionsForMobile(transactions);
 
     function isSelected(transaction: Transaction): boolean {
@@ -73,6 +79,14 @@ export function MobileTransactionList({
         );
     }
 
+    function toggleTransferPair(pairId: string): void {
+        setExpandedTransferPairIds((current) =>
+            current.includes(pairId)
+                ? current.filter((id) => id !== pairId)
+                : [...current, pairId],
+        );
+    }
+
     function renderTransactionRow(
         transaction: Transaction,
         pairedTransactions: Transaction[] = [],
@@ -85,14 +99,20 @@ export function MobileTransactionList({
             (transaction.attachments_count ?? 0) > 0;
         const hasTags = (transaction.tags?.length ?? 0) > 0;
         const isSplit =
-            transaction.is_split === true && (transaction.splits?.length ?? 0) > 0;
+            transaction.is_split === true &&
+            (transaction.splits?.length ?? 0) > 0;
         const isExpanded = expandedSplitIds.includes(transaction.id);
-        const title = resolveMobileTransactionTitle(transaction, pairedTransactions);
+        const title = resolveMobileTransactionTitle(
+            transaction,
+            pairedTransactions,
+        );
         const meta = [
             transaction.transaction_type === 'transfer'
                 ? transaction.description
                 : transaction.payee?.name,
-            transaction.transaction_type === 'transfer' ? null : transaction.description,
+            transaction.transaction_type === 'transfer'
+                ? null
+                : transaction.description,
             transaction.transaction_type === 'transfer'
                 ? null
                 : transaction.account?.name,
@@ -131,14 +151,16 @@ export function MobileTransactionList({
                         >
                             <div className="min-w-0 space-y-0.5">
                                 <div className="flex min-w-0 items-center gap-1.5">
-                                    {transaction.transaction_type === 'transfer' && (
+                                    {transaction.transaction_type ===
+                                        'transfer' && (
                                         <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
                                     )}
                                     <span
                                         className={cn(
                                             'truncate text-sm font-medium',
                                             !transaction.category &&
-                                                transaction.transaction_type !== 'transfer' &&
+                                                transaction.transaction_type !==
+                                                    'transfer' &&
                                                 'text-muted-foreground',
                                         )}
                                     >
@@ -159,21 +181,33 @@ export function MobileTransactionList({
                                             amountColor(runningBalance),
                                         )}
                                     >
-                                        Balance {formatAbsAmount(runningBalance, privacyMode)}
+                                        Balance{' '}
+                                        {formatAbsAmount(
+                                            runningBalance,
+                                            privacyMode,
+                                        )}
                                     </p>
                                 )}
 
                                 {hasTags && (
                                     <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                                        {transaction.tags?.slice(0, 2).map((tag) => (
-                                            <TagPill key={tag.id} tag={tag} />
-                                        ))}
-                                        {(transaction.tags?.length ?? 0) > 2 && (
+                                        {transaction.tags
+                                            ?.slice(0, 2)
+                                            .map((tag) => (
+                                                <TagPill
+                                                    key={tag.id}
+                                                    tag={tag}
+                                                />
+                                            ))}
+                                        {(transaction.tags?.length ?? 0) >
+                                            2 && (
                                             <Badge
                                                 variant="secondary"
                                                 className="h-5 px-1.5 text-[10px]"
                                             >
-                                                +{(transaction.tags?.length ?? 0) - 2}
+                                                +
+                                                {(transaction.tags?.length ??
+                                                    0) - 2}
                                             </Badge>
                                         )}
                                     </div>
@@ -187,7 +221,10 @@ export function MobileTransactionList({
                                         amountColor(amount),
                                     )}
                                 >
-                                    {formatAbsAmount(transaction.amount, privacyMode)}
+                                    {formatAbsAmount(
+                                        transaction.amount,
+                                        privacyMode,
+                                    )}
                                 </p>
                             </div>
                         </button>
@@ -205,13 +242,17 @@ export function MobileTransactionList({
                                         <ChevronDown className="size-3" />
                                     )}
                                     {transaction.splits?.length} split
-                                    {transaction.splits?.length === 1 ? '' : 's'}
+                                    {transaction.splits?.length === 1
+                                        ? ''
+                                        : 's'}
                                 </button>
 
                                 {isExpanded && (
                                     <div className="mt-1.5 space-y-1 rounded-lg bg-muted/40 px-2.5 py-2">
                                         {transaction.splits?.map((split) => {
-                                            const splitAmount = parseFloat(split.amount || '0');
+                                            const splitAmount = parseFloat(
+                                                split.amount || '0',
+                                            );
                                             const splitMeta = [
                                                 split.payee?.name,
                                                 split.description,
@@ -229,7 +270,9 @@ export function MobileTransactionList({
                                                 >
                                                     <div className="min-w-0">
                                                         <p className="truncate text-[11px] font-medium text-foreground">
-                                                            {split.category?.name ?? 'Uncategorized'}
+                                                            {split.category
+                                                                ?.name ??
+                                                                'Uncategorized'}
                                                         </p>
                                                         {splitMeta !== '' && (
                                                             <p className="truncate text-[11px] text-muted-foreground">
@@ -240,10 +283,15 @@ export function MobileTransactionList({
                                                     <span
                                                         className={cn(
                                                             'shrink-0 text-[11px] tabular-nums',
-                                                            amountColor(splitAmount),
+                                                            amountColor(
+                                                                splitAmount,
+                                                            ),
                                                         )}
                                                     >
-                                                        {formatAbsAmount(split.amount, privacyMode)}
+                                                        {formatAbsAmount(
+                                                            split.amount,
+                                                            privacyMode,
+                                                        )}
                                                     </span>
                                                 </div>
                                             );
@@ -279,7 +327,9 @@ export function MobileTransactionList({
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => onEdit(transaction)}>
+                                <DropdownMenuItem
+                                    onClick={() => onEdit(transaction)}
+                                >
                                     Edit
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -306,11 +356,19 @@ export function MobileTransactionList({
         <div className="space-y-3 sm:hidden">
             <div className="flex items-center gap-2 px-1">
                 <Checkbox
-                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                    checked={
+                        allSelected
+                            ? true
+                            : someSelected
+                              ? 'indeterminate'
+                              : false
+                    }
                     onCheckedChange={onSelectAll}
                     aria-label="Select all"
                 />
-                <span className="text-xs text-muted-foreground">Select all</span>
+                <span className="text-xs text-muted-foreground">
+                    Select all
+                </span>
             </div>
 
             {groups.map((group) => (
@@ -321,28 +379,230 @@ export function MobileTransactionList({
 
                     <div className="overflow-hidden rounded-xl border border-border bg-card/90">
                         {group.items.map((item, index) => {
-                            const bordered = index > 0 ? 'border-t border-border/70' : '';
+                            const bordered =
+                                index > 0 ? 'border-t border-border/70' : '';
 
                             if (item.kind === 'transfer_pair') {
+                                const outgoing =
+                                    item.transactions.find(
+                                        (t) => parseFloat(t.amount ?? '0') < 0,
+                                    ) ?? item.transactions[0];
+                                const selected = isSelected(outgoing);
+                                const pairTitle = resolveTransferPairTitle(
+                                    item.transactions,
+                                );
+                                const isPairExpanded =
+                                    expandedTransferPairIds.includes(
+                                        item.pairId,
+                                    );
+                                const hasAttachments =
+                                    (outgoing.attachments?.length ?? 0) > 0 ||
+                                    (outgoing.attachments_count ?? 0) > 0;
+
                                 return (
-                                    <div key={item.pairId} className={cn('bg-muted/20', bordered)}>
-                                        <div className="px-3 py-1 text-[10px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-                                            Transfer
-                                        </div>
-                                        <div className="divide-y divide-border/70">
-                                            {item.transactions.map((transaction) =>
-                                                renderTransactionRow(
-                                                    transaction,
-                                                    item.transactions,
-                                                ),
-                                            )}
+                                    <div
+                                        key={item.pairId}
+                                        className={cn(
+                                            'px-3 py-2.5 transition-colors',
+                                            bordered,
+                                            selected && 'bg-primary/5',
+                                        )}
+                                    >
+                                        <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                            {/* Checkbox — targets outgoing */}
+                                            <div
+                                                className="flex size-10 items-start justify-center pt-1"
+                                                onClick={() =>
+                                                    onSelectOne(
+                                                        outgoing.id,
+                                                        !selected,
+                                                    )
+                                                }
+                                            >
+                                                <Checkbox
+                                                    checked={selected}
+                                                    onCheckedChange={(
+                                                        checked,
+                                                    ) =>
+                                                        onSelectOne(
+                                                            outgoing.id,
+                                                            checked,
+                                                        )
+                                                    }
+                                                    onClick={(e) =>
+                                                        e.stopPropagation()
+                                                    }
+                                                    aria-label={`Select transfer ${item.pairId}`}
+                                                />
+                                            </div>
+
+                                            {/* Content */}
+                                            <div className="min-w-0">
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full items-start justify-between gap-3 text-left"
+                                                    onClick={() =>
+                                                        onEdit(outgoing)
+                                                    }
+                                                >
+                                                    <div className="min-w-0 space-y-0.5">
+                                                        <div className="flex min-w-0 items-center gap-1.5">
+                                                            <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                                                            <span className="truncate text-sm font-medium">
+                                                                {pairTitle}
+                                                            </span>
+                                                        </div>
+
+                                                        {outgoing.description && (
+                                                            <p className="truncate text-xs text-muted-foreground">
+                                                                {
+                                                                    outgoing.description
+                                                                }
+                                                            </p>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="shrink-0 text-right">
+                                                        <p className="text-sm font-semibold text-foreground tabular-nums">
+                                                            {formatAbsAmount(
+                                                                outgoing.amount,
+                                                                privacyMode,
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </button>
+
+                                                {/* Expand toggle */}
+                                                <div className="mt-1.5">
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex min-h-8 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                                        onClick={() =>
+                                                            toggleTransferPair(
+                                                                item.pairId,
+                                                            )
+                                                        }
+                                                    >
+                                                        {isPairExpanded ? (
+                                                            <ChevronUp className="size-3" />
+                                                        ) : (
+                                                            <ChevronDown className="size-3" />
+                                                        )}
+                                                        2 accounts
+                                                    </button>
+
+                                                    {isPairExpanded && (
+                                                        <div className="mt-1.5 space-y-1 rounded-lg bg-muted/40 px-2.5 py-2">
+                                                            {item.transactions.map(
+                                                                (tx) => (
+                                                                    <div
+                                                                        key={
+                                                                            tx.id
+                                                                        }
+                                                                        className="flex items-start justify-between gap-2"
+                                                                    >
+                                                                        <p className="truncate text-[11px] font-medium text-foreground">
+                                                                            {tx
+                                                                                .account
+                                                                                ?.name ??
+                                                                                'Unknown account'}
+                                                                        </p>
+                                                                        <span
+                                                                            className={cn(
+                                                                                'shrink-0 text-[11px] tabular-nums',
+                                                                                amountColor(
+                                                                                    parseFloat(
+                                                                                        tx.amount ??
+                                                                                            '0',
+                                                                                    ),
+                                                                                ),
+                                                                            )}
+                                                                        >
+                                                                            {formatAbsAmount(
+                                                                                tx.amount,
+                                                                                privacyMode,
+                                                                            )}
+                                                                        </span>
+                                                                    </div>
+                                                                ),
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Actions — targets outgoing */}
+                                            <div className="flex min-h-10 items-start gap-0.5">
+                                                {hasAttachments && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-8 text-muted-foreground"
+                                                        onClick={() =>
+                                                            onAttachmentClick(
+                                                                outgoing,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Paperclip className="size-3.5" />
+                                                    </Button>
+                                                )}
+
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger
+                                                        asChild
+                                                    >
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="size-8 text-muted-foreground"
+                                                        >
+                                                            <MoreVertical className="size-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                onEdit(outgoing)
+                                                            }
+                                                        >
+                                                            Edit
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                onDuplicate(
+                                                                    outgoing,
+                                                                )
+                                                            }
+                                                        >
+                                                            Duplicate
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            className="text-destructive focus:text-destructive"
+                                                            onClick={() =>
+                                                                onDelete(
+                                                                    outgoing,
+                                                                )
+                                                            }
+                                                        >
+                                                            Delete
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
                                         </div>
                                     </div>
                                 );
                             }
 
                             return (
-                                <div key={item.transaction.id} className={bordered}>
+                                <div
+                                    key={item.transaction.id}
+                                    className={bordered}
+                                >
                                     {renderTransactionRow(item.transaction)}
                                 </div>
                             );
