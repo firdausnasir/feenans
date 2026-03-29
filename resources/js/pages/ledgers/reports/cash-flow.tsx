@@ -25,6 +25,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -63,6 +64,8 @@ function formatDayLabel(dateStr: string): string {
 // ─── Components ──────────────────────────────────────────────────────────────
 
 function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -97,10 +100,11 @@ function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
                 <YAxis
                     tick={{ fontSize: 11 }}
                     className="text-muted-foreground"
+                    tickFormatter={(v) => formatAbsAmount(v, privacyMode)}
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAmount(Number(value)),
+                        formatAmount(Number(value), privacyMode),
                         String(name).charAt(0).toUpperCase() +
                             String(name).slice(1),
                     ]}
@@ -135,6 +139,8 @@ function DailyCashFlowChart({ data }: { data: DailyCashFlowEntry[] }) {
 }
 
 function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (bills.length === 0) {
         return (
             <EmptyState
@@ -173,7 +179,7 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                             }`}
                         >
                             {bill.transaction_type === 'expense' ? '-' : '+'}
-                            {formatAbsAmount(bill.amount)}
+                            {formatAbsAmount(bill.amount, privacyMode)}
                         </span>
                     </div>
                 ))}
@@ -210,7 +216,7 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                                 {bill.transaction_type === 'expense'
                                     ? '-'
                                     : '+'}
-                                {formatAbsAmount(bill.amount)}
+                                {formatAbsAmount(bill.amount, privacyMode)}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -266,6 +272,7 @@ export default function CashFlowPage() {
         };
     }>().props;
     const ledger = currentLedger!;
+    const { privacyMode } = usePrivacyMode();
 
     const dailyCashFlow = cashFlow?.daily_cash_flow ?? [];
     const upcomingBills = cashFlow?.upcoming_bills ?? [];
@@ -339,7 +346,7 @@ export default function CashFlowPage() {
                                     Total inflow
                                 </p>
                                 <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
-                                    {formatAbsAmount(totalIncome)}
+                                    {formatAbsAmount(totalIncome, privacyMode)}
                                 </p>
                             </CardContent>
                         </Card>
@@ -349,7 +356,7 @@ export default function CashFlowPage() {
                                     Total outflow
                                 </p>
                                 <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
-                                    {formatAbsAmount(totalExpense)}
+                                    {formatAbsAmount(totalExpense, privacyMode)}
                                 </p>
                             </CardContent>
                         </Card>
@@ -366,7 +373,10 @@ export default function CashFlowPage() {
                                     }`}
                                 >
                                     {netFlow < 0 ? '-' : '+'}
-                                    {formatAbsAmount(Math.abs(netFlow))}
+                                    {formatAbsAmount(
+                                        Math.abs(netFlow),
+                                        privacyMode,
+                                    )}
                                 </p>
                             </CardContent>
                         </Card>

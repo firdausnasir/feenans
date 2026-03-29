@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -79,6 +80,7 @@ function StatusIcon({ status }: { status: BudgetStat['status'] }) {
 // ─── Components ──────────────────────────────────────────────────────────────
 
 function BudgetSummary({ stats }: { stats: BudgetStat[] }) {
+    const { privacyMode } = usePrivacyMode();
     const totalBudget = stats.reduce((sum, s) => sum + s.amount, 0);
     const totalSpent = stats.reduce((sum, s) => sum + s.spent, 0);
     const overBudgetCount = stats.filter((s) => s.status === 'over').length;
@@ -92,7 +94,7 @@ function BudgetSummary({ stats }: { stats: BudgetStat[] }) {
                         Total budgeted
                     </p>
                     <p className="mt-2 text-2xl font-semibold tabular-nums">
-                        {formatAbsAmount(totalBudget)}
+                        {formatAbsAmount(totalBudget, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -102,7 +104,7 @@ function BudgetSummary({ stats }: { stats: BudgetStat[] }) {
                         Total spent
                     </p>
                     <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
-                        {formatAbsAmount(totalSpent)}
+                        {formatAbsAmount(totalSpent, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -131,6 +133,8 @@ function BudgetSummary({ stats }: { stats: BudgetStat[] }) {
 }
 
 function BudgetCard({ stat }: { stat: BudgetStat }) {
+    const { privacyMode } = usePrivacyMode();
+
     return (
         <Card>
             <CardContent className="pt-6">
@@ -164,23 +168,31 @@ function BudgetCard({ stat }: { stat: BudgetStat }) {
                     <span className="tabular-nums">
                         Spent:{' '}
                         <span className="text-foreground">
-                            {formatAbsAmount(stat.spent)}
+                            {formatAbsAmount(stat.spent, privacyMode)}
                         </span>
                     </span>
                     <span className="tabular-nums">
-                        Budget: {formatAbsAmount(stat.amount)}
+                        Budget:{' '}
+                        {formatAbsAmount(stat.amount, privacyMode)}
                     </span>
                 </div>
 
                 <div className="mt-1 text-xs">
                     {stat.remaining >= 0 ? (
                         <span className="text-foreground tabular-nums">
-                            {formatAbsAmount(stat.remaining)} remaining
+                            {formatAbsAmount(
+                                stat.remaining,
+                                privacyMode,
+                            )}{' '}
+                            remaining
                         </span>
                     ) : (
                         <span className="text-red-500 tabular-nums">
-                            {formatAbsAmount(Math.abs(stat.remaining))} over
-                            budget
+                            {formatAbsAmount(
+                                Math.abs(stat.remaining),
+                                privacyMode,
+                            )}{' '}
+                            over budget
                         </span>
                     )}
                 </div>

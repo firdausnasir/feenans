@@ -37,6 +37,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
@@ -196,6 +197,7 @@ export default function BudgetsIndex() {
     }>().props;
     const ledger = currentLedger!;
     const budgets = budgetStats ?? [];
+    const { privacyMode } = usePrivacyMode();
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -273,7 +275,8 @@ export default function BudgetsIndex() {
                             mapInertiaErrorsArray(inertiaErrors);
                         setErrors(validationErrors);
 
-                        const firstError = Object.values(validationErrors)[0]?.[0];
+                        const firstError =
+                            Object.values(validationErrors)[0]?.[0];
 
                         if (firstError) {
                             toast.error(firstError);
@@ -375,8 +378,9 @@ export default function BudgetsIndex() {
                                             </CardTitle>
                                             <span
                                                 className={`rounded-full px-2 py-0.5 text-xs font-medium text-white ${
-                                                    statusColor[budget.status] ??
-                                                    'bg-muted'
+                                                    statusColor[
+                                                        budget.status
+                                                    ] ?? 'bg-muted'
                                                 }`}
                                             >
                                                 {statusLabel[budget.status]}
@@ -397,24 +401,31 @@ export default function BudgetsIndex() {
                                             <span className="text-muted-foreground">
                                                 Spent:{' '}
                                                 <span className="font-medium text-foreground">
-                                                    {formatAbsAmount(budget.spent)}
+                                                    {formatAbsAmount(
+                                                        budget.spent,
+                                                        privacyMode,
+                                                    )}
                                                 </span>
                                             </span>
                                             <span className="text-muted-foreground">
                                                 Budget:{' '}
                                                 <span className="font-medium text-foreground">
-                                                    {formatAbsAmount(budget.amount)}
+                                                    {formatAbsAmount(
+                                                        budget.amount,
+                                                        privacyMode,
+                                                    )}
                                                 </span>
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <p className="text-sm text-muted-foreground">
                                                 {budget.percentage >= 100
-                                                    ? `Over by ${formatAbsAmount(budget.spent - budget.amount)}`
-                                                    : `${formatAbsAmount(budget.remaining)} remaining`}
+                                                    ? `Over by ${formatAbsAmount(budget.spent - budget.amount, privacyMode)}`
+                                                    : `${formatAbsAmount(budget.remaining, privacyMode)} remaining`}
                                             </p>
                                             <div className="flex items-center gap-0.5">
-                                                {budget.category_id !== null && (
+                                                {budget.category_id !==
+                                                    null && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <Button
@@ -456,7 +467,9 @@ export default function BudgetsIndex() {
                                                             size="icon"
                                                             className="size-7"
                                                             onClick={() =>
-                                                                handleEdit(budget)
+                                                                handleEdit(
+                                                                    budget,
+                                                                )
                                                             }
                                                         >
                                                             <Pencil className="size-3.5" />

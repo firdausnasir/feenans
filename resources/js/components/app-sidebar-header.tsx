@@ -1,11 +1,17 @@
 import { usePage } from '@inertiajs/react';
-import { PlusCircle } from 'lucide-react';
+import { Eye, EyeOff, PlusCircle } from 'lucide-react';
 import { useState } from 'react';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NotificationBell } from '@/components/notification-bell';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import type { BreadcrumbItem as BreadcrumbItemType, Ledger } from '@/types';
 
 export function AppSidebarHeader({
@@ -14,6 +20,7 @@ export function AppSidebarHeader({
     breadcrumbs?: BreadcrumbItemType[];
 }) {
     const { currentLedger, isAdminArea } = usePage().props;
+    const { privacyMode, toggling, togglePrivacyMode } = usePrivacyMode();
     const [addTxOpen, setAddTxOpen] = useState(false);
 
     return (
@@ -24,6 +31,27 @@ export function AppSidebarHeader({
             </div>
             <div className="ml-auto flex items-center gap-2">
                 {!isAdminArea && <NotificationBell />}
+                {!isAdminArea && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={togglePrivacyMode}
+                                disabled={toggling}
+                            >
+                                {privacyMode ? (
+                                    <EyeOff className="size-4" />
+                                ) : (
+                                    <Eye className="size-4" />
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            {privacyMode ? 'Show amounts' : 'Hide amounts'}
+                        </TooltipContent>
+                    </Tooltip>
+                )}
                 {!isAdminArea && currentLedger && (
                     <>
                         <Button

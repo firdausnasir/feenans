@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -64,6 +65,8 @@ function formatMonthLabel(month: string): string {
 // ─── Components ──────────────────────────────────────────────────────────────
 
 function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
+    const { privacyMode } = usePrivacyMode();
+
     return (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -75,7 +78,7 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
                         </p>
                     </div>
                     <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
-                        {formatAbsAmount(snapshot.assets)}
+                        {formatAbsAmount(snapshot.assets, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -89,7 +92,7 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
                         </p>
                     </div>
                     <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
-                        {formatAbsAmount(snapshot.liabilities)}
+                        {formatAbsAmount(snapshot.liabilities, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -110,7 +113,10 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
                         }`}
                     >
                         {snapshot.net_worth < 0 ? '-' : ''}
-                        {formatAbsAmount(Math.abs(snapshot.net_worth))}
+                        {formatAbsAmount(
+                            Math.abs(snapshot.net_worth),
+                            privacyMode,
+                        )}
                     </p>
                 </CardContent>
             </Card>
@@ -124,14 +130,18 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
                         </p>
                     </div>
                     <p className="mt-2 text-2xl font-semibold tabular-nums">
-                        {snapshot.debt_to_asset_ratio.toFixed(2)}
+                        {privacyMode
+                            ? '***'
+                            : snapshot.debt_to_asset_ratio.toFixed(2)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        {snapshot.debt_to_asset_ratio <= 0.5
-                            ? 'Healthy'
-                            : snapshot.debt_to_asset_ratio <= 0.8
-                              ? 'Moderate'
-                              : 'High'}
+                        {privacyMode
+                            ? '\u00A0'
+                            : snapshot.debt_to_asset_ratio <= 0.5
+                              ? 'Healthy'
+                              : snapshot.debt_to_asset_ratio <= 0.8
+                                ? 'Moderate'
+                                : 'High'}
                     </p>
                 </CardContent>
             </Card>
@@ -140,6 +150,8 @@ function SnapshotCards({ snapshot }: { snapshot: CurrentSnapshot }) {
 }
 
 function NetWorthChart({ data }: { data: NetWorthEntry[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -173,10 +185,11 @@ function NetWorthChart({ data }: { data: NetWorthEntry[] }) {
                 <YAxis
                     tick={{ fontSize: 11 }}
                     className="text-muted-foreground"
+                    tickFormatter={(v) => formatAbsAmount(v, privacyMode)}
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAmount(Number(value)),
+                        formatAmount(Number(value), privacyMode),
                         String(name)
                             .replace('_', ' ')
                             .replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -222,6 +235,8 @@ function NetWorthChart({ data }: { data: NetWorthEntry[] }) {
 }
 
 function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -256,18 +271,21 @@ function SavingsRateChart({ data }: { data: SavingsRateEntry[] }) {
                     tick={{ fontSize: 11 }}
                     className="text-muted-foreground"
                     unit="%"
+                    tickFormatter={(v) => (privacyMode ? '***' : `${v}`)}
                 />
                 <Tooltip
                     formatter={(value: any, name: string) => {
                         if (name === 'rate') {
                             return [
-                                `${Number(value).toFixed(1)}%`,
+                                privacyMode
+                                    ? '***'
+                                    : `${Number(value).toFixed(1)}%`,
                                 'Savings rate',
                             ];
                         }
 
                         return [
-                            formatAmount(Number(value)),
+                            formatAmount(Number(value), privacyMode),
                             name.charAt(0).toUpperCase() + name.slice(1),
                         ];
                     }}

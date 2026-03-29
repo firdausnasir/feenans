@@ -41,6 +41,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { amountColor, formatAbsAmount, formatAmount } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
@@ -76,6 +77,7 @@ type EditFormData = {
 
 function NetWorthCards() {
     const { netWorth } = usePage<{ netWorth: NetWorthData }>().props;
+    const { privacyMode } = usePrivacyMode();
 
     return (
         <div className="grid grid-cols-3 gap-3">
@@ -85,7 +87,7 @@ function NetWorthCards() {
                     <p
                         className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.assets)}`}
                     >
-                        {formatAbsAmount(netWorth.assets)}
+                        {formatAbsAmount(netWorth.assets, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -96,7 +98,10 @@ function NetWorthCards() {
                     <p
                         className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(-Math.abs(netWorth.liabilities))}`}
                     >
-                        {formatAbsAmount(netWorth.liabilities)}
+                        {formatAbsAmount(
+                            netWorth.liabilities,
+                            privacyMode,
+                        )}
                     </p>
                 </CardContent>
             </Card>
@@ -107,7 +112,7 @@ function NetWorthCards() {
                     <p
                         className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(netWorth.net)}`}
                     >
-                        {formatAbsAmount(netWorth.net)}
+                        {formatAbsAmount(netWorth.net, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -431,6 +436,7 @@ function EditAccountModal({
     });
     const [errors, setErrors] = useState<Record<string, string[]>>({});
     const [processing, setProcessing] = useState(false);
+    const { privacyMode } = usePrivacyMode();
 
     // Balance adjustment state
     const currentBalance = parseFloat(String(account.current_balance ?? '0'));
@@ -725,7 +731,10 @@ function EditAccountModal({
                                 <Label htmlFor="edit_new_balance">
                                     Current balance:{' '}
                                     <span className="font-mono">
-                                        {formatAmount(currentBalance)}
+                                        {formatAmount(
+                                            currentBalance,
+                                            privacyMode,
+                                        )}
                                     </span>
                                 </Label>
                                 <Input
@@ -751,7 +760,10 @@ function EditAccountModal({
                                         }
                                     >
                                         {balanceDiff > 0 ? '+' : ''}
-                                        {formatAmount(balanceDiff)}
+                                        {formatAmount(
+                                            balanceDiff,
+                                            privacyMode,
+                                        )}
                                     </span>{' '}
                                     {balanceDiff > 0 ? 'income' : 'expense'}{' '}
                                     adjustment transaction.
@@ -849,6 +861,7 @@ export default function AccountsIndex() {
     }>().props;
 
     const isPremiumUser = auth.user?.membership.is_premium ?? false;
+    const { privacyMode } = usePrivacyMode();
 
     function refetchData() {
         router.reload({ only: ['accounts', 'netWorth'] });
@@ -1132,7 +1145,10 @@ export default function AccountsIndex() {
                                 <span
                                     className={`text-sm font-semibold tabular-nums ${amountColor(totalBalance)}`}
                                 >
-                                    {formatAbsAmount(totalBalance)}
+                                    {formatAbsAmount(
+                                        totalBalance,
+                                        privacyMode,
+                                    )}
                                 </span>
                             </button>
 
@@ -1229,6 +1245,7 @@ export default function AccountsIndex() {
                                                                 >
                                                                     {formatAbsAmount(
                                                                         balance,
+                                                                        privacyMode,
                                                                     )}
                                                                 </td>
                                                                 <td className="py-2 pr-4 text-right text-muted-foreground tabular-nums">
@@ -1388,6 +1405,7 @@ export default function AccountsIndex() {
                                                         >
                                                             {formatAbsAmount(
                                                                 balance,
+                                                                privacyMode,
                                                             )}
                                                         </span>
                                                     </div>
