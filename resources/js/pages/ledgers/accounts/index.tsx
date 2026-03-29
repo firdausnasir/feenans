@@ -1,6 +1,6 @@
 import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
-    AlertTriangle,
+    ChevronRight,
     CreditCard,
     Crown,
     ExternalLink,
@@ -42,12 +42,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
-import {
-    amountColor,
-    formatAbsAmount,
-    formatAmount,
-    formatDate,
-} from '@/lib/format';
+import { amountColor, formatAbsAmount, formatAmount } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
 import { premium } from '@/routes';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -55,19 +50,11 @@ import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
-type AccountWithStatement = Account & {
-    statement_balance?: number | null;
-    statement_start?: string | null;
-    statement_end?: string | null;
-    current_spending?: number | null;
-    payment_due_date?: string | null;
-    outstanding?: number | null;
-};
-
 type AccountGroup = {
-    type: Pick<AccountType, 'id' | 'name' | 'color' | 'is_credit'>;
-    accounts: AccountWithStatement[];
-    total_balance?: string;
+    group: 'included' | 'excluded';
+    label: string;
+    accounts: Account[];
+    total_balance: string;
 };
 
 type NetWorthData = {
@@ -422,7 +409,7 @@ function EditAccountModal({
     accountTypes,
     onSaved,
 }: {
-    readonly account: AccountWithStatement;
+    readonly account: Account;
     readonly open: boolean;
     readonly onOpenChange: (open: boolean) => void;
     readonly ledgerId: number;
@@ -886,18 +873,18 @@ export default function AccountsIndex() {
     const [showCreateModal, setShowCreateModal] = useState(false);
 
     // Edit modal state
-    const [editingAccount, setEditingAccount] =
-        useState<AccountWithStatement | null>(null);
+    const [editingAccount, setEditingAccount] = useState<Account | null>(null);
 
     // Delete confirmation state
-    const [deletingAccount, setDeletingAccount] =
-        useState<AccountWithStatement | null>(null);
+    const [deletingAccount, setDeletingAccount] = useState<Account | null>(
+        null,
+    );
     const [deleteProcessing, setDeleteProcessing] = useState(false);
 
     // Drag state
     const dragOverIdRef = useRef<number | null>(null);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
-    const [dragTypeId, setDragTypeId] = useState<number | null>(null);
+    const dragGroupRef = useRef<string | null>(null);
     const isReorderingRef = useRef(false);
 
     function handleDeleteConfirm() {
@@ -934,11 +921,11 @@ export default function AccountsIndex() {
     function handleDragStart(
         e: React.DragEvent,
         accountId: number,
-        typeId: number,
+        groupKey: string,
     ) {
         e.dataTransfer.setData('text/plain', String(accountId));
         e.dataTransfer.effectAllowed = 'move';
-        setDragTypeId(typeId);
+        dragGroupRef.current = groupKey;
     }
 
     function handleDragOver(e: React.DragEvent, accountId: number) {
@@ -958,12 +945,12 @@ export default function AccountsIndex() {
     function handleDrop(
         e: React.DragEvent,
         targetId: number,
-        typeAccounts: Account[],
+        groupAccounts: Account[],
     ) {
         e.preventDefault();
         dragOverIdRef.current = null;
         setDragOverId(null);
-        setDragTypeId(null);
+        dragGroupRef.current = null;
 
         if (isReorderingRef.current) {
             return;
@@ -975,7 +962,7 @@ export default function AccountsIndex() {
             return;
         }
 
-        const reordered = [...typeAccounts];
+        const reordered = [...groupAccounts];
         const fromIdx = reordered.findIndex((a) => a.id === draggedId);
         const toIdx = reordered.findIndex((a) => a.id === targetId);
 
@@ -1013,7 +1000,7 @@ export default function AccountsIndex() {
     function handleDragEnd() {
         dragOverIdRef.current = null;
         setDragOverId(null);
-        setDragTypeId(null);
+        dragGroupRef.current = null;
     }
 
     function getAccountBalance(account: Account): number {
@@ -1022,195 +1009,18 @@ export default function AccountsIndex() {
         );
     }
 
-    function renderAccountCard(
-        account: AccountWithStatement,
-        typeId: number,
-        isCredit: boolean,
-        typeAccounts: AccountWithStatement[],
-    ) {
-        const balance = getAccountBalance(account);
-        const isDragOver = dragOverId === account.id;
-        const hasStmt = account.statement_start != null;
+    // Collapsible group state
+    const [collapsedGroups, setCollapsedGroups] = useState<
+        Record<string, boolean>
+    >({
+        excluded: true,
+    });
 
-        return (
-            <div
-                key={account.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, account.id, typeId)}
-                onDragOver={(e) => {
-                    if (dragTypeId === typeId) {
-                        handleDragOver(e, account.id);
-                    }
-                }}
-                onDragLeave={handleDragLeave}
-                onDragEnd={handleDragEnd}
-                onDrop={(e) => {
-                    if (dragTypeId === typeId) {
-                        handleDrop(e, account.id, typeAccounts);
-                    }
-                }}
-            >
-                <Card
-                    className={`group py-4 transition-colors ${
-                        account.is_hidden ? 'opacity-50' : ''
-                    } ${isDragOver ? 'ring-2 ring-primary/40' : ''}`}
-                >
-                    <CardContent>
-                        <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                                <span
-                                    aria-hidden="true"
-                                    className="cursor-grab text-muted-foreground opacity-100 select-none sm:opacity-0 sm:group-hover:opacity-100"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    &#8942;&#8942;
-                                </span>
-                                <span
-                                    className="inline-block h-3 w-3 rounded-full"
-                                    style={{
-                                        backgroundColor:
-                                            account.color ?? '#6B7280',
-                                    }}
-                                />
-                                <p className="text-base font-semibold">
-                                    {account.name}
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                {account.statement_day !== null && (
-                                    <Badge variant="secondary">
-                                        Day {account.statement_day}
-                                    </Badge>
-                                )}
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="size-7"
-                                            onClick={() =>
-                                                setEditingAccount(account)
-                                            }
-                                        >
-                                            <Pencil className="size-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Edit</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="size-7"
-                                            asChild
-                                        >
-                                            <Link
-                                                href={getTransactionsUrl(
-                                                    account.id,
-                                                )}
-                                            >
-                                                <ExternalLink className="size-3.5" />
-                                            </Link>
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        Show transactions
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="size-7 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                                            onClick={() =>
-                                                setDeletingAccount(account)
-                                            }
-                                        >
-                                            <Trash2 className="size-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Delete</TooltipContent>
-                                </Tooltip>
-                            </div>
-                        </div>
-
-                        <p
-                            className={`mt-3 text-xl font-semibold tabular-nums ${amountColor(balance)}`}
-                        >
-                            {balance < 0 ? (
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <AlertTriangle className="size-3.5 shrink-0" />
-                                            {formatAbsAmount(balance)}
-                                        </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>
-                                            This account has a negative balance,
-                                            which can happen if you've logged
-                                            more expenses than the initial
-                                            balance you set.
-                                        </p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            ) : (
-                                formatAbsAmount(balance)
-                            )}
-                        </p>
-
-                        {/* Credit card statement group */}
-                        {isCredit && hasStmt && (
-                            <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">
-                                        Statement
-                                    </span>
-                                    <span
-                                        className={`font-medium tabular-nums ${amountColor(account.statement_balance ?? 0)}`}
-                                    >
-                                        {formatAbsAmount(
-                                            account.statement_balance ?? 0,
-                                        )}
-                                    </span>
-                                </div>
-                                <div className="mt-1 flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">
-                                        {formatDate(account.statement_start!)}{' '}
-                                        &ndash;{' '}
-                                        {formatDate(account.statement_end!)}
-                                    </span>
-                                    {account.payment_due_date && (
-                                        <span className="text-muted-foreground">
-                                            Due{' '}
-                                            {formatDate(
-                                                account.payment_due_date,
-                                            )}
-                                        </span>
-                                    )}
-                                </div>
-                                {account.current_spending != null && (
-                                    <div className="mt-1 flex items-center justify-between border-t border-border/40 pt-1 text-xs">
-                                        <span className="text-muted-foreground">
-                                            Current spending
-                                        </span>
-                                        <span
-                                            className={`font-medium tabular-nums ${amountColor(account.current_spending)}`}
-                                        >
-                                            {formatAbsAmount(
-                                                account.current_spending,
-                                            )}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-        );
+    function toggleGroup(group: string) {
+        setCollapsedGroups((prev) => ({
+            ...prev,
+            [group]: !prev[group],
+        }));
     }
 
     return (
@@ -1300,47 +1110,351 @@ export default function AccountsIndex() {
                 )}
 
                 {accountGroups.map((group) => {
-                    const color = group.type.color ?? '#6b7280';
-                    const typeAccounts = group.accounts;
+                    const isCollapsed = collapsedGroups[group.group] ?? false;
+                    const totalBalance = parseFloat(group.total_balance);
 
                     return (
-                        <section key={group.type.id}>
-                            <div className="mb-3 flex items-center gap-2">
+                        <section key={group.group}>
+                            {/* Collapsible header */}
+                            <button
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left hover:bg-muted/50"
+                                onClick={() => toggleGroup(group.group)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <ChevronRight
+                                        className={`size-4 text-muted-foreground transition-transform ${!isCollapsed ? 'rotate-90' : ''}`}
+                                    />
+                                    <span className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                                        {group.label}
+                                    </span>
+                                </div>
                                 <span
-                                    className="size-3 rounded-full"
-                                    style={{ backgroundColor: color }}
-                                />
-                                <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                                    {group.type.name}
-                                </h2>
-                            </div>
+                                    className={`text-sm font-semibold tabular-nums ${amountColor(totalBalance)}`}
+                                >
+                                    {formatAbsAmount(totalBalance)}
+                                </span>
+                            </button>
 
-                            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                {typeAccounts.map((account) =>
-                                    renderAccountCard(
-                                        account,
-                                        group.type.id,
-                                        group.type.is_credit,
-                                        typeAccounts,
-                                    ),
-                                )}
-                            </div>
+                            {!isCollapsed && (
+                                <>
+                                    {/* Desktop table */}
+                                    <div className="hidden md:block">
+                                        <table className="mt-1 w-full">
+                                            <tbody>
+                                                {group.accounts.map(
+                                                    (account) => {
+                                                        const balance =
+                                                            getAccountBalance(
+                                                                account,
+                                                            );
+                                                        const isDragOver =
+                                                            dragOverId ===
+                                                            account.id;
 
-                            {typeAccounts.length > 1 &&
-                                group.total_balance !== undefined && (
-                                    <div className="mt-3 flex items-center justify-end gap-2 px-1">
-                                        <span className="text-sm font-medium text-muted-foreground">
-                                            Total {group.type.name}:
-                                        </span>
-                                        <span
-                                            className={`text-sm font-semibold tabular-nums ${amountColor(parseFloat(group.total_balance))}`}
-                                        >
-                                            {formatAbsAmount(
-                                                parseFloat(group.total_balance),
-                                            )}
-                                        </span>
+                                                        return (
+                                                            <tr
+                                                                key={account.id}
+                                                                draggable
+                                                                onDragStart={(
+                                                                    e,
+                                                                ) =>
+                                                                    handleDragStart(
+                                                                        e,
+                                                                        account.id,
+                                                                        group.group,
+                                                                    )
+                                                                }
+                                                                onDragOver={(
+                                                                    e,
+                                                                ) => {
+                                                                    if (
+                                                                        dragGroupRef.current ===
+                                                                        group.group
+                                                                    ) {
+                                                                        handleDragOver(
+                                                                            e,
+                                                                            account.id,
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                onDragLeave={
+                                                                    handleDragLeave
+                                                                }
+                                                                onDragEnd={
+                                                                    handleDragEnd
+                                                                }
+                                                                onDrop={(e) => {
+                                                                    if (
+                                                                        dragGroupRef.current ===
+                                                                        group.group
+                                                                    ) {
+                                                                        handleDrop(
+                                                                            e,
+                                                                            account.id,
+                                                                            group.accounts,
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                className={`group border-b border-border/40 transition-colors hover:bg-muted/30 ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
+                                                            >
+                                                                <td className="w-8 py-2 pl-2">
+                                                                    <span className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100">
+                                                                        &#8942;&#8942;
+                                                                    </span>
+                                                                </td>
+                                                                <td className="w-8 py-2">
+                                                                    <span
+                                                                        className="inline-block size-2.5 rounded-full"
+                                                                        style={{
+                                                                            backgroundColor:
+                                                                                account.color ??
+                                                                                '#6B7280',
+                                                                        }}
+                                                                    />
+                                                                </td>
+                                                                <td className="py-2 pr-4 font-medium">
+                                                                    {
+                                                                        account.name
+                                                                    }
+                                                                </td>
+                                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                                    {account
+                                                                        .account_type
+                                                                        ?.name ??
+                                                                        '—'}
+                                                                </td>
+                                                                <td
+                                                                    className={`py-2 pr-4 text-right font-semibold tabular-nums ${amountColor(balance)}`}
+                                                                >
+                                                                    {formatAbsAmount(
+                                                                        balance,
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2 pr-4 text-right text-muted-foreground tabular-nums">
+                                                                    {account.statement_day ??
+                                                                        '—'}
+                                                                </td>
+                                                                <td className="py-2 pr-4 text-right text-muted-foreground tabular-nums">
+                                                                    {account.payment_due_day ??
+                                                                        '—'}
+                                                                </td>
+                                                                <td className="py-2 pr-2 text-right">
+                                                                    <div className="flex items-center justify-end gap-0.5">
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger
+                                                                                asChild
+                                                                            >
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="size-7"
+                                                                                    onClick={() =>
+                                                                                        setEditingAccount(
+                                                                                            account,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <Pencil className="size-3.5" />
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                Edit
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger
+                                                                                asChild
+                                                                            >
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="size-7"
+                                                                                    asChild
+                                                                                >
+                                                                                    <Link
+                                                                                        href={getTransactionsUrl(
+                                                                                            account.id,
+                                                                                        )}
+                                                                                    >
+                                                                                        <ExternalLink className="size-3.5" />
+                                                                                    </Link>
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                Show
+                                                                                transactions
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger
+                                                                                asChild
+                                                                            >
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="size-7 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                                                                                    onClick={() =>
+                                                                                        setDeletingAccount(
+                                                                                            account,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <Trash2 className="size-3.5" />
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                Delete
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    },
+                                                )}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                )}
+
+                                    {/* Mobile cards */}
+                                    <div className="mt-1 space-y-1 md:hidden">
+                                        {group.accounts.map((account) => {
+                                            const balance =
+                                                getAccountBalance(account);
+                                            const isDragOver =
+                                                dragOverId === account.id;
+                                            const isCredit =
+                                                account.account_type
+                                                    ?.is_credit ?? false;
+
+                                            return (
+                                                <div
+                                                    key={account.id}
+                                                    draggable
+                                                    onDragStart={(e) =>
+                                                        handleDragStart(
+                                                            e,
+                                                            account.id,
+                                                            group.group,
+                                                        )
+                                                    }
+                                                    onDragOver={(e) => {
+                                                        if (
+                                                            dragGroupRef.current ===
+                                                            group.group
+                                                        ) {
+                                                            handleDragOver(
+                                                                e,
+                                                                account.id,
+                                                            );
+                                                        }
+                                                    }}
+                                                    onDragLeave={
+                                                        handleDragLeave
+                                                    }
+                                                    onDragEnd={handleDragEnd}
+                                                    onDrop={(e) => {
+                                                        if (
+                                                            dragGroupRef.current ===
+                                                            group.group
+                                                        ) {
+                                                            handleDrop(
+                                                                e,
+                                                                account.id,
+                                                                group.accounts,
+                                                            );
+                                                        }
+                                                    }}
+                                                    className={`rounded-lg px-2 py-1.5 transition-colors ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="cursor-grab text-sm text-muted-foreground select-none">
+                                                            &#8942;&#8942;
+                                                        </span>
+                                                        <span
+                                                            className="inline-block size-2.5 rounded-full"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    account.color ??
+                                                                    '#6B7280',
+                                                            }}
+                                                        />
+                                                        <span className="flex-1 truncate text-sm font-medium">
+                                                            {account.name}
+                                                        </span>
+                                                        <span
+                                                            className={`text-sm font-semibold tabular-nums ${amountColor(balance)}`}
+                                                        >
+                                                            {formatAbsAmount(
+                                                                balance,
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-0.5 flex items-center gap-2 pl-9">
+                                                        <span className="flex-1 truncate text-xs text-muted-foreground">
+                                                            {account
+                                                                .account_type
+                                                                ?.name ?? '—'}
+                                                            {isCredit &&
+                                                                account.statement_day !=
+                                                                    null &&
+                                                                ` · Stmt ${account.statement_day}`}
+                                                            {isCredit &&
+                                                                account.payment_due_day !=
+                                                                    null &&
+                                                                ` · Due ${account.payment_due_day}`}
+                                                        </span>
+                                                        <div className="flex items-center gap-0.5">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-6"
+                                                                aria-label="Edit"
+                                                                onClick={() =>
+                                                                    setEditingAccount(
+                                                                        account,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Pencil className="size-3" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-6"
+                                                                aria-label="Show transactions"
+                                                                asChild
+                                                            >
+                                                                <Link
+                                                                    href={getTransactionsUrl(
+                                                                        account.id,
+                                                                    )}
+                                                                >
+                                                                    <ExternalLink className="size-3" />
+                                                                </Link>
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-6 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                                                                aria-label="Delete"
+                                                                onClick={() =>
+                                                                    setDeletingAccount(
+                                                                        account,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 className="size-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
                         </section>
                     );
                 })}
