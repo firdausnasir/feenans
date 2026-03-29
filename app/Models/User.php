@@ -28,6 +28,7 @@ class User extends Authenticatable
         'onboarding_step',
         'onboarding_data',
         'timezone',
+        'privacy_mode',
     ];
 
     /**
@@ -66,6 +67,7 @@ class User extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
             'onboarding_data' => 'array',
             'is_admin' => 'boolean',
+            'privacy_mode' => 'boolean',
         ];
     }
 
