@@ -8,6 +8,7 @@ use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create an income transaction', function () {
@@ -170,6 +171,51 @@ test('transaction index filters by transaction type', function () {
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('transactions.data', 1)
                 ->where('transactions.data.0.transaction_type', 'income')
+            )
+        );
+});
+
+test('transaction index normalizes transfer filters from the page query shape', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $transferPairId = (string) Str::uuid();
+
+    Transaction::factory()->for($ledger)->for($fromAccount)->expense()->create([
+        'transaction_date' => now()->toDateString(),
+    ]);
+    $outgoingTransfer = Transaction::factory()->for($ledger)->for($fromAccount)->transferOut()->create([
+        'transaction_date' => now()->toDateString(),
+        'transfer_pair_id' => $transferPairId,
+    ]);
+    $incomingTransfer = Transaction::factory()->for($ledger)->for($toAccount)->transferIn()->create([
+        'transaction_date' => now()->toDateString(),
+        'transfer_pair_id' => $transferPairId,
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.transactions.index', $ledger).'?transaction_types[][]=transfer');
+
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.transaction_types', ['transfer'])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions.data', 2)
+                ->where('transactions.data.0.transaction_type', 'transfer')
+                ->where('transactions.data.1.transaction_type', 'transfer')
+                ->where('transactions.data', fn ($transactions) => $transactions
+                    ->pluck('id')
+                    ->sort()
+                    ->values()
+                    ->all() === collect([$incomingTransfer->id, $outgoingTransfer->id])
+                    ->sort()
+                    ->values()
+                    ->all())
             )
         );
 });
