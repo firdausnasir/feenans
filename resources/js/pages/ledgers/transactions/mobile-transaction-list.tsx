@@ -488,7 +488,15 @@ export function MobileTransactionList({
                                                         ) : (
                                                             <ChevronDown className="size-3" />
                                                         )}
-                                                        2 accounts
+                                                        {
+                                                            item.transactions
+                                                                .length
+                                                        }{' '}
+                                                        account
+                                                        {item.transactions
+                                                            .length === 1
+                                                            ? ''
+                                                            : 's'}
                                                     </button>
 
                                                     {isPairExpanded && (
