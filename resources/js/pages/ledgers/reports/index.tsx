@@ -41,6 +41,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -609,6 +610,7 @@ function DateRangeSelector({
 }
 
 function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
+    const { privacyMode } = usePrivacyMode();
     const chartData = data.map((item) => ({
         ...item,
         monthLabel: formatMonthLabel(item.month),
@@ -642,10 +644,11 @@ function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
                 <YAxis
                     tick={{ fontSize: 11 }}
                     className="text-muted-foreground"
+                    tickFormatter={(v) => formatAbsAmount(v, privacyMode)}
                 />
                 <Tooltip
                     formatter={(value: any, name: any) => [
-                        formatAmount(Number(value)),
+                        formatAmount(Number(value), privacyMode),
                         String(name).charAt(0).toUpperCase() +
                             String(name).slice(1),
                     ]}
@@ -681,6 +684,7 @@ function CategoryBreakdownSection({
 }: {
     data: CategoryBreakdownResponse;
 }) {
+    const { privacyMode } = usePrivacyMode();
     const [showSubcategories, setShowSubcategories] = useState(false);
 
     const isEmpty = data.items.length === 0 && data.parents.length === 0;
@@ -739,7 +743,7 @@ function CategoryBreakdownSection({
                         </Pie>
                         <Tooltip
                             formatter={(value: any) => [
-                                formatAmount(Number(value)),
+                                formatAmount(Number(value), privacyMode),
                                 'Amount',
                             ]}
                         />
@@ -777,7 +781,10 @@ function CategoryBreakdownSection({
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3">
                                     <span className="text-sm text-red-500 tabular-nums">
-                                        {formatAbsAmount(item.total)}
+                                        {formatAbsAmount(
+                                            item.total,
+                                            privacyMode,
+                                        )}
                                     </span>
                                     <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
                                         {item.percentage.toFixed(1)}%
@@ -824,7 +831,10 @@ function CategoryBreakdownSection({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right text-red-500 tabular-nums">
-                                        {formatAbsAmount(item.total)}
+                                        {formatAbsAmount(
+                                            item.total,
+                                            privacyMode,
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-right text-muted-foreground tabular-nums">
                                         {item.percentage.toFixed(1)}%
@@ -878,13 +888,13 @@ function CategoryBreakdownSection({
                                                             <span className="text-red-500 tabular-nums">
                                                                 {formatAbsAmount(
                                                                     child.total,
+                                                                    privacyMode,
                                                                 )}
                                                             </span>
                                                             <span className="w-12 text-right text-muted-foreground tabular-nums">
-                                                                {child.percentage.toFixed(
-                                                                    1,
-                                                                )}
-                                                                %
+                                                                {privacyMode
+                                                                    ? '***'
+                                                                    : `${child.percentage.toFixed(1)}%`}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -907,6 +917,8 @@ function PayeeBreakdownSection({
     data: PayeeBreakdownItem[];
     amountClassName?: string;
 }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -939,10 +951,12 @@ function PayeeBreakdownSection({
                             <span
                                 className={`text-sm tabular-nums ${amountClassName}`}
                             >
-                                {formatAbsAmount(item.total)}
+                                {formatAbsAmount(item.total, privacyMode)}
                             </span>
                             <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
-                                {item.percentage.toFixed(1)}%
+                                {privacyMode
+                                    ? '***'
+                                    : `${item.percentage.toFixed(1)}%`}
                             </span>
                         </div>
                     </div>
@@ -974,10 +988,12 @@ function PayeeBreakdownSection({
                             <TableCell
                                 className={`text-right tabular-nums ${amountClassName}`}
                             >
-                                {formatAbsAmount(item.total)}
+                                {formatAbsAmount(item.total, privacyMode)}
                             </TableCell>
                             <TableCell className="text-right text-muted-foreground tabular-nums">
-                                {item.percentage.toFixed(1)}%
+                                {privacyMode
+                                    ? '***'
+                                    : `${item.percentage.toFixed(1)}%`}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -992,6 +1008,7 @@ function IncomeCategoryBreakdownSection({
 }: {
     data: CategoryBreakdownResponse;
 }) {
+    const { privacyMode } = usePrivacyMode();
     const [showSubcategories, setShowSubcategories] = useState(false);
 
     const isEmpty = data.items.length === 0 && data.parents.length === 0;
@@ -1048,7 +1065,7 @@ function IncomeCategoryBreakdownSection({
                         </Pie>
                         <Tooltip
                             formatter={(value: any) => [
-                                formatAmount(Number(value)),
+                                formatAmount(Number(value), privacyMode),
                                 'Amount',
                             ]}
                         />
@@ -1086,10 +1103,15 @@ function IncomeCategoryBreakdownSection({
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3">
                                     <span className="text-sm text-foreground tabular-nums">
-                                        {formatAbsAmount(item.total)}
+                                        {formatAbsAmount(
+                                            item.total,
+                                            privacyMode,
+                                        )}
                                     </span>
                                     <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
-                                        {item.percentage.toFixed(1)}%
+                                        {privacyMode
+                                            ? '***'
+                                            : `${item.percentage.toFixed(1)}%`}
                                     </span>
                                 </div>
                             </div>
@@ -1133,10 +1155,15 @@ function IncomeCategoryBreakdownSection({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right text-foreground tabular-nums">
-                                        {formatAbsAmount(item.total)}
+                                        {formatAbsAmount(
+                                            item.total,
+                                            privacyMode,
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-right text-muted-foreground tabular-nums">
-                                        {item.percentage.toFixed(1)}%
+                                        {privacyMode
+                                            ? '***'
+                                            : `${item.percentage.toFixed(1)}%`}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -1187,13 +1214,13 @@ function IncomeCategoryBreakdownSection({
                                                             <span className="text-foreground tabular-nums">
                                                                 {formatAbsAmount(
                                                                     child.total,
+                                                                    privacyMode,
                                                                 )}
                                                             </span>
                                                             <span className="w-12 text-right text-muted-foreground tabular-nums">
-                                                                {child.percentage.toFixed(
-                                                                    1,
-                                                                )}
-                                                                %
+                                                                {privacyMode
+                                                                    ? '***'
+                                                                    : `${child.percentage.toFixed(1)}%`}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1212,6 +1239,8 @@ function IncomeCategoryBreakdownSection({
 // ─── Spending Heatmap ─────────────────────────────────────────────────────────
 
 function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -1376,7 +1405,7 @@ function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
                                             <div
                                                 key={`${ri}-${ci}`}
                                                 className={`flex h-10 w-full items-center justify-center rounded-sm text-[12px] font-medium ${getIntensity(cell.amount)} ${cell.amount > 0 ? 'text-foreground/70' : 'text-muted-foreground/50'}`}
-                                                title={`${cell.dateStr}: ${formatAmount(cell.amount)}`}
+                                                title={`${cell.dateStr}: ${formatAmount(cell.amount, privacyMode)}`}
                                             >
                                                 {cell.day}
                                             </div>
@@ -1416,10 +1445,20 @@ function SpendingHeatmap({ data }: { data: HeatmapDay[] }) {
 function DeltaIndicator({
     value,
     isExpense = true,
+    privacyMode = false,
 }: {
     value: number;
     isExpense?: boolean;
+    privacyMode?: boolean;
 }) {
+    if (privacyMode) {
+        return (
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                ***
+            </span>
+        );
+    }
+
     if (value === 0) {
         return (
             <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
@@ -1451,6 +1490,8 @@ function DeltaIndicator({
 }
 
 function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
+    const { privacyMode } = usePrivacyMode();
+
     return (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
@@ -1460,15 +1501,21 @@ function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
                     </p>
                     <div className="mt-1 flex items-baseline gap-2">
                         <span className="text-2xl font-semibold tabular-nums">
-                            {formatAbsAmount(summary.current_expense)}
+                            {formatAbsAmount(
+                                summary.current_expense,
+                                privacyMode,
+                            )}
                         </span>
                         <DeltaIndicator
                             value={summary.expense_percentage_change}
                             isExpense={true}
+                            privacyMode={privacyMode}
                         />
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        vs {formatAbsAmount(summary.compare_expense)} previous
+                        vs{' '}
+                        {formatAbsAmount(summary.compare_expense, privacyMode)}{' '}
+                        previous
                     </p>
                 </CardContent>
             </Card>
@@ -1480,15 +1527,21 @@ function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
                     </p>
                     <div className="mt-1 flex items-baseline gap-2">
                         <span className="text-2xl font-semibold tabular-nums">
-                            {formatAbsAmount(summary.current_income)}
+                            {formatAbsAmount(
+                                summary.current_income,
+                                privacyMode,
+                            )}
                         </span>
                         <DeltaIndicator
                             value={summary.income_percentage_change}
                             isExpense={false}
+                            privacyMode={privacyMode}
                         />
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        vs {formatAbsAmount(summary.compare_income)} previous
+                        vs{' '}
+                        {formatAbsAmount(summary.compare_income, privacyMode)}{' '}
+                        previous
                     </p>
                 </CardContent>
             </Card>
@@ -1506,11 +1559,19 @@ function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
                             <DeltaIndicator
                                 value={summary.biggest_change.percentage_change}
                                 isExpense={true}
+                                privacyMode={privacyMode}
                             />
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            {formatAbsAmount(summary.biggest_change.current)} vs{' '}
-                            {formatAbsAmount(summary.biggest_change.previous)}{' '}
+                            {formatAbsAmount(
+                                summary.biggest_change.current,
+                                privacyMode,
+                            )}{' '}
+                            vs{' '}
+                            {formatAbsAmount(
+                                summary.biggest_change.previous,
+                                privacyMode,
+                            )}{' '}
                             previous
                         </p>
                     </CardContent>
@@ -1521,6 +1582,8 @@ function ComparisonSummaryCards({ summary }: { summary: ComparisonSummary }) {
 }
 
 function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (data.length === 0) {
         return (
             <EmptyState
@@ -1554,10 +1617,11 @@ function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
                 <YAxis
                     tick={{ fontSize: 11 }}
                     className="text-muted-foreground"
+                    tickFormatter={(v) => formatAbsAmount(v, privacyMode)}
                 />
                 <Tooltip
                     formatter={(value: number, name: string) => [
-                        formatAmount(value),
+                        formatAmount(value, privacyMode),
                         name,
                     ]}
                 />
@@ -1602,6 +1666,8 @@ function ComparisonTrendChart({ data }: { data: TrendOverlayItem[] }) {
 }
 
 function CategoryDeltasTable({ deltas }: { deltas: CategoryDelta[] }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (deltas.length === 0) {
         return (
             <p className="text-sm text-muted-foreground">
@@ -1623,20 +1689,26 @@ function CategoryDeltasTable({ deltas }: { deltas: CategoryDelta[] }) {
                             <div className="flex shrink-0 items-center gap-2">
                                 <span className="text-sm tabular-nums">
                                     {item.delta > 0 ? '+' : ''}
-                                    {formatAbsAmount(Math.abs(item.delta))}
+                                    {formatAbsAmount(
+                                        Math.abs(item.delta),
+                                        privacyMode,
+                                    )}
                                 </span>
                                 <DeltaIndicator
                                     value={item.percentage_change}
                                     isExpense={true}
+                                    privacyMode={privacyMode}
                                 />
                             </div>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="tabular-nums">
-                                Current: {formatAbsAmount(item.current)}
+                                Current:{' '}
+                                {formatAbsAmount(item.current, privacyMode)}
                             </span>
                             <span className="tabular-nums">
-                                Previous: {formatAbsAmount(item.previous)}
+                                Previous:{' '}
+                                {formatAbsAmount(item.previous, privacyMode)}
                             </span>
                         </div>
                     </div>
@@ -1659,20 +1731,24 @@ function CategoryDeltasTable({ deltas }: { deltas: CategoryDelta[] }) {
                                 {item.name}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                                {formatAbsAmount(item.current)}
+                                {formatAbsAmount(item.current, privacyMode)}
                             </TableCell>
                             <TableCell className="text-right text-muted-foreground tabular-nums">
-                                {formatAbsAmount(item.previous)}
+                                {formatAbsAmount(item.previous, privacyMode)}
                             </TableCell>
                             <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-2">
                                     <span className="tabular-nums">
                                         {item.delta > 0 ? '+' : ''}
-                                        {formatAbsAmount(Math.abs(item.delta))}
+                                        {formatAbsAmount(
+                                            Math.abs(item.delta),
+                                            privacyMode,
+                                        )}
                                     </span>
                                     <DeltaIndicator
                                         value={item.percentage_change}
                                         isExpense={true}
+                                        privacyMode={privacyMode}
                                     />
                                 </div>
                             </TableCell>
@@ -1686,9 +1762,10 @@ function CategoryDeltasTable({ deltas }: { deltas: CategoryDelta[] }) {
 
 function ComparisonSection({ comparison }: { comparison: ComparisonData }) {
     const { summary } = comparison;
+    const { privacyMode } = usePrivacyMode();
 
     // Build a human-readable summary sentence
-    const summaryText = buildSummarySentence(summary);
+    const summaryText = privacyMode ? null : buildSummarySentence(summary);
 
     return (
         <div className="space-y-6">

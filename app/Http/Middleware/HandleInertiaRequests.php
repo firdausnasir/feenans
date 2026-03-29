@@ -55,6 +55,7 @@ class HandleInertiaRequests extends Middleware
                     'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                     'onboarding_step' => $user->onboarding_step,
                     'is_admin' => (bool) $user->is_admin,
+                    'privacy_mode' => (bool) $user->privacy_mode,
                     'membership' => [
                         'tier' => $user->membership?->tier ?? 'free',
                         'is_premium' => $user->isPremium(),

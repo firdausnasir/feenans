@@ -23,6 +23,17 @@ test('auth.user contains expected user fields', function () {
         );
 });
 
+test('auth.user contains privacy mode on ledger pages', function () {
+    $user = User::factory()->create(['privacy_mode' => true]);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.dashboard', $ledger))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('auth.user.privacy_mode', true)
+        );
+});
+
 test('auth.user is null when unauthenticated', function () {
     $this->get('/')
         ->assertInertia(fn (Assert $page) => $page

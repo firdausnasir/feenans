@@ -15,6 +15,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import { amountColor, formatAbsAmount, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
@@ -59,6 +60,7 @@ export function TransactionCard({
     editUrl,
     onAttachmentClick,
 }: TransactionCardProps) {
+    const { privacyMode } = usePrivacyMode();
     const [splitsExpanded, setSplitsExpanded] = useState(false);
 
     const isTransfer = transaction.transaction_type === 'transfer';
@@ -139,7 +141,10 @@ export function TransactionCard({
                             amountColor(amount),
                         )}
                     >
-                        {formatAbsAmount(transaction.amount)}
+                        {formatAbsAmount(
+                            transaction.amount,
+                            privacyMode,
+                        )}
                     </span>
                 </div>
 
@@ -210,7 +215,8 @@ export function TransactionCard({
                     <p
                         className={`text-right text-xs tabular-nums ${amountColor(runningBalance)}`}
                     >
-                        Balance: {formatAbsAmount(runningBalance)}
+                        Balance:{' '}
+                        {formatAbsAmount(runningBalance, privacyMode)}
                     </p>
                 )}
 
@@ -285,7 +291,10 @@ export function TransactionCard({
                                                     amountColor(splitAmount),
                                                 )}
                                             >
-                                                {formatAbsAmount(split.amount)}
+                                                {formatAbsAmount(
+                                                    split.amount,
+                                                    privacyMode,
+                                                )}
                                             </span>
                                         </div>
                                     );

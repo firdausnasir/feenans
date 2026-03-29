@@ -305,7 +305,10 @@ function TransactionEditForm({
         setDeleting(true);
 
         router.delete(
-            destroyRoute.url({ ledger: ledger.id, transaction: transaction.id }),
+            destroyRoute.url({
+                ledger: ledger.id,
+                transaction: transaction.id,
+            }),
             {
                 preserveScroll: true,
                 onError: () => {

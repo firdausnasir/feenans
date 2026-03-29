@@ -64,6 +64,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import {
     buildCategoryOptions,
@@ -837,6 +838,7 @@ function BillCard({
     onDelete: (bill: Bill) => void;
     onEdit: (bill: Bill) => void;
 }) {
+    const { privacyMode } = usePrivacyMode();
     const [expanded, setExpanded] = useState(false);
     const transactions = bill.transactions ?? [];
     const hasTransactions = transactions.length > 0;
@@ -881,7 +883,7 @@ function BillCard({
                     <span
                         className={`shrink-0 text-sm font-bold tabular-nums ${amountColor(bill)}`}
                     >
-                        {formatAbsAmount(bill.amount)}
+                        {formatAbsAmount(bill.amount, privacyMode)}
                     </span>
                 </div>
 
@@ -920,7 +922,10 @@ function BillCard({
                                     {formatDate(txn.transaction_date)}
                                 </span>
                                 <span className="tabular-nums">
-                                    {formatAbsAmount(txn.amount)}
+                                    {formatAbsAmount(
+                                        txn.amount,
+                                        privacyMode,
+                                    )}
                                 </span>
                             </div>
                         ))}
@@ -1035,6 +1040,7 @@ function BillRow({
     onDelete: (bill: Bill) => void;
     onEdit: (bill: Bill) => void;
 }) {
+    const { privacyMode } = usePrivacyMode();
     const [expanded, setExpanded] = useState(false);
     const transactions = bill.transactions ?? [];
     const hasTransactions = transactions.length > 0;
@@ -1072,7 +1078,7 @@ function BillRow({
                 </TableCell>
                 <TableCell>
                     <span className={amountColor(bill)}>
-                        {formatAbsAmount(bill.amount)}
+                        {formatAbsAmount(bill.amount, privacyMode)}
                     </span>
                 </TableCell>
                 <TableCell className="hidden text-muted-foreground md:table-cell">
@@ -1198,7 +1204,10 @@ function BillRow({
                                                 )}
                                             </TableCell>
                                             <TableCell className="py-1.5 text-sm">
-                                                {formatAbsAmount(txn.amount)}
+                                                {formatAbsAmount(
+                                                    txn.amount,
+                                                    privacyMode,
+                                                )}
                                             </TableCell>
                                             <TableCell className="py-1.5 text-sm text-muted-foreground">
                                                 {txn.account?.name ?? '-'}

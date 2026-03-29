@@ -28,7 +28,7 @@ export type Account = {
     is_hidden: boolean;
     position: number;
     current_balance: string;
-    accountType?: AccountType;
+    account_type?: AccountType;
 };
 
 export type Category = {

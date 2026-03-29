@@ -8,6 +8,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\PremiumPageController;
+use App\Http\Controllers\PrivacyModeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
@@ -23,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('onboarding/autosave', [OnboardingController::class, 'autosave'])->name('onboarding.autosave');
     Route::post('onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
 
+    Route::patch('user/privacy-mode', PrivacyModeController::class)->name('user.privacy-mode.toggle');
     Route::get('premium', PremiumPageController::class)->name('premium');
 });
 

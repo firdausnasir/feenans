@@ -14,7 +14,9 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
+import { MASKED_AMOUNT } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as ledgerActivityIndex } from '@/routes/ledgers/activity';
 import type { BreadcrumbItem, Pagination } from '@/types';
@@ -62,13 +64,30 @@ function actionVariant(
     }
 }
 
-function formatValue(value: unknown): string {
+const AMOUNT_FIELDS = new Set([
+    'amount',
+    'initial_balance',
+    'current_balance',
+    'balance',
+    'estimated_amount',
+    'split_amount',
+]);
+
+function formatValue(
+    value: unknown,
+    fieldName?: string,
+    privacyMode?: boolean,
+): string {
     if (value === null || value === undefined) {
         return '(empty)';
     }
 
     if (typeof value === 'boolean') {
         return value ? 'Yes' : 'No';
+    }
+
+    if (privacyMode && fieldName && AMOUNT_FIELDS.has(fieldName)) {
+        return MASKED_AMOUNT;
     }
 
     return String(value);
@@ -90,6 +109,8 @@ function ChangeDiff({
     newValues: Record<string, unknown>;
     action: string;
 }) {
+    const { privacyMode } = usePrivacyMode();
+
     if (action === 'updated') {
         const keys = [
             ...new Set([...Object.keys(oldValues), ...Object.keys(newValues)]),
@@ -111,11 +132,11 @@ function ChangeDiff({
                             {formatFieldName(key)}:
                         </span>{' '}
                         <span className="text-red-600 line-through dark:text-red-400">
-                            {formatValue(oldValues[key])}
+                            {formatValue(oldValues[key], key, privacyMode)}
                         </span>
                         {' → '}
                         <span className="text-green-600 dark:text-green-400">
-                            {formatValue(newValues[key])}
+                            {formatValue(newValues[key], key, privacyMode)}
                         </span>
                     </div>
                 ))}
@@ -141,7 +162,7 @@ function ChangeDiff({
                             {formatFieldName(key)}:
                         </span>{' '}
                         <span className="text-green-600 dark:text-green-400">
-                            {formatValue(value)}
+                            {formatValue(value, key, privacyMode)}
                         </span>
                     </div>
                 ))}
@@ -167,7 +188,7 @@ function ChangeDiff({
                             {formatFieldName(key)}:
                         </span>{' '}
                         <span className="text-red-600 line-through dark:text-red-400">
-                            {formatValue(value)}
+                            {formatValue(value, key, privacyMode)}
                         </span>
                     </div>
                 ))}
@@ -270,11 +291,7 @@ function ActivityLoadingSkeleton() {
 }
 
 export default function ActivityIndex() {
-    const {
-        currentLedger,
-        filters,
-        activity,
-    } = usePage<{
+    const { currentLedger, filters, activity } = usePage<{
         filters: {
             subject_type: string | null;
             action: string | null;
@@ -390,7 +407,10 @@ export default function ActivityIndex() {
                     </Select>
                 </div>
 
-                <Deferred data="activity" fallback={<ActivityLoadingSkeleton />}>
+                <Deferred
+                    data="activity"
+                    fallback={<ActivityLoadingSkeleton />}
+                >
                     <div className="grid gap-3">
                         {activityEntries.length === 0 ? (
                             <EmptyState
@@ -429,7 +449,9 @@ export default function ActivityIndex() {
                         <button
                             type="button"
                             className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
-                            disabled={activity.current_page >= activity.last_page}
+                            disabled={
+                                activity.current_page >= activity.last_page
+                            }
                             onClick={() =>
                                 reloadActivity({
                                     subjectType: filterType,

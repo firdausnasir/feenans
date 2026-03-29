@@ -51,6 +51,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
 import { dashboard } from '@/routes/ledgers';
@@ -188,6 +189,7 @@ export default function LedgerDashboard() {
 
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
     const [uncategorizedDismissed, setUncategorizedDismissed] = useState(false);
+    const { privacyMode } = usePrivacyMode();
     const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
 
     // Derived values with safe defaults for deferred props
@@ -367,7 +369,7 @@ export default function LedgerDashboard() {
                 <Deferred
                     data="upcomingBills"
                     fallback={
-                        <Card className="p-0 border-amber-500 dark:border-amber-400">
+                        <Card className="border-amber-500 p-0 dark:border-amber-400">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
                                     <Bell className="size-4 text-muted-foreground" />
@@ -389,7 +391,7 @@ export default function LedgerDashboard() {
                     }
                 >
                     {hasAnyBills && (
-                        <Card className="p-0 border-amber-500 dark:border-amber-400">
+                        <Card className="border-amber-500 p-0 dark:border-amber-400">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
                                     <Bell className="size-4 text-muted-foreground" />
@@ -448,7 +450,10 @@ export default function LedgerDashboard() {
                                 <p
                                     className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.income)}`}
                                 >
-                                    {formatAbsAmount(summary.income)}
+                                    {formatAbsAmount(
+                                        summary.income,
+                                        privacyMode,
+                                    )}
                                 </p>
                             </CardContent>
                         </Card>
@@ -471,7 +476,10 @@ export default function LedgerDashboard() {
                                 <p
                                     className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.expense)}`}
                                 >
-                                    {formatAbsAmount(summary.expense)}
+                                    {formatAbsAmount(
+                                        summary.expense,
+                                        privacyMode,
+                                    )}
                                 </p>
                             </CardContent>
                         </Card>
@@ -484,7 +492,7 @@ export default function LedgerDashboard() {
                             <p
                                 className={`text-sm font-bold tabular-nums sm:text-base md:text-lg ${amountColor(summary.net)}`}
                             >
-                                {formatAbsAmount(summary.net)}
+                                {formatAbsAmount(summary.net, privacyMode)}
                             </p>
                         </CardContent>
                     </Card>
@@ -532,7 +540,9 @@ export default function LedgerDashboard() {
                                             axisLine={false}
                                             fontSize={12}
                                             width={60}
-                                            tickFormatter={(v) => `RM${v}`}
+                                            tickFormatter={(v) =>
+                                                formatAbsAmount(v, privacyMode)
+                                            }
                                         />
                                         <ChartTooltip
                                             content={
@@ -543,7 +553,10 @@ export default function LedgerDashboard() {
                                                         )
                                                     }
                                                     formatter={(value) =>
-                                                        `RM${Number(value).toLocaleString()}`
+                                                        formatAbsAmount(
+                                                            Number(value),
+                                                            privacyMode,
+                                                        )
                                                     }
                                                 />
                                             }
@@ -629,10 +642,23 @@ export default function LedgerDashboard() {
                                                 tickLine={false}
                                                 axisLine={false}
                                                 fontSize={12}
+                                                tickFormatter={(v) =>
+                                                    formatAbsAmount(
+                                                        v,
+                                                        privacyMode,
+                                                    )
+                                                }
                                             />
                                             <ChartTooltip
                                                 content={
-                                                    <ChartTooltipContent />
+                                                    <ChartTooltipContent
+                                                        formatter={(value) =>
+                                                            formatAbsAmount(
+                                                                Number(value),
+                                                                privacyMode,
+                                                            )
+                                                        }
+                                                    />
                                                 }
                                             />
                                             <Bar
@@ -735,6 +761,7 @@ export default function LedgerDashboard() {
                                                                     <span className="text-sm font-medium text-red-500 tabular-nums dark:text-red-400">
                                                                         {formatAbsAmount(
                                                                             balance,
+                                                                            privacyMode,
                                                                         )}
                                                                     </span>
                                                                 </TooltipTrigger>
@@ -755,6 +782,7 @@ export default function LedgerDashboard() {
                                                             <span className="text-sm font-medium tabular-nums">
                                                                 {formatAbsAmount(
                                                                     balance,
+                                                                    privacyMode,
                                                                 )}
                                                             </span>
                                                         )}
@@ -826,10 +854,12 @@ export default function LedgerDashboard() {
                                                 <span className="text-xs text-muted-foreground tabular-nums">
                                                     {formatAbsAmount(
                                                         budget.spent,
+                                                        privacyMode,
                                                     )}{' '}
                                                     /{' '}
                                                     {formatAbsAmount(
                                                         budget.amount,
+                                                        privacyMode,
                                                     )}
                                                     {budget.status === 'over' &&
                                                         ' · Over'}
@@ -925,6 +955,7 @@ export default function LedgerDashboard() {
                                                         >
                                                             {formatAbsAmount(
                                                                 amount,
+                                                                privacyMode,
                                                             )}
                                                         </span>
                                                     </div>
@@ -1027,6 +1058,7 @@ export default function LedgerDashboard() {
                                                         >
                                                             {formatAbsAmount(
                                                                 amount,
+                                                                privacyMode,
                                                             )}
                                                         </TableCell>
                                                     </TableRow>
@@ -1105,6 +1137,7 @@ function UpcomingBillRow({
 }) {
     const isIncome = bill.transaction_type === 'income';
     const payeeName = bill.payee?.name ?? bill.name;
+    const { privacyMode } = usePrivacyMode();
 
     const borderColor: Record<string, string> = {
         missed: 'border-l-red-500',
@@ -1132,7 +1165,7 @@ function UpcomingBillRow({
                                 : 'text-red-500 dark:text-red-400'
                         }`}
                     >
-                        {formatAbsAmount(bill.amount)}
+                        {formatAbsAmount(bill.amount, privacyMode)}
                     </span>
                     <span className="text-xs text-muted-foreground">
                         &middot;

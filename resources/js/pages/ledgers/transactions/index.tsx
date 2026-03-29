@@ -60,6 +60,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import { useAttachments } from '@/hooks/use-attachments';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
@@ -1387,6 +1388,7 @@ function FilterFields({
 export default function TransactionsIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger as Ledger;
+    const { privacyMode } = usePrivacyMode();
     const {
         filters: committedFilters,
         accounts,
@@ -2007,7 +2009,7 @@ export default function TransactionsIndex() {
                                     <TableCell
                                         className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
                                     >
-                                        {formatAbsAmount(amount)}
+                                        {formatAbsAmount(amount, privacyMode)}
                                     </TableCell>
                                     <TableCell
                                         className="text-center"
@@ -2600,6 +2602,7 @@ export default function TransactionsIndex() {
                             ·{' '}
                             {formatAbsAmount(
                                 attachmentModalTransaction?.amount || '0',
+                                privacyMode,
                             )}
                         </DialogDescription>
                     </DialogHeader>

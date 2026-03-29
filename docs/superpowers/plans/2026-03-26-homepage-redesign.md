@@ -1,9 +1,105 @@
+# Homepage Redesign Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Rewrite the Feenans landing page from text/icon cards to a screenshot-driven feature showcase with horizontal gallery, cycle flexibility callout, and full dark/light mode support.
+
+**Architecture:** Single-file rewrite of `resources/js/pages/welcome.tsx`. Uses existing `useAppearance` hook for theme-aware screenshot switching. All styling via Tailwind CSS v4 `dark:` variants. No backend changes, no new routes, no new dependencies.
+
+**Tech Stack:** React 19, Inertia.js v2, Tailwind CSS v4, existing `useAppearance` hook, Lucide icons
+
+**Spec:** `docs/superpowers/specs/2026-03-26-homepage-redesign-design.md`
+
+---
+
+### Task 1: Create ScreenshotImage Helper Component
+
+**Files:**
+
+- Create: `resources/js/components/screenshot-image.tsx`
+
+This component handles dark/light mode screenshot switching with graceful fallback. It's used by the hero and gallery sections.
+
+- [ ] **Step 1: Create the component**
+
+```tsx
+import { useAppearance } from '@/hooks/use-appearance';
+import { cn } from '@/lib/utils';
+import { type ImgHTMLAttributes, useCallback } from 'react';
+
+type ScreenshotImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
+    readonly name: string;
+};
+
+export default function ScreenshotImage({
+    name,
+    alt,
+    className,
+    ...props
+}: ScreenshotImageProps) {
+    const { resolvedAppearance } = useAppearance();
+
+    const src =
+        resolvedAppearance === 'light'
+            ? `/screenshots/${name}-light.png`
+            : `/screenshots/${name}.png`;
+
+    const handleError = useCallback(
+        (e: React.SyntheticEvent<HTMLImageElement>) => {
+            const fallback = `/screenshots/${name}.png`;
+
+            if (e.currentTarget.src !== fallback) {
+                e.currentTarget.src = fallback;
+            }
+        },
+        [name],
+    );
+
+    return (
+        <img
+            src={src}
+            alt={alt}
+            className={cn(className)}
+            onError={handleError}
+            {...props}
+        />
+    );
+}
+```
+
+- [ ] **Step 2: Verify no TypeScript errors**
+
+Run: `npx tsc --noEmit --pretty 2>&1 | grep screenshot-image || echo "No errors"`
+Expected: No errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add resources/js/components/screenshot-image.tsx
+git commit -m "feat: add ScreenshotImage component with dark/light mode fallback"
+```
+
+---
+
+### Task 2: Rewrite Welcome Page — Data & Imports
+
+**Files:**
+
+- Modify: `resources/js/pages/welcome.tsx`
+
+Strip the old data arrays (`coreFeatures`, `privacyItems`, `securityItems`, `trustBannerItems`) and old sub-components (`FeatureCard`, `TrustCard`). Replace with new data structures for the gallery cards, trust banner items, cycle options, and condensed trust grid.
+
+- [ ] **Step 1: Replace the entire file with new data, imports, and types**
+
+Replace the full content of `resources/js/pages/welcome.tsx` with:
+
+```tsx
+import ScreenshotImage from '@/components/screenshot-image';
+import AppLogoIcon from '@/components/app-logo-icon';
+import { Button } from '@/components/ui/button';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowRight, Download, Key, Lock, ShieldCheck } from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
-import AppLogoIcon from '@/components/app-logo-icon';
-import ScreenshotImage from '@/components/screenshot-image';
-import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
 
 type GalleryFeature = {
@@ -95,7 +191,13 @@ const cycleOptions: readonly CycleOption[] = [
     { label: 'Custom (any day)', dates: 'Pick your own start date' },
 ] as const;
 
-const trustGridItems: readonly TrustBannerItem[] = [
+type TrustGridItem = {
+    readonly icon: ComponentType<SVGAttributes<SVGElement>>;
+    readonly title: string;
+    readonly description: string;
+};
+
+const trustGridItems: readonly TrustGridItem[] = [
     {
         icon: ShieldCheck,
         title: 'No Admin Access',
@@ -121,7 +223,27 @@ const trustGridItems: readonly TrustBannerItem[] = [
             'Export everything as JSON or CSV anytime. Delete your account permanently with one click.',
     },
 ] as const;
+```
 
+This is just the top of the file — data and imports. The component itself is added in Task 3.
+
+- [ ] **Step 2: Verify TypeScript compiles (will have errors since component not yet added — that's expected)**
+
+No verification needed yet — the component export is added in Task 3.
+
+---
+
+### Task 3: Rewrite Welcome Page — Component & Sections
+
+**Files:**
+
+- Modify: `resources/js/pages/welcome.tsx` (append the component export below the data from Task 2)
+
+- [ ] **Step 1: Append the Welcome component to the file**
+
+Add the following after the data arrays (after `] as const;` for `trustGridItems`):
+
+```tsx
 export default function Welcome({
     canRegister = true,
 }: {
@@ -221,8 +343,8 @@ export default function Welcome({
                         </div>
                         <div className="relative">
                             <ScreenshotImage
-                                name="dashboard"
-                                alt="Feenans dashboard screenshot showing an overview of accounts, budgets, and recent transactions."
+                                name="account"
+                                alt="Feenans account tracking showing assets, liabilities, and net worth"
                                 className="w-full rounded-xl border border-border shadow-2xl"
                             />
                         </div>
@@ -251,10 +373,10 @@ export default function Welcome({
                     </div>
                 </section>
 
-                {/* Features */}
-                <section className="px-4 py-16 sm:px-6 sm:py-24">
+                {/* Features Gallery */}
+                <section className="bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
                     <div className="mx-auto max-w-6xl">
-                        <div className="mx-auto mb-16 max-w-2xl text-center">
+                        <div className="mx-auto mb-12 max-w-2xl text-center">
                             <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
                                 Features
                             </p>
@@ -263,34 +385,33 @@ export default function Welcome({
                             </h2>
                             <p className="mt-4 text-muted-foreground">
                                 From daily tracking to long-term budgeting.
+                                Scroll to explore.
                             </p>
                         </div>
-                        <div className="flex flex-col gap-20 sm:gap-28">
-                            {galleryFeatures.map((feature, index) => (
+                    </div>
+                    <div className="mx-auto max-w-7xl px-2">
+                        <div className="-mx-2 flex snap-x snap-mandatory gap-6 overflow-x-auto pb-6 sm:px-2">
+                            {galleryFeatures.map((feature) => (
                                 <div
                                     key={feature.screenshot}
-                                    className={`grid items-center gap-8 lg:grid-cols-2 lg:gap-16 ${
-                                        index % 2 === 1
-                                            ? 'lg:[&>:first-child]:order-2'
-                                            : ''
-                                    }`}
+                                    className="w-[300px] shrink-0 snap-start sm:w-[340px] lg:w-[380px]"
                                 >
-                                    <div>
-                                        <ScreenshotImage
-                                            name={feature.screenshot}
-                                            alt=""
-                                            loading="lazy"
-                                            decoding="async"
-                                            className="w-full rounded-xl border border-border shadow-2xl"
-                                        />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                                            {feature.title}
-                                        </h3>
-                                        <p className="mt-3 leading-relaxed text-muted-foreground">
-                                            {feature.description}
-                                        </p>
+                                    <div className="overflow-hidden rounded-xl bg-card shadow-lg transition-transform hover:-translate-y-1">
+                                        <div className="bg-gradient-to-br from-muted/80 via-background to-muted/80 p-4 dark:from-muted/50 dark:via-background dark:to-muted/50">
+                                            <ScreenshotImage
+                                                name={feature.screenshot}
+                                                alt={feature.title}
+                                                className="w-full rounded-lg border border-border shadow-2xl"
+                                            />
+                                        </div>
+                                        <div className="p-5">
+                                            <h3 className="font-semibold text-card-foreground">
+                                                {feature.title}
+                                            </h3>
+                                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                                                {feature.description}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -299,7 +420,7 @@ export default function Welcome({
                 </section>
 
                 {/* Cycle Flexibility */}
-                <section className="bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
+                <section className="px-4 py-16 sm:px-6 sm:py-24">
                     <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
                         <div>
                             <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
@@ -452,3 +573,71 @@ export default function Welcome({
         </>
     );
 }
+```
+
+- [ ] **Step 2: Verify TypeScript compiles**
+
+Run: `npx tsc --noEmit --pretty 2>&1 | grep -E "welcome\.tsx|screenshot-image" || echo "No errors"`
+Expected: No errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add resources/js/pages/welcome.tsx
+git commit -m "feat: redesign homepage with screenshot gallery and cycle callout"
+```
+
+---
+
+### Task 4: Lint & Format
+
+**Files:**
+
+- Modify: `resources/js/pages/welcome.tsx` (if lint fixes needed)
+- Modify: `resources/js/components/screenshot-image.tsx` (if lint fixes needed)
+
+- [ ] **Step 1: Run ESLint + Prettier**
+
+Run: `npm run lint`
+Expected: No errors, or auto-fixable issues only
+
+- [ ] **Step 2: Run Pint on any PHP files changed (none expected)**
+
+Run: `vendor/bin/pint --dirty --format agent`
+Expected: No PHP files changed
+
+- [ ] **Step 3: Fix any lint errors if present, then re-run**
+
+If errors: fix them and re-run `npm run lint`
+Expected: Clean pass
+
+- [ ] **Step 4: Commit any lint fixes**
+
+```bash
+git add -u
+git commit -m "style: fix lint issues in homepage redesign"
+```
+
+(Skip if no changes)
+
+---
+
+### Task 5: Build & Smoke Test
+
+**Files:** None (verification only)
+
+- [ ] **Step 1: Run the Vite build**
+
+Run: `npm run build`
+Expected: Build succeeds with no errors
+
+- [ ] **Step 2: Verify the page renders**
+
+Run: `curl -s -o /dev/null -w "%{http_code}" $(php artisan tinker --execute="echo url('/')")`
+Expected: `200`
+
+- [ ] **Step 3: Run existing tests to ensure nothing is broken**
+
+Run: `php artisan test --compact --filter=Home`
+If no Home tests exist: `php artisan test --compact`
+Expected: All tests pass

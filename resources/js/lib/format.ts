@@ -5,6 +5,8 @@
  * Dates: Parsed with timezone-safe handling
  */
 
+export const MASKED_AMOUNT = 'RM ****';
+
 const currencyFormatter = new Intl.NumberFormat('en-MY', {
     style: 'currency',
     currency: 'MYR',
@@ -12,33 +14,49 @@ const currencyFormatter = new Intl.NumberFormat('en-MY', {
     maximumFractionDigits: 2,
 });
 
-/**
- * Format a monetary amount as "RM 1,234.56".
- * Accepts number or string (will be parsed to float).
- * Returns the formatted string with sign preserved.
- */
-export function formatAmount(amount: number | string): string {
+function formatCurrencyAmount(
+    amount: number | string,
+    masked = false,
+    absolute = false,
+): string {
+    if (masked) {
+        return MASKED_AMOUNT;
+    }
+
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
 
     if (isNaN(num)) {
         return 'RM 0.00';
     }
 
-    return currencyFormatter.format(num).replace('MYR', 'RM');
+    return currencyFormatter
+        .format(absolute ? Math.abs(num) : num)
+        .replace('MYR', 'RM');
+}
+
+/**
+ * Format a monetary amount as "RM 1,234.56".
+ * Accepts number or string (will be parsed to float).
+ * Returns the formatted string with sign preserved.
+ * When `masked` is true, returns "RM ****" instead.
+ */
+export function formatAmount(
+    amount: number | string,
+    masked?: boolean,
+): string {
+    return formatCurrencyAmount(amount, masked);
 }
 
 /**
  * Format a monetary amount as "RM 1,234.56" using absolute value.
  * Useful for displaying expense/income amounts where sign is indicated by color/context.
+ * When `masked` is true, returns "RM ****" instead.
  */
-export function formatAbsAmount(amount: number | string): string {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-
-    if (isNaN(num)) {
-        return 'RM 0.00';
-    }
-
-    return currencyFormatter.format(Math.abs(num)).replace('MYR', 'RM');
+export function formatAbsAmount(
+    amount: number | string,
+    masked?: boolean,
+): string {
+    return formatCurrencyAmount(amount, masked, true);
 }
 
 /**
