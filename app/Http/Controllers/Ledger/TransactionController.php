@@ -22,6 +22,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -50,7 +52,15 @@ class TransactionController extends Controller
             'tags' => fn () => $ledger->tags()->orderBy('name')->get(),
             'transactions' => Inertia::defer(function () use ($ledger, $request, $filters, $page) {
                 $query = $ledger->transactions()
-                    ->with(['account', 'category', 'payee', 'tags', 'transferPair'])
+                    ->with([
+                        'account',
+                        'category',
+                        'payee',
+                        'tags',
+                        'transferPair.account',
+                        'splits.category',
+                        'splits.payee',
+                    ])
                     ->withCount('splits')
                     ->withCount('attachments')
                     ->orderByDesc('transaction_date')
@@ -58,12 +68,16 @@ class TransactionController extends Controller
 
                 $this->applyTransactionFilters($query, $filters);
 
-                return $query->paginate(
+                $transactions = $query->paginate(
                     $request->integer('per_page', 25),
                     ['*'],
                     'page',
                     $page,
                 );
+
+                $this->normalizeTransferPairRelations($ledger, $transactions);
+
+                return $transactions;
             }),
         ]);
     }
@@ -482,9 +496,14 @@ class TransactionController extends Controller
         }
 
         if (is_array($value)) {
-            $filtered = array_filter($value, fn ($v) => $v !== null && $v !== '');
+            $filtered = array_filter(
+                Arr::flatten($value),
+                fn ($v) => $v !== null && $v !== '',
+            );
 
-            return $filtered !== [] ? array_values($filtered) : null;
+            return $filtered !== []
+                ? array_map(static fn ($item) => (string) $item, array_values($filtered))
+                : null;
         }
 
         return [(string) $value];
@@ -558,6 +577,39 @@ class TransactionController extends Controller
             $onboardingData['first_transaction_celebrated'] = true;
             $user->update(['onboarding_data' => $onboardingData]);
             session()->flash('first_transaction', true);
+        }
+    }
+
+    private function normalizeTransferPairRelations(Ledger $ledger, LengthAwarePaginator $transactions): void
+    {
+        $visibleTransfers = $transactions->getCollection()
+            ->filter(fn (Transaction $transaction) => $transaction->transfer_pair_id !== null)
+            ->values();
+
+        if ($visibleTransfers->isEmpty()) {
+            return;
+        }
+
+        $pairIds = $visibleTransfers
+            ->pluck('transfer_pair_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $allPairTransactions = Transaction::query()
+            ->where('ledger_id', $ledger->id)
+            ->whereIn('transfer_pair_id', $pairIds)
+            ->with('account')
+            ->get()
+            ->groupBy('transfer_pair_id');
+
+        foreach ($visibleTransfers as $transaction) {
+            $counterpart = $allPairTransactions
+                ->get($transaction->transfer_pair_id)?->firstWhere('id', '!=', $transaction->id);
+
+            if ($counterpart instanceof Transaction) {
+                $transaction->setRelation('transferPair', $counterpart);
+            }
         }
     }
 
