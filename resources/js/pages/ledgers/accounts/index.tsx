@@ -98,10 +98,7 @@ function NetWorthCards() {
                     <p
                         className={`mt-0.5 text-base font-semibold tabular-nums sm:text-lg md:text-xl ${amountColor(-Math.abs(netWorth.liabilities))}`}
                     >
-                        {formatAbsAmount(
-                            netWorth.liabilities,
-                            privacyMode,
-                        )}
+                        {formatAbsAmount(netWorth.liabilities, privacyMode)}
                     </p>
                 </CardContent>
             </Card>
@@ -755,15 +752,12 @@ function EditAccountModal({
                                     <span
                                         className={
                                             balanceDiff > 0
-                                                ? 'font-medium text-green-600'
-                                                : 'font-medium text-red-600'
+                                                ? 'text-green-600'
+                                                : 'text-red-600'
                                         }
                                     >
                                         {balanceDiff > 0 ? '+' : ''}
-                                        {formatAmount(
-                                            balanceDiff,
-                                            privacyMode,
-                                        )}
+                                        {formatAmount(balanceDiff, privacyMode)}
                                     </span>{' '}
                                     {balanceDiff > 0 ? 'income' : 'expense'}{' '}
                                     adjustment transaction.
@@ -1145,10 +1139,7 @@ export default function AccountsIndex() {
                                 <span
                                     className={`text-sm font-semibold tabular-nums ${amountColor(totalBalance)}`}
                                 >
-                                    {formatAbsAmount(
-                                        totalBalance,
-                                        privacyMode,
-                                    )}
+                                    {formatAbsAmount(totalBalance, privacyMode)}
                                 </span>
                             </button>
 
@@ -1156,7 +1147,7 @@ export default function AccountsIndex() {
                                 <>
                                     {/* Desktop table */}
                                     <div className="hidden md:block">
-                                        <table className="mt-1 w-full">
+                                        <table className="mt-1 w-full text-sm">
                                             <tbody>
                                                 {group.accounts.map(
                                                     (account) => {
@@ -1229,7 +1220,7 @@ export default function AccountsIndex() {
                                                                         }}
                                                                     />
                                                                 </td>
-                                                                <td className="py-2 pr-4 font-medium">
+                                                                <td className="py-2 pr-4">
                                                                     {
                                                                         account.name
                                                                     }
@@ -1397,7 +1388,7 @@ export default function AccountsIndex() {
                                                                     '#6B7280',
                                                             }}
                                                         />
-                                                        <span className="flex-1 truncate text-sm font-medium">
+                                                        <span className="flex-1 truncate text-sm">
                                                             {account.name}
                                                         </span>
                                                         <span

@@ -2,6 +2,7 @@ import { AppContent } from '@/components/app-content';
 import { AppShell } from '@/components/app-shell';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarHeader } from '@/components/app-sidebar-header';
+import { ScrollToTopButton } from '@/components/scroll-to-top-button';
 import { Toaster } from '@/components/ui/sonner';
 import type { AppLayoutProps } from '@/types';
 
@@ -12,11 +13,12 @@ export default function AppSidebarLayout({
     return (
         <AppShell variant="sidebar">
             <AppSidebar />
-            <AppContent variant="sidebar" className="overflow-x-hidden">
+            <AppContent variant="sidebar">
                 <AppSidebarHeader breadcrumbs={breadcrumbs} />
-                {children}
+                <div className="min-w-0 overflow-x-hidden">{children}</div>
             </AppContent>
             <Toaster />
+            <ScrollToTopButton />
         </AppShell>
     );
 }
