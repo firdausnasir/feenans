@@ -78,7 +78,7 @@ class TransactionController extends Controller
                 $this->normalizeTransferPairRelations($ledger, $transactions);
 
                 return $transactions;
-            }),
+            })->deepMerge(),
         ]);
     }
 
