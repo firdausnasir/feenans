@@ -27,7 +27,7 @@ The raw `statement_day` and `payment_due_day` integers remain on the model and a
 
 #### 2. Regroup by `include_in_totals`
 
-Replace `groupAccountsByType()` with a new grouping method that splits accounts into two groups:
+Add a new `groupAccountsByTotals()` method that splits accounts into two groups. The existing `groupAccountsByType()` static method is **kept as-is** because `DashboardController::buildGroupedAccounts()` calls it. The accounts page `index` method switches to the new grouping method instead.
 
 - **"Included in totals"** — accounts where `include_in_totals = true`
 - **"Savings"** — accounts where `include_in_totals = false`
@@ -122,7 +122,7 @@ type AccountGroup = {
     group: 'included' | 'excluded';
     label: string;
     accounts: Account[];
-    total_balance?: string;
+    total_balance: string;
 };
 ```
 
