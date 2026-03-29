@@ -44,6 +44,7 @@ test('accounts index renders successfully', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/accounts/index')
             ->has('accounts', 1)
+            ->where('accounts.0.group', 'included')
             ->has('accounts.0.accounts', 2)
             ->has('accountTypes')
             ->missing('netWorth')

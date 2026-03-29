@@ -27,16 +27,16 @@ class AccountController extends Controller
         $accountTypes = $ledger->accountTypes()->orderBy('position')->get();
 
         return Inertia::render('ledgers/accounts/index', [
-            'accounts' => fn () => $this->buildGroupedAccounts($ledger, $accountTypes),
+            'accounts' => fn () => $this->buildGroupedAccounts($ledger),
             'accountTypes' => fn () => $accountTypes,
             'netWorth' => Inertia::defer(fn () => $this->buildNetWorth($ledger)),
         ]);
     }
 
     /**
-     * @return array<int, array{type: array, accounts: array, total_balance: string}>
+     * @return array<int, array{group: string, label: string, accounts: array, total_balance: string}>
      */
-    private function buildGroupedAccounts(Ledger $ledger, $accountTypes): array
+    private function buildGroupedAccounts(Ledger $ledger): array
     {
         $accounts = $ledger->accounts()
             ->with('accountType')
@@ -45,7 +45,44 @@ class AccountController extends Controller
             ->orderBy('name')
             ->get();
 
-        return self::groupAccountsByType($accounts, $accountTypes);
+        return $this->groupAccountsByTotals($accounts);
+    }
+
+    /**
+     * Group accounts by include_in_totals for the accounts index page.
+     *
+     * @return array<int, array{group: string, label: string, accounts: array, total_balance: string}>
+     */
+    private function groupAccountsByTotals($accounts): array
+    {
+        $groups = [
+            ['key' => 'included', 'label' => 'Included in totals', 'filter' => true],
+            ['key' => 'excluded', 'label' => 'Savings', 'filter' => false],
+        ];
+
+        return collect($groups)
+            ->map(function ($group) use ($accounts) {
+                $filtered = $accounts->where('include_in_totals', $group['filter'])->values();
+
+                if ($filtered->isEmpty()) {
+                    return null;
+                }
+
+                return [
+                    'group' => $group['key'],
+                    'label' => $group['label'],
+                    'accounts' => AccountResource::collection($filtered)->resolve(),
+                    'total_balance' => number_format(
+                        $filtered->sum(fn ($a) => (float) $a->current_balance),
+                        2,
+                        '.',
+                        '',
+                    ),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**
