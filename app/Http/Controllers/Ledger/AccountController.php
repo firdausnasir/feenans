@@ -11,7 +11,6 @@ use App\Http\Requests\UpdateAccountRequest;
 use App\Http\Resources\AccountResource;
 use App\Models\Account;
 use App\Models\Ledger;
-use App\Services\TransactionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,14 +20,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AccountController extends Controller
 {
-    public function index(Ledger $ledger, Request $request, TransactionService $txService): Response
+    public function index(Ledger $ledger, Request $request): Response
     {
         $this->authorize('view', $ledger);
 
         $accountTypes = $ledger->accountTypes()->orderBy('position')->get();
 
         return Inertia::render('ledgers/accounts/index', [
-            'accounts' => fn () => $this->buildGroupedAccounts($ledger, $txService, $accountTypes),
+            'accounts' => fn () => $this->buildGroupedAccounts($ledger, $accountTypes),
             'accountTypes' => fn () => $accountTypes,
             'netWorth' => Inertia::defer(fn () => $this->buildNetWorth($ledger)),
         ]);
@@ -37,7 +36,7 @@ class AccountController extends Controller
     /**
      * @return array<int, array{type: array, accounts: array, total_balance: string}>
      */
-    private function buildGroupedAccounts(Ledger $ledger, TransactionService $txService, $accountTypes): array
+    private function buildGroupedAccounts(Ledger $ledger, $accountTypes): array
     {
         $accounts = $ledger->accounts()
             ->with('accountType')
@@ -45,44 +44,6 @@ class AccountController extends Controller
             ->orderBy('position')
             ->orderBy('name')
             ->get();
-
-        $today = CarbonImmutable::today();
-        $accounts = $accounts->map(function (Account $account) use ($txService, $today): Account {
-            if ($account->statement_day === null) {
-                return $account;
-            }
-
-            [$currentStart] = $txService->statementCycleBounds($account, $today);
-            $previousEnd = $currentStart->subDay();
-            [$previousStart, $calculatedPreviousEnd] = $txService->statementCycleBounds($account, $previousEnd);
-
-            $statementBalance = (float) $account->initial_balance + (float) $account->transactions()
-                ->where('transaction_date', '<=', $calculatedPreviousEnd->toDateString())
-                ->sum('amount');
-
-            $currentSpending = (float) $account->transactions()
-                ->whereBetween('transaction_date', [$currentStart->toDateString(), $today->toDateString()])
-                ->sum('amount');
-
-            if ($account->payment_due_day !== null) {
-                $stmtDate = $currentStart->subDay();
-                $dueMonth = $account->payment_due_day >= $account->statement_day
-                    ? $stmtDate
-                    : $stmtDate->addMonthNoOverflow();
-                $paymentDueDate = $dueMonth->setDay(min($account->payment_due_day, $dueMonth->daysInMonth));
-            } else {
-                $paymentDueDate = $currentStart->subDay()->addDays(20);
-            }
-
-            $account->setAttribute('statement_start', $previousStart->toDateString());
-            $account->setAttribute('statement_end', $calculatedPreviousEnd->toDateString());
-            $account->setAttribute('statement_balance', round($statementBalance, 2));
-            $account->setAttribute('current_spending', round($currentSpending, 2));
-            $account->setAttribute('outstanding', round($statementBalance + $currentSpending, 2));
-            $account->setAttribute('payment_due_date', $paymentDueDate->toDateString());
-
-            return $account;
-        });
 
         return self::groupAccountsByType($accounts, $accountTypes);
     }

@@ -4,6 +4,7 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create an account inside their ledger', function () {
     $user = User::factory()->create();
@@ -102,4 +103,31 @@ test('account index is forbidden for another user', function () {
         ->get(route('ledgers.accounts.index', $ledger));
 
     $response->assertForbidden();
+});
+
+test('credit card accounts do not include computed statement fields', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->credit()->create();
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'initial_balance' => 0,
+        'statement_day' => 15,
+        'payment_due_day' => 25,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('ledgers.accounts.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('accounts', 1)
+            ->has('accounts.0.accounts', 1)
+            ->where('accounts.0.accounts.0.statement_day', 15)
+            ->where('accounts.0.accounts.0.payment_due_day', 25)
+            ->missing('accounts.0.accounts.0.statement_balance')
+            ->missing('accounts.0.accounts.0.current_spending')
+            ->missing('accounts.0.accounts.0.outstanding')
+            ->missing('accounts.0.accounts.0.payment_due_date')
+            ->missing('accounts.0.accounts.0.statement_start')
+            ->missing('accounts.0.accounts.0.statement_end')
+        );
 });
