@@ -1,5 +1,8 @@
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import {
+    ArrowRightLeft,
+    ChevronDown,
+    ChevronUp,
     MoreVertical,
     Paperclip,
     Receipt,
@@ -8,6 +11,7 @@ import {
     X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
@@ -83,7 +87,10 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import { groupTransactionsForMobile } from './mobile-transaction-groups';
+import type { MobileTransactionListItem } from './mobile-transaction-groups';
 import { MobileTransactionList } from './mobile-transaction-list';
+import { resolveTransferPairTitle } from './mobile-transaction-row-data';
 import {
     buildQueryParams,
     deriveSelectionState,
@@ -1139,30 +1146,30 @@ function TransactionListSkeleton() {
                         <Skeleton className="h-3 w-20" />
 
                         <div className="overflow-hidden rounded-xl border border-border">
-                            {Array.from({ length: groupIndex === 0 ? 3 : 2 }).map(
-                                (_, rowIndex) => (
-                                    <div
-                                        key={`${groupIndex}-${rowIndex}`}
-                                        className="border-t border-border px-3 py-3 first:border-t-0"
-                                    >
-                                        <div className="grid grid-cols-[auto_1fr_auto] gap-2">
-                                            <Skeleton className="mt-1 size-4 rounded" />
-                                            <div className="space-y-1.5">
-                                                <Skeleton className="h-4 w-32" />
-                                                <Skeleton className="h-3 w-40" />
-                                                <Skeleton className="h-3 w-24" />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Skeleton className="ml-auto h-4 w-18" />
-                                                <div className="flex justify-end gap-1">
-                                                    <Skeleton className="size-8 rounded" />
-                                                    <Skeleton className="size-8 rounded" />
-                                                </div>
+                            {Array.from({
+                                length: groupIndex === 0 ? 3 : 2,
+                            }).map((_, rowIndex) => (
+                                <div
+                                    key={`${groupIndex}-${rowIndex}`}
+                                    className="border-t border-border px-3 py-3 first:border-t-0"
+                                >
+                                    <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                        <Skeleton className="mt-1 size-4 rounded" />
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="h-4 w-32" />
+                                            <Skeleton className="h-3 w-40" />
+                                            <Skeleton className="h-3 w-24" />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="ml-auto h-4 w-18" />
+                                            <div className="flex justify-end gap-1">
+                                                <Skeleton className="size-8 rounded" />
+                                                <Skeleton className="size-8 rounded" />
                                             </div>
                                         </div>
                                     </div>
-                                ),
-                            )}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 ))}
@@ -1387,6 +1394,21 @@ export default function TransactionsIndex() {
 
         return !window.matchMedia('(min-width: 640px)').matches;
     });
+    const [expandedDesktopPairIds, setExpandedDesktopPairIds] = useState<
+        string[]
+    >([]);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+    const infiniteScrollSentinelRef = useRef<HTMLDivElement>(null);
+    const infiniteScrollLoadingRef = useRef(false);
+
+    function toggleDesktopTransferPair(pairId: string): void {
+        setExpandedDesktopPairIds((current) =>
+            current.includes(pairId)
+                ? current.filter((id) => id !== pairId)
+                : [...current, pairId],
+        );
+    }
 
     // Track mobile viewport
     useEffect(() => {
@@ -1401,6 +1423,49 @@ export default function TransactionsIndex() {
 
         return () => mql.removeEventListener('change', handler);
     }, []);
+
+    useEffect(() => {
+        const sentinel = infiniteScrollSentinelRef.current;
+
+        if (!sentinel) {
+return;
+}
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const entry = entries[0];
+
+                if (
+                    entry.isIntersecting &&
+                    !infiniteScrollLoadingRef.current &&
+                    transactions?.next_page_url
+                ) {
+                    infiniteScrollLoadingRef.current = true;
+                    setIsLoadingMore(true);
+
+                    const nextUrl = new URL(transactions.next_page_url);
+                    const params: Record<string, string | string[]> =
+                        buildQueryParams(committedFilters);
+                    params.page = nextUrl.searchParams.get('page') ?? '2';
+
+                    router.get(transactionsIndex.url(ledger.id), params, {
+                        only: ['transactions'],
+                        preserveState: true,
+                        replace: true,
+                        onFinish: () => {
+                            infiniteScrollLoadingRef.current = false;
+                            setIsLoadingMore(false);
+                        },
+                    });
+                }
+            },
+            { rootMargin: '200px' },
+        );
+
+        observer.observe(sentinel);
+
+        return () => observer.disconnect();
+    }, [transactions?.next_page_url, committedFilters, ledger.id]);
 
     // Check if filters have changed from committed
     const filtersChanged =
@@ -1432,6 +1497,7 @@ export default function TransactionsIndex() {
 
         router.get(transactionsIndex.url(ledger.id), params, {
             only: ['transactions', 'filters'],
+            reset: ['transactions'],
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -1449,6 +1515,7 @@ export default function TransactionsIndex() {
             {},
             {
                 only: ['transactions', 'filters'],
+                reset: ['transactions'],
                 preserveState: true,
                 preserveScroll: true,
                 replace: true,
@@ -1462,19 +1529,6 @@ export default function TransactionsIndex() {
     const handleSearchChange = useCallback((value: string | null) => {
         setLocalFilters((prev) => ({ ...prev, search: value }));
     }, []);
-
-    function handlePageChange(newPage: number) {
-        const params: Record<string, string | string[]> =
-            buildQueryParams(committedFilters);
-        params.page = String(newPage);
-
-        router.get(transactionsIndex.url(ledger.id), params, {
-            only: ['transactions'],
-            preserveState: true,
-            replace: true,
-        });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
 
     // ─── Selection ───────────────────────────────────────────────────────
 
@@ -1684,7 +1738,7 @@ export default function TransactionsIndex() {
 
         const txns = transactions.data;
 
-        if (txns.length === 0 || transactions.current_page !== 1) {
+        if (txns.length === 0) {
             return null;
         }
 
@@ -1918,112 +1972,323 @@ export default function TransactionsIndex() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {txs.data.map((tx) => {
-                            const amount = parseFloat(tx.amount);
+                        {(() => {
+                            const groups = groupTransactionsForMobile(txs.data);
+                            const flatItems: MobileTransactionListItem[] =
+                                groups.flatMap((group) => group.items);
 
-                            return (
-                                <TableRow
-                                    key={tx.id}
-                                    className="cursor-pointer"
-                                    onClick={() => setEditTransaction(tx)}
-                                >
-                                    <TableCell
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <Checkbox
-                                            checked={
-                                                allAcrossPages
-                                                    ? !excludedIds.includes(
-                                                          tx.id,
-                                                      )
-                                                    : selectedIds.includes(
-                                                          tx.id,
-                                                      )
+                            return flatItems.flatMap((item) => {
+                                if (item.kind === 'transfer_pair') {
+                                    const outgoing =
+                                        item.transactions.find(
+                                            (t) =>
+                                                parseFloat(t.amount ?? '0') < 0,
+                                        ) ?? item.transactions[0];
+                                    const isPairExpanded =
+                                        expandedDesktopPairIds.includes(
+                                            item.pairId,
+                                        );
+                                    const pairTitle = resolveTransferPairTitle(
+                                        item.transactions,
+                                    );
+                                    const isOutgoingSelected = allAcrossPages
+                                        ? !excludedIds.includes(outgoing.id)
+                                        : selectedIds.includes(outgoing.id);
+
+                                    const rows: ReactElement[] = [
+                                        <TableRow
+                                            key={`pair-${item.pairId}`}
+                                            className="cursor-pointer"
+                                            onClick={() =>
+                                                setEditTransaction(outgoing)
                                             }
-                                            onCheckedChange={(c) =>
-                                                handleSelectOne(tx.id, c)
-                                            }
-                                        />
-                                    </TableCell>
-                                    <TableCell className="whitespace-nowrap">
-                                        {formatDate(tx.transaction_date)}
-                                    </TableCell>
-                                    <TableCell className="hidden md:table-cell">
-                                        {tx.account?.name}
-                                    </TableCell>
-                                    <TableCell className="hidden lg:table-cell">
-                                        {tx.category?.name}
-                                    </TableCell>
-                                    <TableCell>{tx.payee?.name}</TableCell>
-                                    <TableCell>{tx.description}</TableCell>
-                                    <TableCell
-                                        className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
-                                    >
-                                        {formatAbsAmount(amount, privacyMode)}
-                                    </TableCell>
-                                    <TableCell
-                                        className="text-center"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        {(tx.attachments_count ?? 0) > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setAttachmentModalTransaction(
-                                                        tx,
-                                                    )
+                                        >
+                                            <TableCell
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
                                                 }
-                                                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                                             >
-                                                <Paperclip className="size-3" />
-                                                {tx.attachments_count}
-                                            </button>
-                                        )}
-                                    </TableCell>
-                                    <TableCell
-                                        onClick={(e) => e.stopPropagation()}
+                                                <Checkbox
+                                                    checked={isOutgoingSelected}
+                                                    onCheckedChange={(c) =>
+                                                        handleSelectOne(
+                                                            outgoing.id,
+                                                            c,
+                                                        )
+                                                    }
+                                                />
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                                {formatDate(
+                                                    outgoing.transaction_date,
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="hidden md:table-cell">
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                                                    {pairTitle}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="hidden lg:table-cell" />
+                                            <TableCell />
+                                            <TableCell>
+                                                {outgoing.description}
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium text-foreground tabular-nums">
+                                                {formatAbsAmount(
+                                                    outgoing.amount,
+                                                    privacyMode,
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                className="text-center"
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                            >
+                                                {(outgoing.attachments_count ??
+                                                    0) > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setAttachmentModalTransaction(
+                                                                outgoing,
+                                                            )
+                                                        }
+                                                        className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                                                    >
+                                                        <Paperclip className="size-3" />
+                                                        {
+                                                            outgoing.attachments_count
+                                                        }
+                                                    </button>
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                            >
+                                                <div className="flex items-center gap-0.5">
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleDesktopTransferPair(
+                                                                item.pairId,
+                                                            );
+                                                        }}
+                                                    >
+                                                        {isPairExpanded ? (
+                                                            <ChevronUp className="size-4" />
+                                                        ) : (
+                                                            <ChevronDown className="size-4" />
+                                                        )}
+                                                    </button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                            asChild
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                            >
+                                                                <MoreVertical className="size-4" />
+                                                            </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
+                                                                    setEditTransaction(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
+                                                                    handleDuplicate(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Duplicate
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                className="text-destructive focus:text-destructive"
+                                                                onClick={() =>
+                                                                    setDeleteConfirmTransaction(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>,
+                                    ];
+
+                                    if (isPairExpanded) {
+                                        item.transactions.forEach((tx) => {
+                                            const txAmount = parseFloat(
+                                                tx.amount ?? '0',
+                                            );
+                                            rows.push(
+                                                <TableRow
+                                                    key={`pair-leg-${tx.id}`}
+                                                    className="bg-muted/30 hover:bg-muted/30"
+                                                >
+                                                    <TableCell />
+                                                    <TableCell />
+                                                    <TableCell className="hidden pl-8 text-sm text-muted-foreground md:table-cell">
+                                                        {tx.account?.name}
+                                                    </TableCell>
+                                                    <TableCell className="hidden lg:table-cell" />
+                                                    <TableCell />
+                                                    <TableCell />
+                                                    <TableCell
+                                                        className={cn(
+                                                            'text-right text-sm tabular-nums',
+                                                            amountColor(
+                                                                txAmount,
+                                                            ),
+                                                        )}
+                                                    >
+                                                        {formatAbsAmount(
+                                                            txAmount,
+                                                            privacyMode,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell />
+                                                    <TableCell />
+                                                </TableRow>,
+                                            );
+                                        });
+                                    }
+
+                                    return rows;
+                                }
+
+                                // Regular transaction (kind === 'transaction')
+                                const tx = item.transaction;
+                                const amount = parseFloat(tx.amount);
+
+                                return [
+                                    <TableRow
+                                        key={tx.id}
+                                        className="cursor-pointer"
+                                        onClick={() => setEditTransaction(tx)}
                                     >
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
+                                        <TableCell
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <Checkbox
+                                                checked={
+                                                    allAcrossPages
+                                                        ? !excludedIds.includes(
+                                                              tx.id,
+                                                          )
+                                                        : selectedIds.includes(
+                                                              tx.id,
+                                                          )
+                                                }
+                                                onCheckedChange={(c) =>
+                                                    handleSelectOne(tx.id, c)
+                                                }
+                                            />
+                                        </TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            {formatDate(tx.transaction_date)}
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell">
+                                            {tx.account?.name}
+                                        </TableCell>
+                                        <TableCell className="hidden lg:table-cell">
+                                            {tx.category?.name}
+                                        </TableCell>
+                                        <TableCell>{tx.payee?.name}</TableCell>
+                                        <TableCell>{tx.description}</TableCell>
+                                        <TableCell
+                                            className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
+                                        >
+                                            {formatAbsAmount(
+                                                amount,
+                                                privacyMode,
+                                            )}
+                                        </TableCell>
+                                        <TableCell
+                                            className="text-center"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {(tx.attachments_count ?? 0) >
+                                                0 && (
                                                 <button
                                                     type="button"
-                                                    className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-                                                >
-                                                    <MoreVertical className="size-4" />
-                                                </button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem
                                                     onClick={() =>
-                                                        setEditTransaction(tx)
-                                                    }
-                                                >
-                                                    Edit
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                    onClick={() =>
-                                                        handleDuplicate(tx)
-                                                    }
-                                                >
-                                                    Duplicate
-                                                </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuItem
-                                                    className="text-destructive focus:text-destructive"
-                                                    onClick={() =>
-                                                        setDeleteConfirmTransaction(
+                                                        setAttachmentModalTransaction(
                                                             tx,
                                                         )
                                                     }
+                                                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                                                 >
-                                                    Delete
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
+                                                    <Paperclip className="size-3" />
+                                                    {tx.attachments_count}
+                                                </button>
+                                            )}
+                                        </TableCell>
+                                        <TableCell
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                    >
+                                                        <MoreVertical className="size-4" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            setEditTransaction(
+                                                                tx,
+                                                            )
+                                                        }
+                                                    >
+                                                        Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            handleDuplicate(tx)
+                                                        }
+                                                    >
+                                                        Duplicate
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        className="text-destructive focus:text-destructive"
+                                                        onClick={() =>
+                                                            setDeleteConfirmTransaction(
+                                                                tx,
+                                                            )
+                                                        }
+                                                    >
+                                                        Delete
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>,
+                                ];
+                            });
+                        })()}
                     </TableBody>
                 </Table>
 
@@ -2043,83 +2308,48 @@ export default function TransactionsIndex() {
                     onAttachmentClick={setAttachmentModalTransaction}
                 />
 
-                {/* Pagination */}
-                {txs.last_page > 1 && (
-                    <div className="mt-4 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">
-                            Page {txs.current_page} of {txs.last_page}
-                        </span>
-
-                        {/* Mobile: Previous/Next only */}
-                        <div className="flex gap-1 sm:hidden">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!txs.prev_page_url}
-                                onClick={() =>
-                                    handlePageChange(txs.current_page - 1)
-                                }
-                            >
-                                Previous
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!txs.next_page_url}
-                                onClick={() =>
-                                    handlePageChange(txs.current_page + 1)
-                                }
-                            >
-                                Next
-                            </Button>
-                        </div>
-
-                        {/* Desktop: Full page links */}
-                        <div className="hidden gap-1 sm:flex">
-                            {txs.links.map((link, i) => {
-                                if (!link.url) {
-                                    return (
-                                        <Button
+                {/* Infinite scroll sentinel + loading skeleton */}
+                {txs.next_page_url && (
+                    <>
+                        <div ref={infiniteScrollSentinelRef} className="h-1" />
+                        {isLoadingMore && (
+                            <>
+                                {/* Mobile loading skeleton */}
+                                <div className="space-y-2 py-3 sm:hidden">
+                                    {Array.from({ length: 2 }).map((_, i) => (
+                                        <div
                                             key={i}
-                                            variant="outline"
-                                            size="sm"
-                                            disabled
-                                            className="h-7 px-2.5 text-xs"
-                                            dangerouslySetInnerHTML={{
-                                                __html: link.label,
-                                            }}
-                                        />
-                                    );
-                                }
-
-                                const linkUrl = new URL(
-                                    link.url,
-                                    window.location.origin,
-                                );
-                                const linkPage = parseInt(
-                                    linkUrl.searchParams.get('page') ?? '1',
-                                    10,
-                                );
-
-                                return (
-                                    <Button
-                                        key={i}
-                                        variant={
-                                            link.active ? 'default' : 'outline'
-                                        }
-                                        size="sm"
-                                        className="h-7 px-2.5 text-xs"
-                                        onClick={() =>
-                                            handlePageChange(linkPage)
-                                        }
-                                        dangerouslySetInnerHTML={{
-                                            __html: link.label,
-                                        }}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
+                                            className="rounded-xl border border-border px-3 py-3"
+                                        >
+                                            <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                                <Skeleton className="mt-1 size-4 rounded" />
+                                                <div className="space-y-1.5">
+                                                    <Skeleton className="h-4 w-32" />
+                                                    <Skeleton className="h-3 w-48" />
+                                                </div>
+                                                <Skeleton className="h-4 w-16" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {/* Desktop loading skeleton */}
+                                <div className="hidden space-y-1 py-2 sm:block">
+                                    {Array.from({ length: 3 }).map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center gap-3 border-b border-border px-2 py-3"
+                                        >
+                                            <Skeleton className="size-4 rounded" />
+                                            <Skeleton className="h-4 w-20" />
+                                            <Skeleton className="h-4 w-48 flex-1" />
+                                            <Skeleton className="h-4 w-20" />
+                                            <Skeleton className="size-4" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </>
                 )}
             </>
         );
