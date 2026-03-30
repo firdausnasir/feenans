@@ -42,8 +42,16 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $exception): bool {
+            return $request->expectsJson() || $request->is('api/*');
+        });
+
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return $response;
+            }
 
             if (! app()->environment(['local', 'testing']) && in_array($status, [500, 503, 404, 403])) {
                 return Inertia::render('error-page', ['status' => $status])

@@ -7,8 +7,10 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Notifications\BudgetThresholdReached;
 use App\Services\BudgetService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 test('checkThresholds sends threshold notification at 80 percent', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
@@ -189,4 +191,65 @@ test('checkThresholds filters by category when provided', function () {
 
     expect($notifications)->toHaveCount(1);
     expect($notifications->first()->data['budget_name'])->toBe('Groceries');
+});
+
+test('checkThresholds batches spend and unread notification lookups', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $categories = Category::factory()->for($ledger)->count(3)->create();
+
+    $budgets = $categories->map(function (Category $category) use ($account, $ledger) {
+        $budget = Budget::query()->create([
+            'ledger_id' => $ledger->id,
+            'category_id' => $category->id,
+            'amount' => 100.00,
+            'period' => 'monthly',
+            'start_date' => '2026-03-01',
+            'is_active' => true,
+            'rollover' => false,
+        ]);
+
+        Transaction::factory()->for($ledger)->for($account)->for($category)->create([
+            'transaction_type' => 'expense',
+            'amount' => -85,
+            'transaction_date' => '2026-03-10',
+        ]);
+
+        return $budget;
+    });
+
+    foreach ($budgets as $budget) {
+        $user->notify(new BudgetThresholdReached($budget, 85.0, 85.0));
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(BudgetService::class)->checkThresholds($ledger);
+
+    $queryLog = collect(DB::getQueryLog());
+
+    $transactionQueries = $queryLog->filter(function (array $query): bool {
+        $sql = strtolower($query['query']);
+
+        return str_starts_with($sql, 'select')
+            && str_contains($sql, 'from "transactions"');
+    });
+
+    $notificationQueries = $queryLog->filter(function (array $query): bool {
+        $sql = strtolower($query['query']);
+
+        return str_starts_with($sql, 'select')
+            && str_contains($sql, 'from "notifications"');
+    });
+
+    DB::disableQueryLog();
+
+    expect($transactionQueries)->toHaveCount(1)
+        ->and($notificationQueries)->toHaveCount(1)
+        ->and($user->notifications()->count())->toBe(3);
 });

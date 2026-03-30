@@ -99,8 +99,11 @@ test('transaction index filters by account', function () {
             ->where('filters.account_ids', [(string) $accountA->id])
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.description', 'Account A transaction')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.description', 'Account A transaction')
+                    ->etc()
+                )
             )
         );
 });
@@ -133,8 +136,11 @@ test('transaction index filters by search term', function () {
             ->where('filters.search', 'coffee')
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.description', 'Morning coffee')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.description', 'Morning coffee')
+                    ->etc()
+                )
             )
         );
 });
@@ -169,8 +175,11 @@ test('transaction index filters by transaction type', function () {
             ->where('filters.transaction_types', ['income'])
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.transaction_type', 'income')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.transaction_type', 'income')
+                    ->etc()
+                )
             )
         );
 });
@@ -205,17 +214,20 @@ test('transaction index normalizes transfer filters from the page query shape', 
             ->where('filters.transaction_types', ['transfer'])
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 2)
-                ->where('transactions.data.0.transaction_type', 'transfer')
-                ->where('transactions.data.1.transaction_type', 'transfer')
-                ->where('transactions.data', fn ($transactions) => $transactions
-                    ->pluck('id')
-                    ->sort()
-                    ->values()
-                    ->all() === collect([$incomingTransfer->id, $outgoingTransfer->id])
-                    ->sort()
-                    ->values()
-                    ->all())
+                ->has('transactions', fn (Assert $transactionsProp) => $transactionsProp
+                    ->has('data', 2)
+                    ->where('data.0.transaction_type', 'transfer')
+                    ->where('data.1.transaction_type', 'transfer')
+                    ->where('data', fn ($transactions) => $transactions
+                        ->pluck('id')
+                        ->sort()
+                        ->values()
+                        ->all() === collect([$incomingTransfer->id, $outgoingTransfer->id])
+                        ->sort()
+                        ->values()
+                        ->all())
+                    ->etc()
+                )
             )
         );
 });
@@ -248,8 +260,11 @@ test('transaction index filters by category', function () {
             ->where('filters.category_ids', [(string) $catA->id])
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.category.id', $catA->id)
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.category.id', $catA->id)
+                    ->etc()
+                )
             )
         );
 });
@@ -282,8 +297,11 @@ test('transaction index filters by payee', function () {
             ->where('filters.payee_ids', [(string) $payeeA->id])
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.payee.id', $payeeA->id)
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.payee.id', $payeeA->id)
+                    ->etc()
+                )
             )
         );
 });
@@ -416,6 +434,37 @@ test('transaction update can create a new payee through the web route', function
 
     expect($ledger->payees()->where('name', 'Fresh Edit Payee')->exists())->toBeTrue()
         ->and($transaction->payee?->name)->toBe('Fresh Edit Payee');
+});
+
+test('transaction store validation redirects back with submitted input', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => 'expense']);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.store', $ledger), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Keep my draft',
+            'transaction_date' => '',
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHasErrors(['transaction_date'])
+        ->assertSessionHasInput([
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Keep my draft',
+            'transaction_date' => '',
+        ]);
 });
 
 test('transaction destroy via web route redirects to the transactions index', function () {

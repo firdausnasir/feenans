@@ -1,4 +1,4 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, InfiniteScroll, router, usePage } from '@inertiajs/react';
 import {
     ArrowRightLeft,
     ChevronDown,
@@ -10,12 +10,11 @@ import {
     SlidersHorizontal,
     X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
-import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +59,11 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import { useAttachments } from '@/hooks/use-attachments';
 import AppLayout from '@/layouts/app-layout';
@@ -87,16 +91,16 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
-import { groupTransactionsForMobile } from './mobile-transaction-groups';
 import type { MobileTransactionListItem } from './mobile-transaction-groups';
+import { groupTransactionsForMobile } from './mobile-transaction-groups';
 import { MobileTransactionList } from './mobile-transaction-list';
 import { resolveTransferPairTitle } from './mobile-transaction-row-data';
+import type { Filters } from './query-params';
 import {
     buildQueryParams,
     deriveSelectionState,
     EMPTY_FILTERS,
 } from './query-params';
-import type { Filters } from './query-params';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1178,6 +1182,115 @@ function TransactionListSkeleton() {
     );
 }
 
+type BottomScrollTriggerProps = {
+    hasMore: boolean;
+    loading: boolean;
+    onFetch: () => void;
+};
+
+function BottomScrollTrigger({
+    hasMore,
+    loading,
+    onFetch,
+}: BottomScrollTriggerProps) {
+    const fetchTriggeredRef = useRef(false);
+
+    useEffect(() => {
+        if (!loading) {
+            fetchTriggeredRef.current = false;
+        }
+    }, [loading]);
+
+    useEffect(() => {
+        if (!hasMore || typeof window === 'undefined') {
+            return;
+        }
+
+        const handleScroll = () => {
+            if (window.scrollY <= 0) {
+                return;
+            }
+
+            const scrolledToBottom =
+                window.innerHeight + window.scrollY >=
+                document.documentElement.scrollHeight - 16;
+
+            if (scrolledToBottom && !loading && !fetchTriggeredRef.current) {
+                fetchTriggeredRef.current = true;
+                onFetch();
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [hasMore, loading, onFetch]);
+
+    return (
+        <>
+            <div className="h-1" />
+            {loading && (
+                <>
+                    <div className="space-y-2 py-3 sm:hidden">
+                        {Array.from({ length: 2 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="rounded-xl border border-border px-3 py-3"
+                            >
+                                <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                    <Skeleton className="mt-1 size-4 rounded" />
+                                    <div className="space-y-1.5">
+                                        <Skeleton className="h-4 w-32" />
+                                        <Skeleton className="h-3 w-48" />
+                                    </div>
+                                    <Skeleton className="h-4 w-16" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="hidden space-y-1 py-2 sm:block">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="flex items-center gap-3 border-b border-border px-2 py-3"
+                            >
+                                <Skeleton className="size-4 rounded" />
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="h-4 w-48 flex-1" />
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="size-4" />
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </>
+    );
+}
+
+type TruncatedCellTextProps = {
+    text?: string | null;
+    className?: string;
+};
+
+function TruncatedCellText({
+    text,
+    className,
+}: TruncatedCellTextProps): ReactElement | null {
+    if (!text) {
+        return null;
+    }
+
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span className={cn('block truncate', className)}>{text}</span>
+            </TooltipTrigger>
+            <TooltipContent>{text}</TooltipContent>
+        </Tooltip>
+    );
+}
+
 // ─── Filter panel (shared between desktop inline and mobile sheet) ───────────
 
 function FilterFields({
@@ -1359,9 +1472,6 @@ export default function TransactionsIndex() {
 
     // Selection state
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [allAcrossPages, setAllAcrossPages] = useState(false);
-    const [loadingSelectAll, setLoadingSelectAll] = useState(false);
-    const [excludedIds, setExcludedIds] = useState<number[]>([]);
 
     // Modal state
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(
@@ -1397,10 +1507,6 @@ export default function TransactionsIndex() {
     const [expandedDesktopPairIds, setExpandedDesktopPairIds] = useState<
         string[]
     >([]);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-    const infiniteScrollSentinelRef = useRef<HTMLDivElement>(null);
-    const infiniteScrollLoadingRef = useRef(false);
 
     function toggleDesktopTransferPair(pairId: string): void {
         setExpandedDesktopPairIds((current) =>
@@ -1423,50 +1529,6 @@ export default function TransactionsIndex() {
 
         return () => mql.removeEventListener('change', handler);
     }, []);
-
-    useEffect(() => {
-        const sentinel = infiniteScrollSentinelRef.current;
-
-        if (!sentinel) {
-            return;
-        }
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const entry = entries[0];
-
-                if (
-                    entry.isIntersecting &&
-                    !infiniteScrollLoadingRef.current &&
-                    transactions?.next_page_url
-                ) {
-                    infiniteScrollLoadingRef.current = true;
-                    setIsLoadingMore(true);
-
-                    const nextUrl = new URL(transactions.next_page_url);
-                    const params: Record<string, string | string[]> =
-                        buildQueryParams(committedFilters);
-                    params.page = nextUrl.searchParams.get('page') ?? '2';
-
-                    router.get(transactionsIndex.url(ledger.id), params, {
-                        only: ['transactions'],
-                        preserveState: true,
-                        preserveScroll: true,
-                        replace: true,
-                        onFinish: () => {
-                            infiniteScrollLoadingRef.current = false;
-                            setIsLoadingMore(false);
-                        },
-                    });
-                }
-            },
-            { rootMargin: '200px' },
-        );
-
-        observer.observe(sentinel);
-
-        return () => observer.disconnect();
-    }, [transactions?.next_page_url, committedFilters, ledger.id]);
 
     // Check if filters have changed from committed
     const filtersChanged =
@@ -1504,8 +1566,6 @@ export default function TransactionsIndex() {
             replace: true,
         });
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     function handleResetFilters() {
@@ -1523,8 +1583,6 @@ export default function TransactionsIndex() {
             },
         );
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     const handleSearchChange = useCallback((value: string | null) => {
@@ -1541,67 +1599,29 @@ export default function TransactionsIndex() {
     const { allSelected, someSelected } = deriveSelectionState({
         allVisibleIds,
         selectedIds,
-        excludedIds,
-        allAcrossPages,
     });
-    const selectedCount = allAcrossPages
-        ? Math.max((transactions?.total ?? 0) - excludedIds.length, 0)
-        : selectedIds.length;
+    const selectedCount = selectedIds.length;
 
     function handleSelectAll(checked: boolean | 'indeterminate') {
         if (checked === true) {
-            if (allAcrossPages) {
-                setExcludedIds((prev) =>
-                    prev.filter((id) => !allVisibleIds.includes(id)),
-                );
-            } else {
-                setSelectedIds((prev) => [
-                    ...new Set([...prev, ...allVisibleIds]),
-                ]);
-            }
+            setSelectedIds((prev) => [...new Set([...prev, ...allVisibleIds])]);
         } else {
-            if (allAcrossPages) {
-                setExcludedIds((prev) => [
-                    ...new Set([...prev, ...allVisibleIds]),
-                ]);
-            } else {
-                setSelectedIds((prev) =>
-                    prev.filter((id) => !allVisibleIds.includes(id)),
-                );
-            }
+            setSelectedIds((prev) =>
+                prev.filter((id) => !allVisibleIds.includes(id)),
+            );
         }
     }
 
     function handleSelectOne(id: number, checked: boolean | 'indeterminate') {
-        if (allAcrossPages) {
-            if (checked === true) {
-                setExcludedIds((prev) => prev.filter((item) => item !== id));
-            } else {
-                setExcludedIds((prev) => [...new Set([...prev, id])]);
-            }
+        if (checked === true) {
+            setSelectedIds((prev) => [...new Set([...prev, id])]);
         } else {
-            if (checked === true) {
-                setSelectedIds((prev) => [...prev, id]);
-            } else {
-                setSelectedIds((prev) => prev.filter((i) => i !== id));
-                setAllAcrossPages(false);
-            }
+            setSelectedIds((prev) => prev.filter((i) => i !== id));
         }
-    }
-
-    function handleSelectAllAcrossPages() {
-        setLoadingSelectAll(true);
-
-        setAllAcrossPages(true);
-        setSelectedIds([]);
-        setExcludedIds([]);
-        setLoadingSelectAll(false);
     }
 
     function clearSelection() {
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     // ─── CRUD ────────────────────────────────────────────────────────────
@@ -1609,15 +1629,9 @@ export default function TransactionsIndex() {
     function handleBulkDelete() {
         router.post(
             bulkDestroyRoute.url(ledger.id),
-            allAcrossPages
-                ? {
-                      apply_to_all_matching: true,
-                      excluded_ids: excludedIds,
-                      filters: committedFilters,
-                  }
-                : {
-                      ids: selectedIds,
-                  },
+            {
+                ids: selectedIds,
+            },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1639,19 +1653,11 @@ export default function TransactionsIndex() {
 
         router.post(
             bulkUpdateRoute.url(ledger.id),
-            allAcrossPages
-                ? {
-                      apply_to_all_matching: true,
-                      excluded_ids: excludedIds,
-                      filters: committedFilters,
-                      action: bulkAction,
-                      value: Number(bulkActionValue),
-                  }
-                : {
-                      ids: selectedIds,
-                      action: bulkAction,
-                      value: Number(bulkActionValue),
-                  },
+            {
+                ids: selectedIds,
+                action: bulkAction,
+                value: Number(bulkActionValue),
+            },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1912,33 +1918,6 @@ export default function TransactionsIndex() {
 
         return (
             <>
-                {/* Showing X-Y of Z */}
-                {txs.total > 0 && (
-                    <div className="mb-3 text-xs text-muted-foreground">
-                        Showing {txs.from}-{txs.to} of {txs.total}
-                    </div>
-                )}
-
-                {/* Select all across pages banner */}
-                {allSelected &&
-                    !allAcrossPages &&
-                    txs.total > txs.data.length && (
-                        <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-center text-sm">
-                            All {txs.data.length} transactions on this page are
-                            selected.{' '}
-                            <button
-                                type="button"
-                                className="font-medium text-primary hover:underline"
-                                disabled={loadingSelectAll}
-                                onClick={handleSelectAllAcrossPages}
-                            >
-                                {loadingSelectAll
-                                    ? 'Loading...'
-                                    : `Select all ${txs.total} matching transactions`}
-                            </button>
-                        </div>
-                    )}
-
                 {/* Desktop table */}
                 <Table className="hidden sm:table">
                     <TableHeader>
@@ -1956,7 +1935,7 @@ export default function TransactionsIndex() {
                                     aria-label="Select all"
                                 />
                             </TableHead>
-                            <TableHead>Date</TableHead>
+                            <TableHead className="w-24">Date</TableHead>
                             <TableHead className="hidden md:table-cell">
                                 Account
                             </TableHead>
@@ -1965,7 +1944,9 @@ export default function TransactionsIndex() {
                             </TableHead>
                             <TableHead>Payee</TableHead>
                             <TableHead>Description</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="w-28 text-right">
+                                Amount
+                            </TableHead>
                             <TableHead className="w-16 text-center">
                                 Files
                             </TableHead>
@@ -1992,21 +1973,19 @@ export default function TransactionsIndex() {
                                     const pairTitle = resolveTransferPairTitle(
                                         item.transactions,
                                     );
-                                    const isPairSelected = allAcrossPages
-                                        ? item.transactions.every(
-                                              (t) =>
-                                                  !excludedIds.includes(t.id),
-                                          )
-                                        : item.transactions.every((t) =>
-                                              selectedIds.includes(t.id),
-                                          );
+                                    const isPairSelected =
+                                        item.transactions.every((t) =>
+                                            selectedIds.includes(t.id),
+                                        );
 
                                     const rows: ReactElement[] = [
                                         <TableRow
                                             key={`pair-${item.pairId}`}
                                             className="cursor-pointer"
                                             onClick={() =>
-                                                setEditTransaction(outgoing)
+                                                toggleDesktopTransferPair(
+                                                    item.pairId,
+                                                )
                                             }
                                         >
                                             <TableCell
@@ -2033,15 +2012,48 @@ export default function TransactionsIndex() {
                                                 )}
                                             </TableCell>
                                             <TableCell className="hidden md:table-cell">
-                                                <span className="inline-flex items-center gap-1.5">
-                                                    <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
-                                                    {pairTitle}
-                                                </span>
+                                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-sm text-muted-foreground italic">
+                                                                <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                                                                Transfer
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            {pairTitle}
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleDesktopTransferPair(
+                                                                item.pairId,
+                                                            );
+                                                        }}
+                                                    >
+                                                        {isPairExpanded ? (
+                                                            <ChevronUp className="size-4" />
+                                                        ) : (
+                                                            <ChevronDown className="size-4" />
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </TableCell>
-                                            <TableCell className="hidden lg:table-cell" />
+                                            <TableCell className="hidden lg:table-cell">
+                                                <TruncatedCellText
+                                                    text={
+                                                        outgoing.category?.name
+                                                    }
+                                                />
+                                            </TableCell>
                                             <TableCell />
                                             <TableCell>
-                                                {outgoing.description}
+                                                <TruncatedCellText
+                                                    text={outgoing.description}
+                                                />
                                             </TableCell>
                                             <TableCell className="text-right font-medium text-foreground tabular-nums">
                                                 {formatAbsAmount(
@@ -2079,22 +2091,6 @@ export default function TransactionsIndex() {
                                                 }
                                             >
                                                 <div className="flex items-center gap-0.5">
-                                                    <button
-                                                        type="button"
-                                                        className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            toggleDesktopTransferPair(
-                                                                item.pairId,
-                                                            );
-                                                        }}
-                                                    >
-                                                        {isPairExpanded ? (
-                                                            <ChevronUp className="size-4" />
-                                                        ) : (
-                                                            <ChevronDown className="size-4" />
-                                                        )}
-                                                    </button>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger
                                                             asChild
@@ -2156,10 +2152,20 @@ export default function TransactionsIndex() {
                                                     <TableCell />
                                                     <TableCell />
                                                     <TableCell className="hidden pl-8 text-sm text-muted-foreground md:table-cell">
-                                                        {tx.account?.name}
+                                                        <TruncatedCellText
+                                                            text={
+                                                                tx.account?.name
+                                                            }
+                                                        />
                                                     </TableCell>
                                                     <TableCell className="hidden lg:table-cell" />
-                                                    <TableCell />
+                                                    <TableCell>
+                                                        <TruncatedCellText
+                                                            text={
+                                                                tx.payee?.name
+                                                            }
+                                                        />
+                                                    </TableCell>
                                                     <TableCell />
                                                     <TableCell
                                                         className={cn(
@@ -2198,15 +2204,9 @@ export default function TransactionsIndex() {
                                             onClick={(e) => e.stopPropagation()}
                                         >
                                             <Checkbox
-                                                checked={
-                                                    allAcrossPages
-                                                        ? !excludedIds.includes(
-                                                              tx.id,
-                                                          )
-                                                        : selectedIds.includes(
-                                                              tx.id,
-                                                          )
-                                                }
+                                                checked={selectedIds.includes(
+                                                    tx.id,
+                                                )}
                                                 onCheckedChange={(c) =>
                                                     handleSelectOne(tx.id, c)
                                                 }
@@ -2216,13 +2216,25 @@ export default function TransactionsIndex() {
                                             {formatDate(tx.transaction_date)}
                                         </TableCell>
                                         <TableCell className="hidden md:table-cell">
-                                            {tx.account?.name}
+                                            <TruncatedCellText
+                                                text={tx.account?.name}
+                                            />
                                         </TableCell>
                                         <TableCell className="hidden lg:table-cell">
-                                            {tx.category?.name}
+                                            <TruncatedCellText
+                                                text={tx.category?.name}
+                                            />
                                         </TableCell>
-                                        <TableCell>{tx.payee?.name}</TableCell>
-                                        <TableCell>{tx.description}</TableCell>
+                                        <TableCell>
+                                            <TruncatedCellText
+                                                text={tx.payee?.name}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <TruncatedCellText
+                                                text={tx.description}
+                                            />
+                                        </TableCell>
                                         <TableCell
                                             className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
                                         >
@@ -2305,9 +2317,7 @@ export default function TransactionsIndex() {
                     transactions={txs.data}
                     allSelected={allSelected}
                     someSelected={someSelected}
-                    allAcrossPages={allAcrossPages}
                     selectedIds={selectedIds}
-                    excludedIds={excludedIds}
                     runningBalances={runningBalances}
                     onSelectAll={handleSelectAll}
                     onSelectOne={handleSelectOne}
@@ -2316,50 +2326,6 @@ export default function TransactionsIndex() {
                     onDelete={setDeleteConfirmTransaction}
                     onAttachmentClick={setAttachmentModalTransaction}
                 />
-
-                {/* Infinite scroll sentinel + loading skeleton */}
-                {txs.next_page_url && (
-                    <>
-                        <div ref={infiniteScrollSentinelRef} className="h-1" />
-                        {isLoadingMore && (
-                            <>
-                                {/* Mobile loading skeleton */}
-                                <div className="space-y-2 py-3 sm:hidden">
-                                    {Array.from({ length: 2 }).map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="rounded-xl border border-border px-3 py-3"
-                                        >
-                                            <div className="grid grid-cols-[auto_1fr_auto] gap-2">
-                                                <Skeleton className="mt-1 size-4 rounded" />
-                                                <div className="space-y-1.5">
-                                                    <Skeleton className="h-4 w-32" />
-                                                    <Skeleton className="h-3 w-48" />
-                                                </div>
-                                                <Skeleton className="h-4 w-16" />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                {/* Desktop loading skeleton */}
-                                <div className="hidden space-y-1 py-2 sm:block">
-                                    {Array.from({ length: 3 }).map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center gap-3 border-b border-border px-2 py-3"
-                                        >
-                                            <Skeleton className="size-4 rounded" />
-                                            <Skeleton className="h-4 w-20" />
-                                            <Skeleton className="h-4 w-48 flex-1" />
-                                            <Skeleton className="h-4 w-20" />
-                                            <Skeleton className="size-4" />
-                                        </div>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </>
-                )}
             </>
         );
     }
@@ -2370,171 +2336,165 @@ export default function TransactionsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transactions`} />
 
-            <div className="flex h-full flex-1 flex-col gap-5 p-4 md:p-6 lg:p-8">
-                {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Transactions"
-                        description={`Review all activity in ${ledger.name}.`}
-                    />
-                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                        <Button
-                            variant="outline"
-                            size="default"
-                            className="flex-1 sm:flex-initial"
-                            asChild
-                        >
-                            <a
-                                href={buildExportUrl(
-                                    ledger.id,
-                                    committedFilters,
-                                )}
-                                download
-                            >
-                                Export CSV
-                            </a>
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Filters bar */}
-                <Card>
-                    <CardContent className="px-4 py-2.5">
-                        <div className="flex flex-col gap-1.5">
-                            {/* Top row: search + filter toggle */}
-                            <div className="flex items-center gap-2">
-                                <div className="relative flex-1">
-                                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Search transactions..."
-                                        value={localFilters.search ?? ''}
-                                        onChange={(e) =>
-                                            handleSearchChange(
-                                                e.target.value || null,
-                                            )
-                                        }
-                                        className="pl-9"
-                                    />
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 gap-1.5"
-                                    onClick={() => setFiltersOpen(!filtersOpen)}
-                                >
-                                    <SlidersHorizontal className="size-4" />
-                                    <span className="hidden sm:inline">
-                                        Filters
-                                    </span>
-                                    {activeFilterCount > 0 && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="ml-0.5 size-5 rounded-full p-0 text-[10px]"
-                                        >
-                                            {activeFilterCount}
-                                        </Badge>
-                                    )}
-                                </Button>
-                            </div>
-
-                            {/* Filter chips row (from committed state) */}
-                            {filterChips.length > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5">
-                                        {filterChips.map((chip) => (
-                                            <Badge
-                                                key={chip.key}
-                                                variant="secondary"
-                                                className="shrink-0 gap-1 py-0 pr-1 text-[11px] font-normal"
-                                            >
-                                                <span className="max-w-[120px] truncate">
-                                                    {chip.label}
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextFilters =
-                                                            chip.onRemove(
-                                                                localFilters,
-                                                            );
-                                                        setLocalFilters(
-                                                            nextFilters,
-                                                        );
-                                                        applyFiltersWith(
-                                                            nextFilters,
-                                                        );
-                                                    }}
-                                                    className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
-                                                >
-                                                    <X className="size-3" />
-                                                </button>
-                                            </Badge>
-                                        ))}
+            <div className="flex h-full flex-1 flex-col gap-3 p-4 md:gap-4 md:p-6 lg:gap-5 lg:p-8">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <Card className="min-w-0 flex-1 py-1">
+                        <CardContent className="px-4 py-2">
+                            <div className="flex flex-col gap-1">
+                                {/* Top row: search + filter toggle */}
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search transactions..."
+                                            value={localFilters.search ?? ''}
+                                            onChange={(e) =>
+                                                handleSearchChange(
+                                                    e.target.value || null,
+                                                )
+                                            }
+                                            className="pl-9"
+                                        />
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                                        onClick={handleResetFilters}
-                                    >
-                                        Clear all
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Unsaved changes indicator */}
-                            {filtersChanged && (
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs text-amber-600 dark:text-amber-400">
-                                        Filters changed
-                                    </span>
                                     <Button
-                                        size="sm"
-                                        variant="default"
-                                        className="h-6 px-2 text-xs"
-                                        onClick={applyFilters}
-                                    >
-                                        Apply
-                                    </Button>
-                                </div>
-                            )}
-
-                            {/* Desktop filter panel (inline) */}
-                            <div
-                                className={`flex-col gap-2.5 ${filtersOpen && !isMobile ? 'flex' : 'hidden'}`}
-                            >
-                                <FilterFields
-                                    localFilters={localFilters}
-                                    setLocalFilters={setLocalFilters}
-                                    accounts={accounts}
-                                    categories={categories}
-                                    payees={payees}
-                                    tags={tags}
-                                />
-                                <div className="flex items-center gap-1.5">
-                                    <Button size="sm" onClick={applyFilters}>
-                                        Apply filters
-                                    </Button>
-                                    <Button
-                                        size="sm"
                                         variant="outline"
-                                        onClick={handleResetFilters}
+                                        size="sm"
+                                        className="shrink-0 gap-1.5"
+                                        onClick={() =>
+                                            setFiltersOpen(!filtersOpen)
+                                        }
                                     >
-                                        Reset
-                                    </Button>
-                                    {activeFilterCount > 0 && (
-                                        <span className="text-xs text-muted-foreground">
-                                            {activeFilterCount} filter
-                                            {activeFilterCount !== 1
-                                                ? 's'
-                                                : ''}{' '}
-                                            active
+                                        <SlidersHorizontal className="size-4" />
+                                        <span className="hidden sm:inline">
+                                            Filters
                                         </span>
-                                    )}
+                                        {activeFilterCount > 0 && (
+                                            <Badge
+                                                variant="secondary"
+                                                className="ml-0.5 size-5 rounded-full p-0 text-[10px]"
+                                            >
+                                                {activeFilterCount}
+                                            </Badge>
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {/* Filter chips row (from committed state) */}
+                                {filterChips.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5">
+                                            {filterChips.map((chip) => (
+                                                <Badge
+                                                    key={chip.key}
+                                                    variant="secondary"
+                                                    className="shrink-0 gap-1 py-0 pr-1 text-[11px] font-normal"
+                                                >
+                                                    <span className="max-w-[120px] truncate">
+                                                        {chip.label}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const nextFilters =
+                                                                chip.onRemove(
+                                                                    localFilters,
+                                                                );
+                                                            setLocalFilters(
+                                                                nextFilters,
+                                                            );
+                                                            applyFiltersWith(
+                                                                nextFilters,
+                                                            );
+                                                        }}
+                                                        className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
+                                                    >
+                                                        <X className="size-3" />
+                                                    </button>
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={handleResetFilters}
+                                        >
+                                            Clear all
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Unsaved changes indicator */}
+                                {filtersChanged && (
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                                            Filters changed
+                                        </span>
+                                        <Button
+                                            size="sm"
+                                            variant="default"
+                                            className="h-6 px-2 text-xs"
+                                            onClick={applyFilters}
+                                        >
+                                            Apply
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {/* Desktop filter panel (inline) */}
+                                <div
+                                    className={`flex-col gap-2 ${filtersOpen && !isMobile ? 'flex' : 'hidden'}`}
+                                >
+                                    <FilterFields
+                                        localFilters={localFilters}
+                                        setLocalFilters={setLocalFilters}
+                                        accounts={accounts}
+                                        categories={categories}
+                                        payees={payees}
+                                        tags={tags}
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                        <Button
+                                            size="sm"
+                                            onClick={applyFilters}
+                                        >
+                                            Apply filters
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleResetFilters}
+                                        >
+                                            Reset
+                                        </Button>
+                                        {activeFilterCount > 0 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                {activeFilterCount} filter
+                                                {activeFilterCount !== 1
+                                                    ? 's'
+                                                    : ''}{' '}
+                                                active
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+
+                    <Button
+                        variant="outline"
+                        size="default"
+                        className="w-full sm:w-auto sm:shrink-0"
+                        asChild
+                    >
+                        <a
+                            href={buildExportUrl(ledger.id, committedFilters)}
+                            download
+                        >
+                            Export CSV
+                        </a>
+                    </Button>
+                </div>
 
                 {/* Mobile filter panel (bottom sheet) */}
                 <Sheet
@@ -2596,23 +2556,7 @@ export default function TransactionsIndex() {
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                         <span className="text-sm font-medium text-muted-foreground">
                             {selectedCount} selected
-                            {allAcrossPages && ' (all pages)'}
                         </span>
-                        {!allAcrossPages &&
-                            transactions &&
-                            transactions.total > transactions.data.length && (
-                                <Button
-                                    size="sm"
-                                    variant="link"
-                                    className="h-auto p-0 text-xs"
-                                    disabled={loadingSelectAll}
-                                    onClick={handleSelectAllAcrossPages}
-                                >
-                                    {loadingSelectAll
-                                        ? 'Loading...'
-                                        : `Select all ${transactions.total} transactions`}
-                                </Button>
-                            )}
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
                                 size="sm"
@@ -2660,14 +2604,25 @@ export default function TransactionsIndex() {
                 )}
 
                 {/* Transaction list */}
-                <div>
-                    <Deferred
+                {transactions ? (
+                    <InfiniteScroll
                         data="transactions"
-                        fallback={<TransactionListSkeleton />}
+                        manual
+                        onlyNext
+                        preserveUrl
+                        next={({ hasMore, loading, fetch }) => (
+                            <BottomScrollTrigger
+                                hasMore={hasMore}
+                                loading={loading}
+                                onFetch={fetch}
+                            />
+                        )}
                     >
-                        {transactions && renderTransactionList(transactions)}
-                    </Deferred>
-                </div>
+                        {renderTransactionList(transactions)}
+                    </InfiniteScroll>
+                ) : (
+                    <TransactionListSkeleton />
+                )}
             </div>
 
             {/* Edit modal */}

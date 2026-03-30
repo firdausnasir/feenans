@@ -9,7 +9,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
     store as storeRoute,
@@ -188,7 +188,7 @@ type FormData = {
     is_active: boolean;
 };
 
-type FormErrors = Partial<Record<keyof FormData, string>>;
+type FormErrors = Partial<Record<keyof FormData | 'new_payee_name', string>>;
 
 function BillFormModal({
     bill,
@@ -208,19 +208,36 @@ function BillFormModal({
     payees: Payee[];
 }) {
     const isEdit = bill !== null;
+    const previousResetKey = useRef<string | null>(null);
 
     const [data, setFormData] = useState<FormData>(() =>
         buildInitialData(bill, accounts),
     );
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
+    const [newPayeeName, setNewPayeeName] = useState('');
 
-    // Reset form when bill changes
+    // Keep local draft data through validation redirects, but reset when the
+    // modal is reopened or pointed at a different recurring transaction.
     useEffect(() => {
+        if (!open) {
+            previousResetKey.current = null;
+
+            return;
+        }
+
+        const resetKey = bill ? `bill:${bill.id}` : 'create';
+
+        if (previousResetKey.current === resetKey) {
+            return;
+        }
+
         setFormData(buildInitialData(bill, accounts));
         setErrors({});
         setProcessing(false);
-    }, [bill, accounts]);
+        setNewPayeeName('');
+        previousResetKey.current = resetKey;
+    }, [open, bill, accounts]);
 
     function setData<K extends keyof FormData>(key: K, value: FormData[K]) {
         setFormData((prev) => ({ ...prev, [key]: value }));
@@ -261,6 +278,10 @@ function BillFormModal({
                 data.transaction_type === 'transfer'
                     ? null
                     : data.payee_id || null,
+            new_payee_name:
+                data.transaction_type === 'transfer'
+                    ? null
+                    : newPayeeName || null,
             recurrence_type: data.recurrence_type,
             recurrence_interval: data.recurrence_interval,
             recurrence_day: data.recurrence_day || null,
@@ -349,6 +370,7 @@ function BillFormModal({
                                 if (value === 'transfer') {
                                     setData('category_id', '');
                                     setData('payee_id', '');
+                                    setNewPayeeName('');
 
                                     if (
                                         !data.to_account_id &&
@@ -482,15 +504,35 @@ function BillFormModal({
                                         value: String(payee.id),
                                         label: payee.name,
                                     }))}
-                                    value={data.payee_id || null}
-                                    onValueChange={(value) =>
-                                        setData('payee_id', value ?? '')
+                                    value={
+                                        data.payee_id ||
+                                        (newPayeeName
+                                            ? `new:${newPayeeName}`
+                                            : null)
                                     }
+                                    onValueChange={(value) => {
+                                        setData('payee_id', value ?? '');
+                                        setNewPayeeName('');
+                                    }}
                                     placeholder="No payee"
                                     searchPlaceholder="Search payees..."
                                     allOption="No payee"
+                                    creatable
+                                    onCreate={(name) => {
+                                        setData('payee_id', '');
+                                        setNewPayeeName(name);
+                                    }}
+                                    createLabel={
+                                        newPayeeName
+                                            ? `${newPayeeName} (new)`
+                                            : undefined
+                                    }
                                 />
-                                <InputError message={errors.payee_id} />
+                                <InputError
+                                    message={
+                                        errors.payee_id ?? errors.new_payee_name
+                                    }
+                                />
                             </div>
                         </>
                     )}
@@ -803,7 +845,7 @@ function BillsLoadingSkeleton() {
             </div>
 
             {/* Desktop skeleton */}
-            <Card className="hidden sm:block">
+            <Card className="hidden py-0 sm:block">
                 <CardContent className="p-0">
                     <div className="space-y-4 p-6">
                         {Array.from({ length: 5 }).map((_, i) => (
@@ -922,10 +964,7 @@ function BillCard({
                                     {formatDate(txn.transaction_date)}
                                 </span>
                                 <span className="tabular-nums">
-                                    {formatAbsAmount(
-                                        txn.amount,
-                                        privacyMode,
-                                    )}
+                                    {formatAbsAmount(txn.amount, privacyMode)}
                                 </span>
                             </div>
                         ))}
@@ -1284,7 +1323,7 @@ function BillsContent({
             </div>
 
             {/* Desktop table */}
-            <Card className="hidden sm:block">
+            <Card className="hidden py-0 sm:block">
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>

@@ -6,6 +6,7 @@ use App\Models\Ledger;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreImportRequest extends FormRequest
 {
@@ -28,7 +29,7 @@ class StoreImportRequest extends FormRequest
         $ledger = $this->route('ledger');
 
         return [
-            'file_path' => ['required', 'string'],
+            'file_path' => ['required', 'string', 'starts_with:imports/temp/'],
             'account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('ledger_id', $ledger->id)],
             'mapping' => ['required', 'array'],
             'mapping.date' => ['required', 'string'],
@@ -38,6 +39,34 @@ class StoreImportRequest extends FormRequest
             'mapping.payee' => ['nullable', 'string'],
             'mapping.type' => ['nullable', 'string'],
             'skip_duplicates' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<int, \Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if ($validator->errors()->has('file_path')) {
+                    return;
+                }
+
+                /** @var Ledger $ledger */
+                $ledger = $this->route('ledger');
+
+                $filePath = $this->input('file_path');
+                $expectedFilePath = $this->session()->get($this->pendingImportFilePathSessionKey($ledger));
+
+                if (! is_string($filePath)
+                    || ! is_string($expectedFilePath)
+                    || $expectedFilePath === ''
+                    || ! str_starts_with($expectedFilePath, 'imports/temp/')
+                    || $filePath !== $expectedFilePath) {
+                    $validator->errors()->add('file_path', 'Import file not found. Please re-upload.');
+                }
+            },
         ];
     }
 
@@ -71,5 +100,10 @@ class StoreImportRequest extends FormRequest
             'mapping.payee' => 'payee column',
             'mapping.type' => 'type column',
         ];
+    }
+
+    private function pendingImportFilePathSessionKey(Ledger $ledger): string
+    {
+        return "ledger-imports.{$ledger->id}.file_path";
     }
 }

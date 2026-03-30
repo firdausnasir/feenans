@@ -50,7 +50,7 @@ type FormData = {
     end_after_occurrences: string;
 };
 
-type FormErrors = Partial<Record<keyof FormData, string>>;
+type FormErrors = Partial<Record<keyof FormData | 'new_payee_name', string>>;
 
 export default function CreateBill() {
     const { currentLedger } = usePage().props;
@@ -79,6 +79,7 @@ export default function CreateBill() {
         end_date: '',
         end_after_occurrences: '',
     }));
+    const [newPayeeName, setNewPayeeName] = useState('');
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
 
@@ -128,6 +129,10 @@ export default function CreateBill() {
                 data.transaction_type === 'transfer'
                     ? null
                     : data.payee_id || null,
+            new_payee_name:
+                data.transaction_type === 'transfer'
+                    ? null
+                    : newPayeeName || null,
             recurrence_type: data.recurrence_type,
             recurrence_interval: data.recurrence_interval,
             recurrence_day: data.recurrence_day || null,
@@ -191,6 +196,7 @@ export default function CreateBill() {
                                 if (value === 'transfer') {
                                     setData('category_id', '');
                                     setData('payee_id', '');
+                                    setNewPayeeName('');
 
                                     if (
                                         !data.to_account_id &&
@@ -324,15 +330,35 @@ export default function CreateBill() {
                                         value: String(payee.id),
                                         label: payee.name,
                                     }))}
-                                    value={data.payee_id || null}
-                                    onValueChange={(value) =>
-                                        setData('payee_id', value ?? '')
+                                    value={
+                                        data.payee_id ||
+                                        (newPayeeName
+                                            ? `new:${newPayeeName}`
+                                            : null)
                                     }
+                                    onValueChange={(value) => {
+                                        setData('payee_id', value ?? '');
+                                        setNewPayeeName('');
+                                    }}
                                     placeholder="No payee"
                                     searchPlaceholder="Search payees..."
                                     allOption="No payee"
+                                    creatable
+                                    onCreate={(name) => {
+                                        setData('payee_id', '');
+                                        setNewPayeeName(name);
+                                    }}
+                                    createLabel={
+                                        newPayeeName
+                                            ? `${newPayeeName} (new)`
+                                            : undefined
+                                    }
                                 />
-                                <InputError message={errors.payee_id} />
+                                <InputError
+                                    message={
+                                        errors.payee_id ?? errors.new_payee_name
+                                    }
+                                />
                             </div>
                         </>
                     )}

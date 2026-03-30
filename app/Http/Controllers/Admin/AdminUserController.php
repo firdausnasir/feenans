@@ -4,11 +4,34 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\UserMembership;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AdminUserController extends Controller
 {
+    private function membershipFor(User $user): UserMembership
+    {
+        $membership = $user->relationLoaded('membership')
+            ? $user->getRelation('membership')
+            : $user->membership()->first();
+
+        if ($membership instanceof UserMembership) {
+            $user->setRelation('membership', $membership);
+
+            return $membership;
+        }
+
+        $membership = $user->membership()->create([
+            'tier' => 'free',
+            'status' => 'active',
+        ]);
+
+        $user->setRelation('membership', $membership);
+
+        return $membership;
+    }
+
     /**
      * @return array{
      *     id: int,
@@ -21,7 +44,7 @@ class AdminUserController extends Controller
      */
     private function formatUserRow(User $user): array
     {
-        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
+        $membership = $this->membershipFor($user);
 
         return [
             'id' => $user->id,

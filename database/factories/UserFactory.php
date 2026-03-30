@@ -29,11 +29,15 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'onboarding_step' => null,
+            'onboarding_data' => null,
+            'timezone' => null,
             'remember_token' => Str::random(10),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
             'is_admin' => false,
+            'privacy_mode' => false,
         ];
     }
 

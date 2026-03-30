@@ -1,3 +1,6 @@
+import { usePage } from '@inertiajs/react';
+import { Eye, EyeOff, PlusCircle } from 'lucide-react';
+import { useState } from 'react';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NotificationBell } from '@/components/notification-bell';
@@ -10,9 +13,6 @@ import {
 } from '@/components/ui/tooltip';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import type { BreadcrumbItem as BreadcrumbItemType, Ledger } from '@/types';
-import { usePage } from '@inertiajs/react';
-import { Eye, EyeOff, PlusCircle } from 'lucide-react';
-import { useState } from 'react';
 
 export function AppSidebarHeader({
     breadcrumbs = [],

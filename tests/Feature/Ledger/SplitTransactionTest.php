@@ -287,9 +287,12 @@ test('transaction with splits shows split metadata in deferred index response', 
             ->component('ledgers/transactions/index')
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.splits_count', 2)
-                ->where('transactions.data.0.description', 'Dinner receipt')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.splits_count', 2)
+                    ->where('data.0.description', 'Dinner receipt')
+                    ->etc()
+                )
             )
         );
 });

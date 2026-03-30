@@ -9,5 +9,13 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::call(fn () => app(BillService::class)->processAutoBills())->daily();
-Schedule::command('bills:check-reminders')->daily();
+Schedule::call(fn () => app(BillService::class)->processAutoBills())
+    ->name('bills:process-auto')
+    ->daily()
+    ->withoutOverlapping(60)
+    ->onOneServer();
+
+Schedule::command('bills:check-reminders')
+    ->daily()
+    ->withoutOverlapping(60)
+    ->onOneServer();

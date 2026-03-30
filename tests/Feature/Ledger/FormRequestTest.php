@@ -5,20 +5,51 @@ use App\Http\Controllers\Ledger\ImportController as LedgerImportController;
 use App\Http\Controllers\Ledger\PayeeController as LedgerPayeeController;
 use App\Http\Controllers\Ledger\SettingsController as LedgerSettingsController;
 use App\Http\Controllers\Ledger\TransactionController as LedgerTransactionController;
+use App\Http\Requests\AdjustBalanceRequest;
 use App\Http\Requests\BulkDestroyTransactionsRequest;
+use App\Http\Requests\BulkUpdateTransactionsRequest;
+use App\Http\Requests\DestroyCategoryRequest;
+use App\Http\Requests\ParseImportRequest;
+use App\Http\Requests\PayBillRequest;
 use App\Http\Requests\ReorderRequest;
 use App\Http\Requests\SaveOnboardingStepRequest;
+use App\Http\Requests\StoreAccountRequest;
+use App\Http\Requests\StoreAccountTypeRequest;
 use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Requests\StoreBillRequest;
+use App\Http\Requests\StoreBudgetRequest;
+use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\StoreImportMappingRequest;
+use App\Http\Requests\StoreTransactionRequest;
+use App\Http\Requests\TagRequest;
+use App\Http\Requests\UpdateAccountRequest;
 use App\Http\Requests\UpdateAccountTypeRequest;
+use App\Http\Requests\UpdateBillRequest;
+use App\Http\Requests\UpdateBudgetRequest;
+use App\Http\Requests\UpdateCategoryRequest;
+use App\Http\Requests\UpdateLedgerRequest;
 use App\Http\Requests\UpdatePayeeRequest;
 use App\Http\Requests\UpdateSettingsRequest;
+use App\Http\Requests\UpdateTransactionRequest;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
+use App\Models\User;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Validator;
+
+function ledgerFormRequest(string $requestClass, User $user, Ledger $ledger, string $method)
+{
+    $request = new $requestClass;
+    $request->setMethod($method);
+    $request->setUserResolver(fn () => $user);
+    $request->setRouteResolver(fn () => tap(new Route([$method], '/ledgers/{ledger}', []), function (Route $route) use ($ledger) {
+        $route->bind(request());
+        $route->setParameter('ledger', $ledger);
+    }));
+
+    return $request;
+}
 
 // ─── StoreBillRequest ────────────────────────────────────────────────────────
 
@@ -422,3 +453,45 @@ test('controllers use form requests for refactored validation endpoints', functi
     expect($parameterType)->not->toBeNull();
     expect($parameterType->getName())->toBe($requestClass);
 })->with('controller form request signatures');
+
+dataset('ledger authorization requests', [
+    'adjust balance' => [AdjustBalanceRequest::class, 'POST'],
+    'bulk destroy transactions' => [BulkDestroyTransactionsRequest::class, 'POST'],
+    'bulk update transactions' => [BulkUpdateTransactionsRequest::class, 'POST'],
+    'destroy category' => [DestroyCategoryRequest::class, 'DELETE'],
+    'parse import' => [ParseImportRequest::class, 'POST'],
+    'pay bill' => [PayBillRequest::class, 'POST'],
+    'reorder' => [ReorderRequest::class, 'POST'],
+    'store account' => [StoreAccountRequest::class, 'POST'],
+    'store account type' => [StoreAccountTypeRequest::class, 'POST'],
+    'store attachment' => [StoreAttachmentRequest::class, 'POST'],
+    'store bill' => [StoreBillRequest::class, 'POST'],
+    'store budget' => [StoreBudgetRequest::class, 'POST'],
+    'store category' => [StoreCategoryRequest::class, 'POST'],
+    'store import mapping' => [StoreImportMappingRequest::class, 'POST'],
+    'store payee' => [UpdatePayeeRequest::class, 'POST'],
+    'store transaction' => [StoreTransactionRequest::class, 'POST'],
+    'store tag' => [TagRequest::class, 'POST'],
+    'update account' => [UpdateAccountRequest::class, 'PUT'],
+    'update account type' => [UpdateAccountTypeRequest::class, 'PUT'],
+    'update bill' => [UpdateBillRequest::class, 'PUT'],
+    'update budget' => [UpdateBudgetRequest::class, 'PUT'],
+    'update category' => [UpdateCategoryRequest::class, 'PATCH'],
+    'update ledger' => [UpdateLedgerRequest::class, 'PATCH'],
+    'update payee' => [UpdatePayeeRequest::class, 'PATCH'],
+    'update settings' => [UpdateSettingsRequest::class, 'PUT'],
+    'update tag' => [TagRequest::class, 'PATCH'],
+    'update transaction' => [UpdateTransactionRequest::class, 'PUT'],
+]);
+
+test('ledger-scoped form requests require access to the current ledger', function (string $requestClass, string $method) {
+    $owner = User::factory()->create();
+    $outsider = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    $ownerRequest = ledgerFormRequest($requestClass, $owner, $ledger, $method);
+    $outsiderRequest = ledgerFormRequest($requestClass, $outsider, $ledger, $method);
+
+    expect($ownerRequest->authorize())->toBeTrue()
+        ->and($outsiderRequest->authorize())->toBeFalse();
+})->with('ledger authorization requests');

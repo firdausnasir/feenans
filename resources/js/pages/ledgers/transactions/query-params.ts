@@ -75,24 +75,18 @@ export function buildQueryParams(
 export function deriveSelectionState({
     allVisibleIds,
     selectedIds,
-    excludedIds,
-    allAcrossPages,
 }: {
     allVisibleIds: number[];
     selectedIds: number[];
-    excludedIds: number[];
-    allAcrossPages: boolean;
 }): {
     allSelected: boolean;
     someSelected: boolean;
 } {
-    const isVisibleSelected = (id: number): boolean =>
-        allAcrossPages ? !excludedIds.includes(id) : selectedIds.includes(id);
+    const isVisibleSelected = (id: number): boolean => selectedIds.includes(id);
 
     const allSelected =
         allVisibleIds.length > 0 && allVisibleIds.every(isVisibleSelected);
-    const someSelected =
-        !allSelected && allVisibleIds.some(isVisibleSelected);
+    const someSelected = !allSelected && allVisibleIds.some(isVisibleSelected);
 
     return {
         allSelected,

@@ -37,6 +37,13 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
@@ -1147,8 +1154,29 @@ export default function AccountsIndex() {
                                 <>
                                     {/* Desktop table */}
                                     <div className="hidden md:block">
-                                        <table className="mt-1 w-full text-sm">
-                                            <tbody>
+                                        <div className="relative w-full overflow-x-auto">
+                                            <table className="mt-1 w-full text-sm">
+                                            <TableHeader>
+                                                <TableRow className="hover:bg-transparent">
+                                                    <TableHead className="w-8" />
+                                                    <TableHead className="w-8" />
+                                                    <TableHead>Name</TableHead>
+                                                    <TableHead>Type</TableHead>
+                                                    <TableHead className="text-right">
+                                                        Amount
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Statement Day
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Payment Day
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Actions
+                                                    </TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
                                                 {group.accounts.map(
                                                     (account) => {
                                                         const balance =
@@ -1160,7 +1188,7 @@ export default function AccountsIndex() {
                                                             account.id;
 
                                                         return (
-                                                            <tr
+                                                            <TableRow
                                                                 key={account.id}
                                                                 draggable
                                                                 onDragStart={(
@@ -1203,14 +1231,14 @@ export default function AccountsIndex() {
                                                                         );
                                                                     }
                                                                 }}
-                                                                className={`group border-b border-border/40 transition-colors hover:bg-muted/30 ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
+                                                                className={`group border-border/40 ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
                                                             >
-                                                                <td className="w-8 py-2 pl-2">
+                                                                <TableCell className="w-8">
                                                                     <span className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100">
                                                                         &#8942;&#8942;
                                                                     </span>
-                                                                </td>
-                                                                <td className="w-8 py-2">
+                                                                </TableCell>
+                                                                <TableCell className="w-8">
                                                                     <span
                                                                         className="inline-block size-2.5 rounded-full"
                                                                         style={{
@@ -1219,35 +1247,35 @@ export default function AccountsIndex() {
                                                                                 '#6B7280',
                                                                         }}
                                                                     />
-                                                                </td>
-                                                                <td className="py-2 pr-4">
+                                                                </TableCell>
+                                                                <TableCell className="pr-4">
                                                                     {
                                                                         account.name
                                                                     }
-                                                                </td>
-                                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                                </TableCell>
+                                                                <TableCell className="pr-4 text-muted-foreground">
                                                                     {account
                                                                         .account_type
                                                                         ?.name ??
                                                                         '—'}
-                                                                </td>
-                                                                <td
-                                                                    className={`py-2 pr-4 text-right font-semibold tabular-nums ${amountColor(balance)}`}
+                                                                </TableCell>
+                                                                <TableCell
+                                                                    className={`pr-4 text-right font-semibold tabular-nums ${amountColor(balance)}`}
                                                                 >
                                                                     {formatAbsAmount(
                                                                         balance,
                                                                         privacyMode,
                                                                     )}
-                                                                </td>
-                                                                <td className="py-2 pr-4 text-right text-muted-foreground tabular-nums">
+                                                                </TableCell>
+                                                                <TableCell className="pr-4 text-right text-muted-foreground tabular-nums">
                                                                     {account.statement_day ??
                                                                         '—'}
-                                                                </td>
-                                                                <td className="py-2 pr-4 text-right text-muted-foreground tabular-nums">
+                                                                </TableCell>
+                                                                <TableCell className="pr-4 text-right text-muted-foreground tabular-nums">
                                                                     {account.payment_due_day ??
                                                                         '—'}
-                                                                </td>
-                                                                <td className="py-2 pr-2 text-right">
+                                                                </TableCell>
+                                                                <TableCell className="pr-2 text-right">
                                                                     <div className="flex items-center justify-end gap-0.5">
                                                                         <Tooltip>
                                                                             <TooltipTrigger
@@ -1316,17 +1344,18 @@ export default function AccountsIndex() {
                                                                             </TooltipContent>
                                                                         </Tooltip>
                                                                     </div>
-                                                                </td>
-                                                            </tr>
+                                                                </TableCell>
+                                                            </TableRow>
                                                         );
                                                     },
                                                 )}
-                                            </tbody>
-                                        </table>
+                                            </TableBody>
+                                            </table>
+                                        </div>
                                     </div>
 
                                     {/* Mobile cards */}
-                                    <div className="mt-1 space-y-1 md:hidden">
+                                    <div className="mt-1 divide-y divide-border/40 border-y border-border/40 md:hidden">
                                         {group.accounts.map((account) => {
                                             const balance =
                                                 getAccountBalance(account);
@@ -1374,7 +1403,7 @@ export default function AccountsIndex() {
                                                             );
                                                         }
                                                     }}
-                                                    className={`rounded-lg px-2 py-1.5 transition-colors ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
+                                                    className={`px-2 py-1.5 transition-colors ${isDragOver ? 'bg-primary/5' : ''} ${account.is_hidden ? 'opacity-50' : ''}`}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <span className="cursor-grab text-sm text-muted-foreground select-none">

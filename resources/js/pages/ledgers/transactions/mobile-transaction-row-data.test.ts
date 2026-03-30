@@ -82,6 +82,10 @@ const { resolveTransferPairTitle } = await import(
     new URL('./mobile-transaction-row-data.ts', import.meta.url).href
 );
 
+const { resolveMobileTransactionMeta } = await import(
+    new URL('./mobile-transaction-row-data.ts', import.meta.url).href
+);
+
 // --- resolveTransferPairTitle ---
 
 function makeAccount(name: string) {
@@ -154,4 +158,35 @@ test('resolveTransferPairTitle falls back to "Transfer" when account names are m
     });
 
     assert.equal(resolveTransferPairTitle([outgoing, incoming]), 'Transfer');
+});
+
+test('resolveMobileTransactionMeta returns account on a separate line for non-transfer transactions', () => {
+    const transaction = makeTransaction({
+        transaction_type: 'expense',
+        payee: {
+            id: 1,
+            ledger_id: 1,
+            name: 'Coffee House',
+        },
+        description: 'Morning latte and croissant',
+        account: makeAccount('Daily Spending'),
+    });
+
+    assert.deepEqual(resolveMobileTransactionMeta(transaction), {
+        primary: 'Coffee House · Morning latte and croissant',
+        account: 'Daily Spending',
+    });
+});
+
+test('resolveMobileTransactionMeta keeps transfer account line empty', () => {
+    const transaction = makeTransaction({
+        transaction_type: 'transfer',
+        description: 'Move to savings',
+        account: makeAccount('Checking'),
+    });
+
+    assert.deepEqual(resolveMobileTransactionMeta(transaction), {
+        primary: 'Move to savings',
+        account: null,
+    });
 });

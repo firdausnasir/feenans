@@ -5,7 +5,10 @@ use App\Models\AccountType;
 use App\Models\Bill;
 use App\Models\Ledger;
 use App\Models\User;
+use App\Notifications\BillDueReminder;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 test('check-reminders sends single summary notification for bills due within 3 days', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
@@ -181,4 +184,55 @@ test('check-reminders sends separate notifications to different users', function
 
     expect($user1->notifications()->count())->toBe(1);
     expect($user2->notifications()->count())->toBe(1);
+});
+
+test('check-reminders batches summary notification lookups for multiple users', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
+
+    $users = User::factory()->count(3)->create();
+
+    foreach ($users as $index => $user) {
+        $ledger = Ledger::factory()->for($user)->create();
+        $accountType = AccountType::factory()->for($ledger)->create();
+        $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+        Bill::factory()->for($ledger)->for($account)->create([
+            'name' => 'Bill '.$index,
+            'next_due_date' => CarbonImmutable::create(2026, 3, 17),
+            'amount' => 20 + $index,
+            'is_active' => true,
+        ]);
+
+        $user->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => BillDueReminder::class,
+            'data' => [
+                'type' => 'bill_summary_reminder',
+                'upcoming_count' => 1,
+                'due_today_count' => 0,
+                'overdue_count' => 0,
+                'total_bills' => 1,
+            ],
+            'created_at' => CarbonImmutable::create(2026, 3, 15, 8),
+            'updated_at' => CarbonImmutable::create(2026, 3, 15, 8),
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $this->artisan('bills:check-reminders')->assertSuccessful();
+
+    $notificationQueries = collect(DB::getQueryLog())
+        ->filter(function (array $query): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'from "notifications"');
+        });
+
+    DB::disableQueryLog();
+
+    expect($notificationQueries)->toHaveCount(1)
+        ->and($users->sum(fn (User $user) => $user->notifications()->count()))->toBe(3);
 });

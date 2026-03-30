@@ -3,7 +3,9 @@
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
+use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create an account inside their ledger', function () {
@@ -137,6 +139,62 @@ test('accounts index groups by include_in_totals', function () {
             ->where('accounts.1.accounts.0.name', 'Rainy Day')
             ->where('accounts.1.total_balance', '5000.00')
         );
+});
+
+test('accounts index loads current balances with a single aggregate query', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $type = AccountType::factory()->for($ledger)->create();
+
+    $checking = Account::factory()->for($ledger)->for($type)->create([
+        'name' => 'Checking',
+        'include_in_totals' => true,
+        'initial_balance' => '1000.00',
+    ]);
+
+    $savings = Account::factory()->for($ledger)->for($type)->create([
+        'name' => 'Savings',
+        'include_in_totals' => false,
+        'initial_balance' => '500.00',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($checking)->create([
+        'amount' => '250.00',
+        'category_id' => null,
+        'payee_id' => null,
+    ]);
+
+    Transaction::factory()->for($ledger)->for($savings)->create([
+        'amount' => '-75.00',
+        'category_id' => null,
+        'payee_id' => null,
+    ]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.accounts.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('accounts.0.accounts.0.current_balance', '1250.00')
+            ->where('accounts.0.total_balance', '1250.00')
+            ->where('accounts.1.accounts.0.current_balance', '425.00')
+            ->where('accounts.1.total_balance', '425.00')
+        );
+
+    $balanceQueries = collect(DB::getQueryLog())
+        ->filter(function (array $query): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'sum(')
+                && str_contains($sql, 'from "transactions"');
+        });
+
+    DB::disableQueryLog();
+
+    expect($balanceQueries)->toHaveCount(1);
 });
 
 test('accounts index omits empty groups', function () {

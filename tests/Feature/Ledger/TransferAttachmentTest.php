@@ -45,6 +45,9 @@ test('transfer store attaches files to both outgoing and incoming transactions',
     expect($outgoing->attachments()->count())->toBe(2)
         ->and($incoming->attachments()->count())->toBe(2);
 
+    $outgoing->load('attachments');
+    $incoming->load('attachments');
+
     $outgoingFilenames = $outgoing->attachments->pluck('filename')->sort()->values()->toArray();
     $incomingFilenames = $incoming->attachments->pluck('filename')->sort()->values()->toArray();
 

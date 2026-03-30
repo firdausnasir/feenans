@@ -23,17 +23,15 @@ import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
 import { groupTransactionsForMobile } from './mobile-transaction-groups';
 import {
+    resolveMobileTransactionMeta,
     resolveMobileTransactionTitle,
-    resolveTransferPairTitle,
 } from './mobile-transaction-row-data';
 
 type MobileTransactionListProps = {
     transactions: Transaction[];
     allSelected: boolean;
     someSelected: boolean;
-    allAcrossPages: boolean;
     selectedIds: number[];
-    excludedIds: number[];
     runningBalances: Map<number, number> | null;
     onSelectAll: (checked: boolean | 'indeterminate') => void;
     onSelectOne: (id: number, checked: boolean | 'indeterminate') => void;
@@ -47,9 +45,7 @@ export function MobileTransactionList({
     transactions,
     allSelected,
     someSelected,
-    allAcrossPages,
     selectedIds,
-    excludedIds,
     runningBalances,
     onSelectAll,
     onSelectOne,
@@ -66,9 +62,7 @@ export function MobileTransactionList({
     const groups = groupTransactionsForMobile(transactions);
 
     function isSelected(transaction: Transaction): boolean {
-        return allAcrossPages
-            ? !excludedIds.includes(transaction.id)
-            : selectedIds.includes(transaction.id);
+        return selectedIds.includes(transaction.id);
     }
 
     function toggleSplit(transactionId: number): void {
@@ -106,19 +100,7 @@ export function MobileTransactionList({
             transaction,
             pairedTransactions,
         );
-        const meta = [
-            transaction.transaction_type === 'transfer'
-                ? transaction.description
-                : transaction.payee?.name,
-            transaction.transaction_type === 'transfer'
-                ? null
-                : transaction.description,
-            transaction.transaction_type === 'transfer'
-                ? null
-                : transaction.account?.name,
-        ]
-            .filter((value): value is string => Boolean(value))
-            .join(' · ');
+        const meta = resolveMobileTransactionMeta(transaction);
 
         return (
             <div
@@ -157,7 +139,7 @@ export function MobileTransactionList({
                                     )}
                                     <span
                                         className={cn(
-                                            'truncate text-sm font-medium',
+                                            'text-sm font-medium wrap-break-word',
                                             !transaction.category &&
                                                 transaction.transaction_type !==
                                                     'transfer' &&
@@ -168,9 +150,15 @@ export function MobileTransactionList({
                                     </span>
                                 </div>
 
-                                {meta !== '' && (
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {meta}
+                                {meta.primary && (
+                                    <p className="text-xs wrap-break-word text-muted-foreground">
+                                        {meta.primary}
+                                    </p>
+                                )}
+
+                                {meta.account && (
+                                    <p className="text-xs wrap-break-word text-muted-foreground/80">
+                                        {meta.account}
                                     </p>
                                 )}
 
@@ -388,9 +376,6 @@ export function MobileTransactionList({
                                         (t) => parseFloat(t.amount ?? '0') < 0,
                                     ) ?? item.transactions[0];
                                 const selected = isSelected(outgoing);
-                                const pairTitle = resolveTransferPairTitle(
-                                    item.transactions,
-                                );
                                 const isPairExpanded =
                                     expandedTransferPairIds.includes(
                                         item.pairId,
@@ -448,13 +433,13 @@ export function MobileTransactionList({
                                                     <div className="min-w-0 space-y-0.5">
                                                         <div className="flex min-w-0 items-center gap-1.5">
                                                             <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
-                                                            <span className="truncate text-sm font-medium">
-                                                                {pairTitle}
+                                                            <span className="text-sm wrap-break-word text-muted-foreground italic">
+                                                                Transfer
                                                             </span>
                                                         </div>
 
                                                         {outgoing.description && (
-                                                            <p className="truncate text-xs text-muted-foreground">
+                                                            <p className="text-xs wrap-break-word text-muted-foreground">
                                                                 {
                                                                     outgoing.description
                                                                 }
@@ -509,7 +494,7 @@ export function MobileTransactionList({
                                                                         }
                                                                         className="flex items-start justify-between gap-2"
                                                                     >
-                                                                        <p className="truncate text-[11px] font-medium text-foreground">
+                                                                        <p className="text-[11px] font-medium wrap-break-word text-foreground">
                                                                             {tx
                                                                                 .account
                                                                                 ?.name ??

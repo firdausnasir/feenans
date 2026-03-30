@@ -11,6 +11,16 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
+function pendingImportHistoryFilePathSessionKey(Ledger $ledger): string
+{
+    return "ledger-imports.{$ledger->id}.file_path";
+}
+
+function pendingImportHistoryFilePathSession(Ledger $ledger, string $path): array
+{
+    return [pendingImportHistoryFilePathSessionKey($ledger) => $path];
+}
+
 // ─── Import Mappings ────────────────────────────────────────────────
 
 test('save mapping creates a new import mapping', function () {
@@ -207,6 +217,7 @@ test('store creates import record after successful import', function () {
 
     $this
         ->actingAs($user)
+        ->withSession(pendingImportHistoryFilePathSession($ledger, $path))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,
@@ -255,6 +266,7 @@ test('import record tracks skipped duplicates correctly', function () {
 
     $this
         ->actingAs($user)
+        ->withSession(pendingImportHistoryFilePathSession($ledger, $path))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
             'account_id' => $account->id,

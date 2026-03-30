@@ -6,19 +6,10 @@ use App\Enums\RecurrenceType;
 use App\Enums\TransactionType;
 use App\Models\Ledger;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreBillRequest extends FormRequest
+class StoreBillRequest extends LedgerAuthorizationRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
-
     /**
      * Get the validation rules that apply to the request.
      *
@@ -47,6 +38,7 @@ class StoreBillRequest extends FormRequest
             'to_account_id' => ['nullable', 'integer', $accountRule, 'different:account_id', Rule::requiredIf($this->input('transaction_type') === TransactionType::Transfer->value)],
             'category_id' => ['nullable', 'integer', $categoryRule, Rule::prohibitedIf($this->input('transaction_type') === TransactionType::Transfer->value)],
             'payee_id' => ['nullable', 'integer', $payeeRule, Rule::prohibitedIf($this->input('transaction_type') === TransactionType::Transfer->value)],
+            'new_payee_name' => ['nullable', 'string', 'max:255'],
             'recurrence_type' => ['required', 'string', Rule::in(array_column(RecurrenceType::cases(), 'value'))],
             'recurrence_interval' => ['required', 'integer', 'min:1'],
             'recurrence_day' => ['nullable', 'integer', 'min:1', 'max:31'],

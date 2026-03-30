@@ -43,3 +43,22 @@ export function resolveTransferPairTitle(transactions: Transaction[]): string {
 
     return 'Transfer';
 }
+
+export function resolveMobileTransactionMeta(transaction: Transaction): {
+    primary: string | null;
+    account: string | null;
+} {
+    if (transaction.transaction_type === 'transfer') {
+        return {
+            primary: transaction.description,
+            account: null,
+        };
+    }
+
+    return {
+        primary: [transaction.payee?.name, transaction.description]
+            .filter((value): value is string => Boolean(value))
+            .join(' · '),
+        account: transaction.account?.name ?? null,
+    };
+}

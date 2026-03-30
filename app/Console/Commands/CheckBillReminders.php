@@ -78,66 +78,15 @@ class CheckBillReminders extends Command
         /** @var Collection<int, array{upcoming: Collection<int, Bill>, due_today: Collection<int, Bill>, overdue: Collection<int, Bill>}> $userBills */
         $userBills = collect();
 
-        foreach ($upcomingBills as $bill) {
-            $user = $bill->ledger?->user;
+        $this->addBillsToUserGroups($userBills, $upcomingBills, 'upcoming');
+        $this->addBillsToUserGroups($userBills, $dueTodayBills, 'due_today');
+        $this->addBillsToUserGroups($userBills, $overdueBills, 'overdue');
 
-            if (! $user instanceof User) {
-                continue;
-            }
-
-            if (! $userBills->has($user->id)) {
-                $userBills[$user->id] = [
-                    'user' => $user,
-                    'upcoming' => collect(),
-                    'due_today' => collect(),
-                    'overdue' => collect(),
-                ];
-            }
-
-            $userBills[$user->id]['upcoming']->push($bill);
-        }
-
-        foreach ($dueTodayBills as $bill) {
-            $user = $bill->ledger?->user;
-
-            if (! $user instanceof User) {
-                continue;
-            }
-
-            if (! $userBills->has($user->id)) {
-                $userBills[$user->id] = [
-                    'user' => $user,
-                    'upcoming' => collect(),
-                    'due_today' => collect(),
-                    'overdue' => collect(),
-                ];
-            }
-
-            $userBills[$user->id]['due_today']->push($bill);
-        }
-
-        foreach ($overdueBills as $bill) {
-            $user = $bill->ledger?->user;
-
-            if (! $user instanceof User) {
-                continue;
-            }
-
-            if (! $userBills->has($user->id)) {
-                $userBills[$user->id] = [
-                    'user' => $user,
-                    'upcoming' => collect(),
-                    'due_today' => collect(),
-                    'overdue' => collect(),
-                ];
-            }
-
-            $userBills[$user->id]['overdue']->push($bill);
-        }
+        $usersWithSummaryToday = $this->getUsersWithSummaryToday($userBills->keys(), $today);
 
         $count = 0;
 
-        foreach ($userBills as $data) {
+        foreach ($userBills as $userId => $data) {
             /** @var User $user */
             $user = $data['user'];
             /** @var Collection<int, Bill> $upcoming */
@@ -147,24 +96,72 @@ class CheckBillReminders extends Command
             /** @var Collection<int, Bill> $overdue */
             $overdue = $data['overdue'];
 
-            if ($this->hasReceivedSummaryToday($user, $today)) {
+            if ($usersWithSummaryToday[(int) $userId] ?? false) {
                 continue;
             }
 
             $user->notify(new BillDueReminder($upcoming, $dueToday, $overdue));
+            $usersWithSummaryToday[(int) $userId] = true;
             $count++;
         }
 
         return $count;
     }
 
-    private function hasReceivedSummaryToday(User $user, CarbonImmutable $today): bool
+    /**
+     * @param  Collection<int, array{user: User, upcoming: Collection<int, Bill>, due_today: Collection<int, Bill>, overdue: Collection<int, Bill>}>  $userBills
+     * @param  Collection<int, Bill>  $bills
+     * @param  'upcoming'|'due_today'|'overdue'  $bucket
+     */
+    private function addBillsToUserGroups(Collection $userBills, Collection $bills, string $bucket): void
     {
-        return $user->unreadNotifications()
-            ->whereDate('created_at', $today)
+        foreach ($bills as $bill) {
+            $user = $bill->ledger?->user;
+
+            if (! $user instanceof User) {
+                continue;
+            }
+
+            if (! $userBills->has($user->id)) {
+                $userBills[$user->id] = [
+                    'user' => $user,
+                    'upcoming' => collect(),
+                    'due_today' => collect(),
+                    'overdue' => collect(),
+                ];
+            }
+
+            $userBills[$user->id][$bucket]->push($bill);
+        }
+    }
+
+    /**
+     * @param  Collection<int, int|string>  $userIds
+     * @return array<int, bool>
+     */
+    private function getUsersWithSummaryToday(Collection $userIds, CarbonImmutable $today): array
+    {
+        if ($userIds->isEmpty()) {
+            return [];
+        }
+
+        $usersWithSummaryToday = [];
+
+        DatabaseNotification::query()
+            ->where('notifiable_type', User::class)
+            ->whereIn('notifiable_id', $userIds->all())
+            ->whereNull('read_at')
+            ->where('created_at', '>=', $today->startOfDay())
+            ->where('created_at', '<=', $today->endOfDay())
             ->get()
-            ->contains(function (DatabaseNotification $notification): bool {
-                return ($notification->data['type'] ?? null) === 'bill_summary_reminder';
+            ->each(function (DatabaseNotification $notification) use (&$usersWithSummaryToday): void {
+                if (($notification->data['type'] ?? null) !== 'bill_summary_reminder') {
+                    return;
+                }
+
+                $usersWithSummaryToday[(int) $notification->notifiable_id] = true;
             });
+
+        return $usersWithSummaryToday;
     }
 }

@@ -8,6 +8,7 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Services\BillService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 
 function makeLedgerWithAccount(): array
 {
@@ -230,6 +231,31 @@ test('bill service process auto bills creates transactions for due bills', funct
     app(BillService::class)->processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(1);
+});
+
+test('bill service process auto bills skips processing while another run holds the lock', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+
+    $bill = Bill::factory()->for($ledger)->for($account)->create([
+        'auto_create' => true,
+        'next_due_date' => CarbonImmutable::today(),
+        'recurrence_type' => RecurrenceType::Monthly,
+        'recurrence_interval' => 1,
+        'amount' => 75.00,
+    ]);
+
+    $lock = Cache::lock('bills:process-auto', 300);
+
+    expect($lock->get())->toBeTrue();
+
+    try {
+        app(BillService::class)->processAutoBills();
+    } finally {
+        $lock->release();
+    }
+
+    expect(Transaction::query()->where('bill_id', $bill->id)->count())->toBe(0)
+        ->and($bill->fresh()->next_due_date->isSameDay(CarbonImmutable::today()))->toBeTrue();
 });
 
 test('bill service process auto bills creates paired transactions for due transfer bills', function () {

@@ -787,7 +787,9 @@ function CategoryBreakdownSection({
                                         )}
                                     </span>
                                     <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
-                                        {item.percentage.toFixed(1)}%
+                                        {privacyMode
+                                            ? '***'
+                                            : `${item.percentage.toFixed(1)}%`}
                                     </span>
                                 </div>
                             </div>
@@ -837,7 +839,9 @@ function CategoryBreakdownSection({
                                         )}
                                     </TableCell>
                                     <TableCell className="text-right text-muted-foreground tabular-nums">
-                                        {item.percentage.toFixed(1)}%
+                                        {privacyMode
+                                            ? '***'
+                                            : `${item.percentage.toFixed(1)}%`}
                                     </TableCell>
                                 </TableRow>
                             ))}
