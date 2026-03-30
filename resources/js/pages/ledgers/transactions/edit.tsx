@@ -323,18 +323,8 @@ function TransactionEditForm({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Edit Transaction" />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Edit Transaction
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Update details, split allocations, and attachments
-                            in one place.
-                        </p>
-                    </div>
-
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <div className="flex items-center gap-2">
                         <Badge variant="outline">
                             {transaction.transaction_type}

@@ -1,12 +1,5 @@
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
-import {
-    ArrowDown,
-    ArrowUp,
-    BarChart3,
-    ChevronDown,
-    Minus,
-    SlidersHorizontal,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, BarChart3, Minus } from 'lucide-react';
 import { useState } from 'react';
 import {
     Bar,
@@ -23,15 +16,11 @@ import {
     YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import Heading from '@/components/heading';
+import { ReportDateRangePicker } from '@/components/report-date-range-picker';
 import { ReportViewSelect } from '@/components/report-view-select';
-import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DatePicker } from '@/components/ui/date-picker';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Label } from '@/components/ui/label';
-
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
@@ -89,8 +78,6 @@ type CategoryBreakdownResponse = {
     items: CategoryBreakdownItem[];
     parents: ParentCategory[];
 };
-
-type ReportAccount = { id: number; name: string };
 
 type PayeeBreakdownItem = {
     id: number | null;
@@ -339,275 +326,6 @@ function getCategoryColor(color: string | null, index: number): string {
 }
 
 // ─── Components ───────────────────────────────────────────────────────────────
-
-function DateRangeSelector({
-    cycleStartDay,
-    filters,
-    allAccounts,
-    compareEnabled,
-    onCompareToggle,
-    onFiltersChange,
-}: {
-    cycleStartDay: number;
-    filters: Filters;
-    allAccounts: ReportAccount[];
-    compareEnabled: boolean;
-    onCompareToggle: () => void;
-    onFiltersChange: (newFilters: Partial<Filters>) => void;
-}) {
-    const today = new Date();
-    const csd = cycleStartDay;
-
-    const [customFrom, setCustomFrom] = useState(filters.date_from);
-    const [customTo, setCustomTo] = useState(filters.date_to);
-    const [compareFrom, setCompareFrom] = useState(filters.compare_start ?? '');
-    const [compareTo, setCompareTo] = useState(filters.compare_end ?? '');
-
-    function applyPreset(preset: Preset) {
-        const range = preset.compute(today, csd);
-        onFiltersChange({
-            date_from: range.date_from,
-            date_to: range.date_to,
-            preset: preset.key,
-        });
-    }
-
-    function applyCustomRange() {
-        if (!customFrom || !customTo) {
-            return;
-        }
-
-        onFiltersChange({
-            date_from: customFrom,
-            date_to: customTo,
-            preset: 'custom',
-        });
-    }
-
-    function applyComparison() {
-        if (!compareFrom || !compareTo) {
-            return;
-        }
-
-        onFiltersChange({
-            compare_start: compareFrom,
-            compare_end: compareTo,
-        });
-    }
-
-    function clearComparison() {
-        onFiltersChange({
-            compare_start: null,
-            compare_end: null,
-        });
-    }
-
-    function handleCompareToggle() {
-        if (compareEnabled && filters.compare_start) {
-            clearComparison();
-        }
-
-        onCompareToggle();
-    }
-
-    function handleAccountChange(value: string | null) {
-        const accountId = value === 'all' || value === null ? null : value;
-        onFiltersChange({ account_id: accountId });
-    }
-
-    /** Suggest the previous period with same duration as the current period */
-    function suggestPreviousPeriod() {
-        const from = new Date(filters.date_from + 'T00:00:00');
-        const to = new Date(filters.date_to + 'T00:00:00');
-        const durationMs = to.getTime() - from.getTime();
-        const prevEnd = new Date(from.getTime() - 86400000); // day before current start
-        const prevStart = new Date(prevEnd.getTime() - durationMs);
-        setCompareFrom(toDateString(prevStart));
-        setCompareTo(toDateString(prevEnd));
-    }
-
-    const [filtersOpen, setFiltersOpen] = useState(false);
-
-    return (
-        <Card
-            className={filtersOpen ? '' : 'cursor-pointer'}
-            onClick={() => {
-                if (!filtersOpen) {
-                    setFiltersOpen(true);
-                }
-            }}
-        >
-            <CardContent className="px-4 py-2">
-                <div className="flex flex-col gap-3">
-                    {/* Filter toggle */}
-                    <button
-                        type="button"
-                        className="flex w-full items-center justify-between"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setFiltersOpen(!filtersOpen);
-                        }}
-                    >
-                        <div className="flex min-w-0 items-center gap-2">
-                            <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="truncate text-sm font-medium">
-                                {[
-                                    `${formatDate(filters.date_from)} – ${formatDate(filters.date_to)}`,
-                                    ...(filters.account_id
-                                        ? [
-                                              allAccounts.find(
-                                                  (a) =>
-                                                      a.id.toString() ===
-                                                      filters.account_id,
-                                              )?.name ?? 'Account',
-                                          ]
-                                        : []),
-                                    ...(filters.compare_start &&
-                                    filters.compare_end
-                                        ? [
-                                              `vs ${formatDate(filters.compare_start)} – ${formatDate(filters.compare_end)}`,
-                                          ]
-                                        : []),
-                                ].join(' · ')}
-                            </span>
-                        </div>
-                        <ChevronDown
-                            className={`size-4 text-muted-foreground transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
-                        />
-                    </button>
-
-                    <div className={`space-y-3 ${filtersOpen ? '' : 'hidden'}`}>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {PRESETS.map((preset) => (
-                                <Button
-                                    key={preset.key}
-                                    size="sm"
-                                    variant={
-                                        filters.preset === preset.key
-                                            ? 'default'
-                                            : 'outline'
-                                    }
-                                    className="h-7 px-2.5 text-xs"
-                                    onClick={() => applyPreset(preset)}
-                                >
-                                    {preset.label}
-                                </Button>
-                            ))}
-
-                            <Button
-                                size="sm"
-                                variant={compareEnabled ? 'default' : 'outline'}
-                                className="h-7 px-2.5 text-xs"
-                                onClick={handleCompareToggle}
-                            >
-                                Compare
-                            </Button>
-                        </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                            {allAccounts.length > 0 && (
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">Account</Label>
-                                    <SearchableSelect
-                                        options={allAccounts.map((account) => ({
-                                            value: account.id.toString(),
-                                            label: account.name,
-                                        }))}
-                                        value={filters.account_id}
-                                        onValueChange={(value) =>
-                                            handleAccountChange(value ?? 'all')
-                                        }
-                                        placeholder="All accounts"
-                                        searchPlaceholder="Search accounts..."
-                                        allOption="All accounts"
-                                        className="h-8 text-xs sm:w-40"
-                                    />
-                                </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">From</Label>
-                                    <DatePicker
-                                        value={customFrom}
-                                        onChange={(date) => setCustomFrom(date)}
-                                        placeholder="Start date"
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                                <div className="grid gap-1">
-                                    <Label className="text-xs">To</Label>
-                                    <DatePicker
-                                        value={customTo}
-                                        onChange={(date) => setCustomTo(date)}
-                                        placeholder="End date"
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                            </div>
-                            <Button
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={applyCustomRange}
-                            >
-                                Apply
-                            </Button>
-                        </div>
-
-                        {/* Comparison date picker row */}
-                        {compareEnabled && (
-                            <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-end">
-                                <p className="text-xs font-medium text-muted-foreground sm:self-center">
-                                    Compare with:
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end sm:gap-2">
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">From</Label>
-                                        <DatePicker
-                                            value={compareFrom}
-                                            onChange={(date) =>
-                                                setCompareFrom(date)
-                                            }
-                                            placeholder="Start date"
-                                            className="h-8 text-xs"
-                                        />
-                                    </div>
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">To</Label>
-                                        <DatePicker
-                                            value={compareTo}
-                                            onChange={(date) =>
-                                                setCompareTo(date)
-                                            }
-                                            placeholder="End date"
-                                            className="h-8 text-xs"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button
-                                        size="sm"
-                                        className="flex-1 sm:flex-initial"
-                                        onClick={applyComparison}
-                                    >
-                                        Compare
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="flex-1 sm:flex-initial"
-                                        onClick={suggestPreviousPeriod}
-                                    >
-                                        Previous period
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
 
 function MonthlyTrendChart({ data }: { data: MonthlyTrend[] }) {
     const { privacyMode } = usePrivacyMode();
@@ -1850,18 +1568,23 @@ function buildSummarySentence(summary: ComparisonSummary): string | null {
 export default function ReportsIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
-    const { dateRange, allAccounts, report } = usePage<{
+    const { dateRange, report } = usePage<{
         dateRange: {
             date_from: string;
             date_to: string;
             preset: string;
             account_id: string | null;
         };
-        allAccounts: ReportAccount[];
         report?: SpendingReport;
     }>().props;
 
-    const [compareEnabled, setCompareEnabled] = useState(false);
+    const [compareEnabled, setCompareEnabled] = useState(
+        () =>
+            !!(
+                report?.comparison?.compare_period.from &&
+                report?.comparison?.compare_period.to
+            ),
+    );
     const [isExporting, setIsExporting] = useState(false);
 
     // Derived from deferred report (safe defaults)
@@ -1888,7 +1611,7 @@ export default function ReportsIndex() {
         compare_end: comparison?.compare_period.to ?? null,
     };
 
-    const handleFiltersChange = (newFilters: Partial<Filters>) => {
+    const navigateWithFilters = (newFilters: Partial<Filters>) => {
         const merged = { ...filters, ...newFilters };
 
         router.get(
@@ -1911,6 +1634,70 @@ export default function ReportsIndex() {
         );
     };
 
+    const today = new Date();
+    const csd = ledger.cycle_start_day;
+
+    const presetItems = PRESETS.map((p) => ({
+        key: p.key,
+        label: p.label,
+    }));
+
+    const handlePresetSelect = (presetKey: string) => {
+        const preset = PRESETS.find((p) => p.key === presetKey);
+
+        if (!preset) {
+            return;
+        }
+
+        const range = preset.compute(today, csd);
+        navigateWithFilters({
+            date_from: range.date_from,
+            date_to: range.date_to,
+            preset: preset.key,
+        });
+    };
+
+    const handleRangeChange = (range: {
+        from: string;
+        to: string;
+        preset: string;
+    }) => {
+        navigateWithFilters({
+            date_from: range.from,
+            date_to: range.to,
+            preset: range.preset,
+        });
+    };
+
+    const handleCompareToggle = (enabled: boolean) => {
+        setCompareEnabled(enabled);
+
+        if (!enabled) {
+            navigateWithFilters({
+                compare_start: null,
+                compare_end: null,
+            });
+        }
+    };
+
+    const handleCompareRangeChange = (range: { from: string; to: string }) => {
+        navigateWithFilters({
+            compare_start: range.from,
+            compare_end: range.to,
+        });
+    };
+
+    const handleExport = () => {
+        setIsExporting(true);
+        const link = document.createElement('a');
+        link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
+        link.click();
+        setTimeout(() => {
+            setIsExporting(false);
+            toast.success('Report exported successfully.');
+        }, 2000);
+    };
+
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Reports', href: reportsIndex.url(ledger.id) },
@@ -1920,86 +1707,38 @@ export default function ReportsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} reports`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                {/* Header */}
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <Heading
-                            title="Reports"
-                            description="Analyse your finances with detailed breakdowns and trends."
-                        />
-                        <div className="hidden items-center gap-2 sm:flex">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="income-expense"
-                            />
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={isExporting}
-                                onClick={() => {
-                                    setIsExporting(true);
-
-                                    const link = document.createElement('a');
-                                    link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
-                                    link.click();
-
-                                    setTimeout(() => {
-                                        setIsExporting(false);
-                                        toast.success(
-                                            'Report exported successfully.',
-                                        );
-                                    }, 2000);
-                                }}
-                            >
-                                {isExporting ? 'Exporting...' : 'Export PDF'}
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 sm:hidden">
-                        <div className="min-w-0 flex-1">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="income-expense"
-                            />
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-1/4 shrink-0"
-                            disabled={isExporting}
-                            onClick={() => {
-                                setIsExporting(true);
-
-                                const link = document.createElement('a');
-                                link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
-                                link.click();
-
-                                setTimeout(() => {
-                                    setIsExporting(false);
-                                    toast.success(
-                                        'Report exported successfully.',
-                                    );
-                                }, 2000);
-                            }}
-                        >
-                            {isExporting ? 'Exporting...' : 'Export PDF'}
-                        </Button>
-                    </div>
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                {/* Unified toolbar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportViewSelect
+                        ledgerId={ledger.id}
+                        currentView="income-expense"
+                        className="shrink-0"
+                    />
+                    <ReportDateRangePicker
+                        from={filters.date_from}
+                        to={filters.date_to}
+                        preset={dateRange.preset ?? filters.preset}
+                        presets={presetItems}
+                        compareEnabled={compareEnabled}
+                        compareFrom={filters.compare_start ?? undefined}
+                        compareTo={filters.compare_end ?? undefined}
+                        onRangeChange={handleRangeChange}
+                        onPresetSelect={handlePresetSelect}
+                        onCompareToggle={handleCompareToggle}
+                        onCompareRangeChange={handleCompareRangeChange}
+                        className="min-w-0 flex-1 sm:flex-initial"
+                    />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:ml-auto sm:w-auto"
+                        disabled={isExporting}
+                        onClick={handleExport}
+                    >
+                        {isExporting ? 'Exporting...' : 'Export PDF'}
+                    </Button>
                 </div>
-
-                {/* Date range selector */}
-                <DateRangeSelector
-                    cycleStartDay={ledger.cycle_start_day}
-                    filters={{
-                        ...filters,
-                        preset: dateRange.preset ?? filters.preset,
-                    }}
-                    allAccounts={allAccounts}
-                    compareEnabled={compareEnabled}
-                    onCompareToggle={() => setCompareEnabled((prev) => !prev)}
-                    onFiltersChange={handleFiltersChange}
-                />
 
                 {/* Content */}
                 <Deferred

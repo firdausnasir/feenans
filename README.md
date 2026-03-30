@@ -1,81 +1,68 @@
 # Feenans
 
-A private, self-hosted personal finance tracker. Manage multiple ledgers, track spending, budget wisely, and stay on top of bills — all without anyone watching your data.
+**Your finances. Your rules. Nobody watching.**
 
-## Key Features
+A self-hosted personal finance tracker built for people who refuse to hand their financial data to corporations. Track spending across multiple accounts, set budgets, monitor recurring bills, and generate rich reports — all running on your own infrastructure where no one else can touch your data.
 
-- **Multi-Ledger Support** — Separate financial workspaces (personal, household, projects)
-- **Multi-Account Tracking** — Checking, savings, credit cards, cash accounts with custom types
-- **Smart Transactions** — Income, expenses, transfers with splits, attachments, and bulk operations
-- **Recurring Bills** — Flexible schedules (daily, weekly, monthly, custom) with calendar day picker and human-readable frequency preview
-- **Budget Tracking** — Category-based budgets with rollovers, alerts, cycle-aware auto-apply, and period date display
-- **Hierarchical Categories** — Nested categories with drag-and-drop reordering
-- **Tags** — Color-coded tags for cross-cutting organization
-- **Payee Management** — Cards view with transaction drill-down, inline creation from transaction forms, merge support
-- **Multi-View Reports** — Income & Expense (with spending heatmap), Financial Health (net worth, savings rate), Budget Performance, Cash Flow (daily flow + recurring calendar), all with PDF export
-- **Activity Audit Trail** — Full change history with before/after diffs
-- **CSV Import** — Bank statement import with guided steps, reusable column mappings
-- **Full Data Export** — Export entire ledgers to JSON or transactions to CSV
-- **Two-Factor Authentication** — TOTP-based 2FA with recovery codes
-- **Password Reset While Logged In** — Send reset link from security settings
-- **Timezone Support** — Configurable per-user timezone with `APP_TIMEZONE` env default
-- **Color-Coded Accounts** — Custom colors for account identification
-- **No Admin Access to User Data** — Operators can manage memberships and view service metrics, but cannot access ledgers, transactions, or budgets
+## Why Feenans?
+
+Most finance apps make money from your data. Feenans doesn't.
+
+- **Self-hosted** — Your data lives on your server. Not ours, not a cloud provider's, yours.
+- **No admin access** — Even the server operator cannot browse your transactions, budgets, or ledgers. There is no admin interface for user financial data.
+- **Privacy mode** — One toggle masks all amounts in the UI. Use your finance app on the train, in a meeting, anywhere.
+- **Full data portability** — Export everything as JSON or CSV at any time. Delete your account permanently with one click.
+- **Zero tracking** — No analytics, no ads, no data mining. Just a finance app that does its job.
+- **Modern stack** — Laravel 12, React 19, TypeScript, Tailwind CSS 4. Familiar tools, no lock-in.
+
+## Features
+
+### Core
+
+- **Multi-Account Tracking** — Checking, savings, credit cards, e-wallets, cash — real-time balances, net worth overview, color-coded types, and statement cycle tracking
+- **Smart Transactions** — Income, expenses, and transfers with splits, receipt attachments, bulk operations, and infinite scroll
+- **Hierarchical Categories** — Two-level categories with custom colors, drag-and-drop reordering, and transaction counts
+- **Tags & Payees** — Color-coded tags and payee cards with transaction drill-down and merge support
+- **CSV Bank Import** — Upload any bank CSV, map columns with a guided wizard, and save mappings for repeat imports
+
+### Planning
+
+- **Budget Tracking** — Category-based spending limits with visual progress bars, rollover support, threshold alerts, and cycle-aware periods
+- **Recurring Bills** — Daily, weekly, monthly, yearly, or custom schedules — auto-generates transactions on due dates and flags missed payments
+- **Multi-Workspace** — Separate ledgers for personal, family, or project finances — each fully isolated
+- **Flexible Billing Cycles** — Set any day as your cycle start. Match your salary day, credit card billing cycle, or whatever works for you
+
+### Analytics
+
+- **Income & Expense Reports** — Monthly trends, category breakdowns, spending heatmaps, payee analysis, period comparisons
+- **Financial Health** — Net worth tracking, debt-to-asset ratio, savings rate charts
+- **Cash Flow** — Daily income/expense flow with upcoming recurring bills calendar
+- **Budget Performance** — Visual progress cards with status indicators across all budgets
+- **PDF Export** — Export any report view as a clean PDF
+
+### Security
+
+- **Two-Factor Authentication** — TOTP-based 2FA with backup recovery codes
+- **Activity Audit Trail** — Full change history with before/after diffs, filterable by type and action
+- **Data Isolation** — Every database query scoped to the authenticated user
+- **Password Confirmation** — Required for sensitive actions
+
+### Extras
+
+- **Onboarding Wizard** — Three-step guided setup: create workspace, add first account, done
+- **Privacy Mode** — Toggle to mask all amounts across the entire UI
+- **Dark Mode** — Full dark / light / system theme support
+- **Mobile-First** — Responsive design built for phones first, enhanced for desktop
+- **SSR Support** — Server-side rendering via Inertia.js for fast initial page loads
+- **Password Reset While Logged In** — Send a reset link from security settings without logging out
+- **Timezone Support** — Per-user timezone with `APP_TIMEZONE` env default
 
 ## Tech Stack
 
-### Backend
-
-| Technology        | Version | Purpose                                       |
-| ----------------- | ------- | --------------------------------------------- |
-| PHP               | ^8.2    | Runtime                                       |
-| Laravel           | 12      | Application framework                         |
-| Inertia.js        | 2       | Server-side adapter (SPA bridge)              |
-| Laravel Fortify   | 1       | Headless authentication                       |
-| Laravel Sanctum   | 4       | Authentication foundation for Laravel features |
-| Laravel Wayfinder | 0.1     | TypeScript route generation                   |
-| DomPDF            | 3.1     | PDF report generation                         |
-| SQLite            | —       | Default database (MySQL/PostgreSQL supported) |
-
-### Frontend
-
-| Technology       | Version | Purpose                        |
-| ---------------- | ------- | ------------------------------ |
-| React            | 19      | UI framework                   |
-| TypeScript       | 5.7     | Type safety                    |
-| Inertia.js React | 2       | Client-side adapter            |
-| Tailwind CSS     | 4       | Utility-first styling          |
-| Radix UI         | —       | Accessible headless components |
-| Recharts         | 2.15    | Data visualization             |
-| Lucide React     | —       | Icon library                   |
-| Vite             | 7       | Build tool and dev server      |
-
-### Development & Testing
-
-| Tool           | Purpose                       |
-| -------------- | ----------------------------- |
-| Pest 4         | PHP testing framework         |
-| Laravel Pint   | PHP code formatter            |
-| ESLint 9       | JavaScript/TypeScript linting |
-| Prettier 3     | Code formatting               |
-| React Compiler | Automatic memoization         |
-
-### Infrastructure
-
-| Tool           | Purpose                            |
-| -------------- | ---------------------------------- |
-| Docker         | Multi-stage containerized builds   |
-| Docker Compose | Local and production orchestration |
-| Redis          | Caching and session store          |
-| GitHub Actions | CI/CD (tests + linting)            |
-
-## Prerequisites
-
-- PHP 8.2+
-- Composer 2
-- Node.js 22+
-- npm 10+
-- SQLite (default) or MySQL/PostgreSQL
+**Backend:** Laravel 12 · PHP 8.3 · Inertia.js 2 · Fortify · Sanctum · Wayfinder · DomPDF
+**Frontend:** React 19 · TypeScript · Tailwind CSS 4 · Radix UI · Recharts · Vite 7
+**Testing:** Pest 4 · ESLint 9 · Prettier 3 · Laravel Pint · React Compiler
+**Infrastructure:** Docker · Redis · SQLite (default) / MySQL / PostgreSQL
 
 ## Getting Started
 
@@ -242,16 +229,16 @@ routes/
 
 Key environment variables (see `.env.example` for full list):
 
-| Variable                 | Default          | Description                |
-| ------------------------ | ---------------- | -------------------------- |
-| `APP_NAME`               | Laravel          | Application name           |
-| `APP_URL`                | http://localhost | Base URL                   |
-| `DB_CONNECTION`          | sqlite           | Database driver            |
-| `QUEUE_CONNECTION`       | database         | Queue backend              |
-| `CACHE_STORE`            | database         | Cache backend              |
-| `MAIL_MAILER`            | log              | Mail driver                |
+| Variable                 | Default          | Description                  |
+| ------------------------ | ---------------- | ---------------------------- |
+| `APP_NAME`               | Laravel          | Application name             |
+| `APP_URL`                | http://localhost | Base URL                     |
+| `DB_CONNECTION`          | sqlite           | Database driver              |
+| `QUEUE_CONNECTION`       | database         | Queue backend                |
+| `CACHE_STORE`            | database         | Cache backend                |
+| `MAIL_MAILER`            | log              | Mail driver                  |
 | `APP_TIMEZONE`           | UTC              | Default application timezone |
-| `LEDGER_FILESYSTEM_DISK` | local            | Storage for ledger exports |
+| `LEDGER_FILESYSTEM_DISK` | local            | Storage for ledger exports   |
 
 For production with Redis, update:
 

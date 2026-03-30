@@ -8,7 +8,6 @@ import {
     store as storeCategory,
     update as updateCategory,
 } from '@/actions/App/Http/Controllers/Ledger/CategoryController';
-import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1099,12 +1098,8 @@ export default function CategoriesIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} categories`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Categories"
-                        description="Manage categories for this ledger."
-                    />
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <Button
                         className="w-full sm:w-auto"
                         onClick={() => setAddFormTrigger((t) => t + 1)}

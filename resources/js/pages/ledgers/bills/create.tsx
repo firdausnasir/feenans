@@ -3,7 +3,6 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { store as storeRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
@@ -161,12 +160,7 @@ export default function CreateBill() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`New Recurring Transaction — ${ledger.name}`} />
 
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="New Recurring Transaction"
-                    description="Set up a recurring expense or income for this ledger."
-                />
-
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
                 <form
                     onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"

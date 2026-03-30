@@ -3,7 +3,6 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { update as updateRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
@@ -173,12 +172,7 @@ export default function EditBill() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Edit ${bill.name}`} />
 
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Edit Recurring Transaction"
-                    description="Update the recurring transaction details."
-                />
-
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
                 <form
                     onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"

@@ -2,7 +2,6 @@ import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
 import { index as activityIndex } from '@/actions/App/Http/Controllers/Ledger/ActivityLogController';
-import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -345,12 +344,7 @@ export default function ActivityIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} activity`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <Heading
-                    title="Activity"
-                    description="Recent create, update, delete, and restore events for this workspace."
-                />
-
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
                 {/* Filters */}
                 <div className="flex flex-wrap items-center gap-3">
                     <Select

@@ -2,7 +2,6 @@ import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,12 +46,7 @@ export default function EditLedger({ ledger }: { ledger: Ledger }) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Edit workspace" />
 
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Edit workspace"
-                    description="Update your workspace basics."
-                />
-
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
                 <form
                     onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
@@ -73,9 +67,7 @@ export default function EditLedger({ ledger }: { ledger: Ledger }) {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="currency_code">
-                            Currency code
-                        </Label>
+                        <Label htmlFor="currency_code">Currency code</Label>
                         <Input
                             id="currency_code"
                             name="currency_code"

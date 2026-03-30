@@ -1,5 +1,17 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { ArrowRight, Download, Key, Lock, ShieldCheck } from 'lucide-react';
+import {
+    ArrowRight,
+    CheckCheck,
+    Download,
+    EyeOff,
+    FolderOpen,
+    History,
+    Key,
+    Lock,
+    Paperclip,
+    ShieldCheck,
+    Upload,
+} from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import ScreenshotImage from '@/components/screenshot-image';
@@ -14,34 +26,34 @@ type GalleryFeature = {
 
 const galleryFeatures: readonly GalleryFeature[] = [
     {
-        screenshot: 'account',
-        title: 'Multi-Account Tracking',
-        description:
-            'Bank accounts, credit cards, e-wallets in one view. Real-time balances with statement cycle tracking.',
-    },
-    {
         screenshot: 'report',
-        title: 'Powerful Reports',
+        title: 'In-Depth Reports',
         description:
-            'Monthly trends, category breakdowns, spending heatmaps, and income analysis. Export any report as PDF.',
-    },
-    {
-        screenshot: 'budget',
-        title: 'Budget Tracking',
-        description:
-            "Set spending limits per category. Visual progress bars and threshold alerts when you're close to your limit.",
+            'Four report views — income vs. expense trends, financial health with net worth tracking, budget performance, and daily cash flow. Spending heatmaps, category breakdowns, payee analysis, and one-click PDF export.',
     },
     {
         screenshot: 'bill',
-        title: 'Recurring Bills',
+        title: 'Recurring Bill Tracker',
         description:
-            'Track every subscription and recurring payment. Auto-creates transactions on due date and flags missed payments.',
+            'Never miss a subscription or bill again. Set flexible schedules — daily, weekly, monthly, yearly, or custom intervals. Transactions auto-generate on due dates, and missed payments get flagged instantly.',
+    },
+    {
+        screenshot: 'budget',
+        title: 'Budget Goals',
+        description:
+            'Set spending limits per category with visual progress bars that shift color as you approach your limit. Supports rollover, custom periods, and follows your billing cycle — not just calendar months.',
+    },
+    {
+        screenshot: 'account',
+        title: 'Multi-Account Tracking',
+        description:
+            'Bank accounts, credit cards, e-wallets, and cash — all in one place. Real-time balances, color-coded account types, net worth overview, and statement cycle tracking.',
     },
     {
         screenshot: 'category',
-        title: 'Smart Categories',
+        title: 'Hierarchical Categories',
         description:
-            'Two-level category hierarchy with custom colors. Transaction counts per category for instant spending insight.',
+            'Organize spending with two-level categories, custom colors, and drag-and-drop reordering. See transaction counts per category for instant insight into where your money goes.',
     },
 ] as const;
 
@@ -93,6 +105,45 @@ const cycleOptions: readonly CycleOption[] = [
         active: true,
     },
     { label: 'Custom (any day)', dates: 'Pick your own start date' },
+] as const;
+
+const moreFeatures: readonly TrustBannerItem[] = [
+    {
+        icon: Upload,
+        title: 'CSV Bank Import',
+        description:
+            'Upload any bank CSV and map columns with a guided wizard. Save mappings for repeat imports.',
+    },
+    {
+        icon: FolderOpen,
+        title: 'Multi-Workspace',
+        description:
+            'Separate workspaces for personal finances, family budgets, or side projects — each fully isolated.',
+    },
+    {
+        icon: EyeOff,
+        title: 'Privacy Mode',
+        description:
+            'One toggle masks every amount in the UI. Use your finance app on the train, in a cafe, anywhere.',
+    },
+    {
+        icon: History,
+        title: 'Activity Audit Trail',
+        description:
+            'Every change tracked with before/after diffs. Filter by type and action for complete accountability.',
+    },
+    {
+        icon: CheckCheck,
+        title: 'Bulk Operations',
+        description:
+            'Select multiple transactions and update categories, accounts, or delete — all in one action.',
+    },
+    {
+        icon: Paperclip,
+        title: 'Receipt Attachments',
+        description:
+            'Attach receipts and documents directly to transactions. Everything stays in one place.',
+    },
 ] as const;
 
 const trustGridItems: readonly TrustBannerItem[] = [
@@ -292,6 +343,42 @@ export default function Welcome({
                                             {feature.description}
                                         </p>
                                     </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                {/* More Features */}
+                <section className="border-y border-border bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
+                    <div className="mx-auto max-w-6xl">
+                        <div className="mx-auto mb-12 max-w-2xl text-center">
+                            <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
+                                And more
+                            </p>
+                            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                                Built for how you actually manage money
+                            </h2>
+                            <p className="mt-4 text-muted-foreground">
+                                Every feature exists because tracking your
+                                finances shouldn't feel like a chore.
+                            </p>
+                        </div>
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            {moreFeatures.map((feature) => (
+                                <div
+                                    key={feature.title}
+                                    className="rounded-lg border border-border bg-card p-6"
+                                >
+                                    <div className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                                        <feature.icon className="size-5 text-primary" />
+                                    </div>
+                                    <h3 className="mb-1 font-semibold text-card-foreground">
+                                        {feature.title}
+                                    </h3>
+                                    <p className="text-sm leading-relaxed text-muted-foreground">
+                                        {feature.description}
+                                    </p>
                                 </div>
                             ))}
                         </div>

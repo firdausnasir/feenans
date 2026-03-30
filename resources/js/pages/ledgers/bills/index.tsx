@@ -15,7 +15,6 @@ import {
     store as storeRoute,
     update as updateRoute,
 } from '@/actions/App/Http/Controllers/Ledger/BillController';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -1414,13 +1413,8 @@ export default function BillsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Recurring Transactions — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Recurring Transactions"
-                        description="Manage recurring expenses and income for this ledger."
-                    />
-
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <Button
                         className="w-full sm:w-auto"
                         onClick={() => setFormBill('create')}

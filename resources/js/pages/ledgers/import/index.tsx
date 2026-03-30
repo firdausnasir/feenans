@@ -8,7 +8,6 @@ import {
     parse as parseImport,
     storeMapping as storeImportMapping,
 } from '@/actions/App/Http/Controllers/Ledger/ImportController';
-import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -511,14 +510,7 @@ export default function ImportIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Import Transactions — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex items-center justify-between">
-                    <Heading
-                        title="Import Transactions"
-                        description="Import transactions from a CSV file in 3 easy steps."
-                    />
-                </div>
-
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
                 <>
                     {/* Step indicator */}
                     <div className="flex items-center justify-center gap-2 sm:gap-4">

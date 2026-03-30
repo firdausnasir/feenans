@@ -12,7 +12,6 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -370,48 +369,24 @@ export default function FinancialHealthPage() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} - Financial Health`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                {/* Header */}
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <Heading
-                            title="Reports"
-                            description="Track your net worth, savings rate, and overall financial health."
-                        />
-                        <div className="hidden items-center gap-2 sm:flex">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="financial-health"
-                            />
-                            <Button variant="outline" size="sm" asChild>
-                                <a
-                                    href={`/ledgers/${ledger.id}/reports/export-pdf`}
-                                >
-                                    Export PDF
-                                </a>
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 sm:hidden">
-                        <div className="min-w-0 flex-1">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="financial-health"
-                            />
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-1/4 shrink-0"
-                            asChild
-                        >
-                            <a
-                                href={`/ledgers/${ledger.id}/reports/export-pdf`}
-                            >
-                                Export PDF
-                            </a>
-                        </Button>
-                    </div>
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportViewSelect
+                        ledgerId={ledger.id}
+                        currentView="financial-health"
+                        className="shrink-0"
+                    />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:ml-auto sm:w-auto"
+                        asChild
+                    >
+                        <a href={`/ledgers/${ledger.id}/reports/export-pdf`}>
+                            Export PDF
+                        </a>
+                    </Button>
                 </div>
 
                 <Deferred data="health" fallback={<FinancialHealthSkeleton />}>

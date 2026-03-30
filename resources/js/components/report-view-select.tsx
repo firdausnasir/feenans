@@ -3,7 +3,7 @@ import {
     Select,
     SelectContent,
     SelectItem,
-    SelectTrigger
+    SelectTrigger,
 } from '@/components/ui/select';
 import {
     budgetPerformance as budgetPerformanceRoute,
@@ -15,6 +15,7 @@ import {
 type ReportViewSelectProps = {
     ledgerId: number;
     currentView: string;
+    className?: string;
 };
 
 const VIEWS = [
@@ -46,6 +47,7 @@ function getViewLabel(viewKey: string): string {
 export function ReportViewSelect({
     ledgerId,
     currentView,
+    className,
 }: ReportViewSelectProps) {
     return (
         <Select
@@ -53,7 +55,9 @@ export function ReportViewSelect({
             value={currentView}
             onValueChange={(val) => router.visit(getViewUrl(ledgerId, val))}
         >
-            <SelectTrigger className="w-[200px] bg-primary text-white [&_svg]:text-white/70">
+            <SelectTrigger
+                className={`w-[200px] bg-primary text-white [&_svg]:text-white/70 ${className ?? ''}`}
+            >
                 <span className="truncate">{getViewLabel(currentView)}</span>
             </SelectTrigger>
             <SelectContent>

@@ -421,9 +421,7 @@ export default function AdminMemberships() {
         >
             <Head title="Admin - Memberships" />
 
-            <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-                <h1 className="text-2xl font-bold">Memberships</h1>
-
+            <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
                 {/* Filters */}
                 <div className="flex flex-col gap-3 sm:flex-row">
                     <Input

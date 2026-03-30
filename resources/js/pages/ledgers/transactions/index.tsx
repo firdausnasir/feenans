@@ -2336,7 +2336,7 @@ export default function TransactionsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transactions`} />
 
-            <div className="flex h-full flex-1 flex-col gap-3 p-4 md:gap-4 md:p-6 lg:gap-5 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-3 p-4 md:gap-4 md:p-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                     <Card className="min-w-0 flex-1 py-1">
                         <CardContent className="px-4 py-2">

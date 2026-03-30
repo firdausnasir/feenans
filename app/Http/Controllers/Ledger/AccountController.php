@@ -27,8 +27,8 @@ class AccountController extends Controller
         $accountTypes = $ledger->accountTypes()->orderBy('position')->get();
 
         return Inertia::render('ledgers/accounts/index', [
-            'accounts' => fn () => $this->buildGroupedAccounts($ledger),
-            'accountTypes' => fn () => $accountTypes,
+            'accounts' => Inertia::defer(fn () => $this->buildGroupedAccounts($ledger), 'accounts'),
+            'accountTypes' => Inertia::defer(fn () => $accountTypes, 'accounts'),
             'netWorth' => Inertia::defer(fn () => $this->buildNetWorth($ledger)),
         ]);
     }

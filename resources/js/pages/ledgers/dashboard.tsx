@@ -185,6 +185,7 @@ export default function LedgerDashboard() {
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger!.name, href: dashboard.url(ledger!.id) },
+        { title: 'Dashboard', href: dashboard.url(ledger!.id) },
     ];
 
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
@@ -273,17 +274,9 @@ export default function LedgerDashboard() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={ledger!.name} />
 
-            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6 lg:p-8">
-                {/* Header + Cycle nav on same row */}
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight text-balance">
-                            {ledger!.name}
-                        </h1>
-                        <p className="text-sm text-pretty text-muted-foreground">
-                            Track balances, spending, and recent activity.
-                        </p>
-                    </div>
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                {/* Cycle nav */}
+                <div className="flex items-center justify-end">
                     <div className="flex shrink-0 items-center gap-1">
                         <Button
                             variant="ghost"
