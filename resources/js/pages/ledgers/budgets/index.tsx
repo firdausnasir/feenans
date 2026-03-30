@@ -7,7 +7,6 @@ import {
     store as storeBudget,
     update as updateBudget,
 } from '@/actions/App/Http/Controllers/Ledger/BudgetController';
-import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -336,12 +335,8 @@ export default function BudgetsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Budgets — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Budgets"
-                        description="Set spending limits and track your progress."
-                    />
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <Button className="w-full sm:w-auto" onClick={handleCreate}>
                         + New Budget
                     </Button>

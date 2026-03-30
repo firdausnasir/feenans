@@ -22,17 +22,12 @@ export default function LedgersIndex({ ledgers }: { ledgers: Ledger[] }) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Workspaces" />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
                 <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Workspaces
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Choose the workspace you want to work in. Each
-                            workspace acts as its own financial space.
-                        </p>
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Choose the workspace you want to work in. Each workspace
+                        acts as its own financial space.
+                    </p>
 
                     <Link
                         href={create()}

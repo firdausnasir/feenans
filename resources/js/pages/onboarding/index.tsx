@@ -36,6 +36,25 @@ type OnboardingData = {
     include_in_totals?: boolean;
 };
 
+type Step1FormData = {
+    name: string;
+    currency_code: string;
+    cycle_start_day: number;
+    seed_categories: boolean;
+};
+
+type Step2FormData = {
+    name: string;
+    account_type_id: number;
+    initial_balance: number;
+    statement_day: number;
+    include_in_totals: boolean;
+};
+
+type Step2AutosaveData = Step2FormData & {
+    account_name: string;
+};
+
 type Props = {
     step: 1 | 2 | 3;
     savedData: OnboardingData | null;
@@ -49,7 +68,7 @@ type Props = {
 // ──────────────────────────────────────────
 
 function Step1({ savedData }: { savedData: OnboardingData | null }) {
-    const form = useForm({
+    const form = useForm<Step1FormData>({
         name: savedData?.name ?? '',
         currency_code: savedData?.currency_code ?? 'MYR',
         cycle_start_day: savedData?.cycle_start_day ?? 1,
@@ -59,7 +78,7 @@ function Step1({ savedData }: { savedData: OnboardingData | null }) {
     // Debounced auto-save
     const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const scheduleAutosave = useCallback((data: Record<string, unknown>) => {
+    const scheduleAutosave = useCallback((data: Step1FormData) => {
         if (autosaveTimer.current) {
             clearTimeout(autosaveTimer.current);
         }
@@ -175,7 +194,7 @@ function Step2({
     const defaultAccountTypeId =
         savedData?.account_type_id ?? accountTypes[0]?.id ?? 0;
 
-    const form = useForm({
+    const form = useForm<Step2FormData>({
         name: savedData?.account_name ?? '',
         account_type_id: defaultAccountTypeId,
         initial_balance: savedData?.initial_balance ?? 0,
@@ -191,19 +210,21 @@ function Step2({
     // Debounced auto-save
     const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const scheduleAutosave = useCallback((data: Record<string, unknown>) => {
+    const scheduleAutosave = useCallback((data: Step2FormData) => {
         if (autosaveTimer.current) {
             clearTimeout(autosaveTimer.current);
         }
 
         autosaveTimer.current = setTimeout(() => {
+            const autosaveData: Step2AutosaveData = {
+                ...data,
+                account_name: data.name,
+            };
+
             router.post(
                 autosave().url,
                 {
-                    data: {
-                        ...data,
-                        account_name: data.name,
-                    },
+                    data: autosaveData,
                 },
                 { preserveState: true, preserveScroll: true },
             );

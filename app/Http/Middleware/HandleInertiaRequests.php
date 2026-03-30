@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Account;
+use App\Models\Ledger;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Middleware;
@@ -37,7 +40,8 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
-        $user?->loadMissing('membership');
+        $user = $this->resolveSharedUser($user);
+        $sharedUserAttributes = $user?->getAttributes() ?? [];
         $isAdminArea = str_starts_with($request->path(), 'admin');
         $availableLedgers = $user?->ledgers()->orderBy('name')->get(['id', 'name', 'currency_code']) ?? collect();
         $currentLedger = $request->route('ledger');
@@ -52,10 +56,12 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'email' => $user->email,
                     'avatar' => $user->avatar ?? null,
-                    'email_verified_at' => $user->email_verified_at?->toIso8601String(),
-                    'onboarding_step' => $user->onboarding_step,
-                    'is_admin' => (bool) $user->is_admin,
-                    'privacy_mode' => (bool) $user->privacy_mode,
+                    'email_verified_at' => array_key_exists('email_verified_at', $sharedUserAttributes)
+                        ? $user->email_verified_at?->toIso8601String()
+                        : null,
+                    'onboarding_step' => $sharedUserAttributes['onboarding_step'] ?? null,
+                    'is_admin' => (bool) ($sharedUserAttributes['is_admin'] ?? false),
+                    'privacy_mode' => (bool) ($sharedUserAttributes['privacy_mode'] ?? false),
                     'membership' => [
                         'tier' => $user->membership?->tier ?? 'free',
                         'is_premium' => $user->isPremium(),
@@ -120,16 +126,54 @@ class HandleInertiaRequests extends Middleware
                 }
 
                 return [
-                    'accounts' => $currentLedger->accounts()
-                        ->visible()
-                        ->orderBy('position')
-                        ->orderBy('name')
-                        ->get(['id', 'ledger_id', 'name', 'current_balance', 'color']),
+                    'accounts' => $this->transactionModalAccounts($currentLedger),
                     'categories' => $flatCategories,
                     'payees' => $currentLedger->payees()->orderBy('name')->get(),
                     'tags' => $currentLedger->tags()->orderBy('name')->get(),
                 ];
             }),
         ];
+    }
+
+    /**
+     * @return array<int, array{id: int, ledger_id: int, name: string, current_balance: string, color: ?string}>
+     */
+    private function transactionModalAccounts(Ledger $ledger): array
+    {
+        return $ledger->accounts()
+            ->visible()
+            ->select(['id', 'ledger_id', 'name', 'initial_balance', 'color'])
+            ->withCurrentBalance()
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Account $account) => [
+                'id' => $account->id,
+                'ledger_id' => $account->ledger_id,
+                'name' => $account->name,
+                'current_balance' => $account->current_balance,
+                'color' => $account->color,
+            ])
+            ->all();
+    }
+
+    private function resolveSharedUser(?User $user): ?User
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        $sharedAttributes = ['email_verified_at', 'onboarding_step', 'is_admin', 'privacy_mode'];
+
+        $missingSharedAttributes = collect($sharedAttributes)
+            ->contains(fn (string $attribute) => ! array_key_exists($attribute, $user->getAttributes()));
+
+        if ($missingSharedAttributes) {
+            return $user->fresh(['membership']);
+        }
+
+        $user->loadMissing('membership');
+
+        return $user;
     }
 }

@@ -1,6 +1,5 @@
 import { Deferred, Head, usePage } from '@inertiajs/react';
 import { AlertTriangle, BarChart3, CheckCircle, XCircle } from 'lucide-react';
-import Heading from '@/components/heading';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -172,18 +171,14 @@ function BudgetCard({ stat }: { stat: BudgetStat }) {
                         </span>
                     </span>
                     <span className="tabular-nums">
-                        Budget:{' '}
-                        {formatAbsAmount(stat.amount, privacyMode)}
+                        Budget: {formatAbsAmount(stat.amount, privacyMode)}
                     </span>
                 </div>
 
                 <div className="mt-1 text-xs">
                     {stat.remaining >= 0 ? (
                         <span className="text-foreground tabular-nums">
-                            {formatAbsAmount(
-                                stat.remaining,
-                                privacyMode,
-                            )}{' '}
+                            {formatAbsAmount(stat.remaining, privacyMode)}{' '}
                             remaining
                         </span>
                     ) : (
@@ -240,7 +235,6 @@ export default function BudgetPerformancePage() {
     const ledger = currentLedger!;
 
     const budgetStats = performance?.budget_stats ?? [];
-    const periodLabel = performance?.period_label ?? 'current period';
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -255,48 +249,24 @@ export default function BudgetPerformancePage() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} - Budget Performance`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                {/* Header */}
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <Heading
-                            title="Reports"
-                            description={`Budget performance for ${periodLabel}.`}
-                        />
-                        <div className="hidden items-center gap-2 sm:flex">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="budget-performance"
-                            />
-                            <Button variant="outline" size="sm" asChild>
-                                <a
-                                    href={`/ledgers/${ledger.id}/reports/export-pdf`}
-                                >
-                                    Export PDF
-                                </a>
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 sm:hidden">
-                        <div className="min-w-0 flex-1">
-                            <ReportViewSelect
-                                ledgerId={ledger.id}
-                                currentView="budget-performance"
-                            />
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-1/4 shrink-0"
-                            asChild
-                        >
-                            <a
-                                href={`/ledgers/${ledger.id}/reports/export-pdf`}
-                            >
-                                Export PDF
-                            </a>
-                        </Button>
-                    </div>
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportViewSelect
+                        ledgerId={ledger.id}
+                        currentView="budget-performance"
+                        className="shrink-0"
+                    />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:ml-auto sm:w-auto"
+                        asChild
+                    >
+                        <a href={`/ledgers/${ledger.id}/reports/export-pdf`}>
+                            Export PDF
+                        </a>
+                    </Button>
                 </div>
 
                 <Deferred

@@ -6,11 +6,34 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateMembershipRequest;
 use App\Models\MembershipChangeLog;
 use App\Models\User;
+use App\Models\UserMembership;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AdminMembershipController extends Controller
 {
+    private function membershipFor(User $user): UserMembership
+    {
+        $membership = $user->relationLoaded('membership')
+            ? $user->getRelation('membership')
+            : $user->membership()->first();
+
+        if ($membership instanceof UserMembership) {
+            $user->setRelation('membership', $membership);
+
+            return $membership;
+        }
+
+        $membership = $user->membership()->create([
+            'tier' => 'free',
+            'status' => 'active',
+        ]);
+
+        $user->setRelation('membership', $membership);
+
+        return $membership;
+    }
+
     /**
      * @return array{
      *     id: int,
@@ -23,7 +46,7 @@ class AdminMembershipController extends Controller
      */
     private function formatUserRow(User $user): array
     {
-        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
+        $membership = $this->membershipFor($user);
 
         return [
             'id' => $user->id,
@@ -86,7 +109,7 @@ class AdminMembershipController extends Controller
 
     public function update(UpdateMembershipRequest $request, User $user): JsonResponse
     {
-        $membership = $user->membership()->firstOrCreate([], ['tier' => 'free', 'status' => 'active']);
+        $membership = $this->membershipFor($user);
 
         $previousTier = $membership->tier;
         $previousStatus = $membership->status;

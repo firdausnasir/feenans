@@ -56,3 +56,19 @@ test('add transaction modal does not apply privacy mode to amounts', function ()
         ->not->toContain('MASKED_AMOUNT')
         ->not->toContain('privacyMode');
 });
+
+test('sidebar layout keeps the sticky header outside the overflow clipping container', function () {
+    $contents = frontendFile('layouts/app/app-sidebar-layout.tsx');
+
+    expect($contents)
+        ->toContain('<AppContent variant="sidebar">')
+        ->toContain('<AppSidebarHeader breadcrumbs={breadcrumbs} />')
+        ->toContain('className="min-w-0 overflow-x-hidden"')
+        ->not->toContain('<AppContent variant="sidebar" className="overflow-x-hidden">');
+});
+
+test('accounts desktop table matches the transactions table text size baseline', function () {
+    $contents = frontendFile('pages/ledgers/accounts/index.tsx');
+
+    expect($contents)->toContain('<table className="mt-1 w-full text-sm">');
+});

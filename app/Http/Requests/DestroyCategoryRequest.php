@@ -5,17 +5,16 @@ namespace App\Http\Requests;
 use App\Models\Category;
 use App\Models\Ledger;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class DestroyCategoryRequest extends FormRequest
+class DestroyCategoryRequest extends LedgerAuthorizationRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Determine the ledger policy ability required by this request.
      */
-    public function authorize(): bool
+    protected function ledgerAbility(): string
     {
-        return true;
+        return 'delete';
     }
 
     /**

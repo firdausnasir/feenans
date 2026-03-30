@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Requests\UpdateMembershipRequest;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Category;
@@ -8,6 +9,7 @@ use App\Models\MembershipChangeLog;
 use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
@@ -58,10 +60,56 @@ test('admin can access all admin pages', function () {
         ->assertInertia(fn (Assert $page) => $page->component('admin/memberships/index'));
 });
 
+test('UpdateMembershipRequest only authorizes admin users', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $user = User::factory()->create();
+
+    $nonAdminRequest = new UpdateMembershipRequest;
+    $nonAdminRequest->setUserResolver(fn () => $user);
+
+    expect($nonAdminRequest->authorize())->toBeFalse();
+
+    $adminRequest = new UpdateMembershipRequest;
+    $adminRequest->setUserResolver(fn () => $admin);
+
+    expect($adminRequest->authorize())->toBeTrue();
+});
+
+dataset('admin membership list routes', [
+    'users index' => 'admin.users.index',
+    'memberships index' => 'admin.memberships.index',
+]);
+
+test('admin membership list endpoints reuse eager loaded memberships', function (string $routeName) {
+    $admin = User::factory()->create(['is_admin' => true]);
+    User::factory()->count(3)->create();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    try {
+        $this->actingAs($admin)
+            ->getJson(route($routeName))
+            ->assertOk();
+    } finally {
+        $queries = collect(DB::getQueryLog());
+        DB::disableQueryLog();
+    }
+
+    $membershipSelectQueries = $queries
+        ->filter(fn (array $query) => str_starts_with(strtolower($query['query']), 'select'))
+        ->filter(fn (array $query) => str_contains($query['query'], 'user_memberships'))
+        ->count();
+
+    expect($membershipSelectQueries)->toBe(1);
+})->with('admin membership list routes');
+
 test('admin overview returns aggregate counts without ledger data', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $freeUser = User::factory()->create();
     $premiumUser = User::factory()->create();
+    $earlierThisWeek = now()->copy()->startOfWeek();
+    $expectedCreatedToday = $earlierThisWeek->isSameDay(now()) ? 3 : 2;
 
     $premiumUser->membership()->update([
         'tier' => 'premium',
@@ -77,7 +125,7 @@ test('admin overview returns aggregate counts without ledger data', function () 
     $category = $ledger->categories()->first() ?? Category::factory()->for($ledger)->create();
     $payee = Payee::factory()->for($ledger)->create();
 
-    // Create transactions: 2 today, 1 from 2 days ago (within week)
+    // Create transactions: 2 today, 1 earlier this week.
     Transaction::factory()->for($ledger)->for($account)->for($category)->for($payee)->create([
         'created_at' => now(),
     ]);
@@ -85,7 +133,7 @@ test('admin overview returns aggregate counts without ledger data', function () 
         'created_at' => now(),
     ]);
     Transaction::factory()->for($ledger)->for($account)->for($category)->for($payee)->create([
-        'created_at' => now()->subDay(),
+        'created_at' => $earlierThisWeek,
     ]);
 
     $response = $this->actingAs($admin)->getJson(route('admin.overview'));
@@ -97,7 +145,7 @@ test('admin overview returns aggregate counts without ledger data', function () 
         ->assertJsonPath('memberships.by_tier.free', 2)
         ->assertJsonPath('memberships.by_tier.premium', 1)
         ->assertJsonPath('ledgers.total', 1)
-        ->assertJsonPath('transactions.created_today', 2)
+        ->assertJsonPath('transactions.created_today', $expectedCreatedToday)
         ->assertJsonPath('transactions.created_this_week', 3)
         ->assertJsonMissing(['Private Household Ledger']);
 });

@@ -7,7 +7,6 @@ import {
     store as storeTag,
     update as updateTag,
 } from '@/actions/App/Http/Controllers/Ledger/TagController';
-import Heading from '@/components/heading';
 import { TagPill } from '@/components/tag-pill';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -195,12 +194,8 @@ export default function TagsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Tags — ${ledger.name}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Tags"
-                        description="Organize transactions with custom tags."
-                    />
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <Button className="w-full sm:w-auto" onClick={handleCreate}>
                         <Plus className="mr-1 size-4" />
                         New Tag
@@ -328,7 +323,9 @@ export default function TagsIndex() {
                                                             size="sm"
                                                             className="h-auto px-2 py-0.5 text-destructive hover:text-destructive"
                                                             onClick={() =>
-                                                                setDeleteTag(tag)
+                                                                setDeleteTag(
+                                                                    tag,
+                                                                )
                                                             }
                                                         >
                                                             <Trash2 className="size-3.5" />

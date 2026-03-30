@@ -10,7 +10,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('transaction index page renders the correct component', function () {
+test('transaction index page renders the correct component with native scroll transactions payload', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -35,10 +35,41 @@ test('transaction index page renders the correct component', function () {
         ->has('tags')
         ->missing('transactions')
         ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions.data', 1)
-            ->where('transactions.data.0.description', 'Initial deferred transaction')
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 1)
+                ->where('data.0.description', 'Initial deferred transaction')
+                ->where('current_page', 1)
+                ->where('next_page_url', null)
+                ->missing('total')
+                ->etc()
+            )
         )
     );
+});
+
+test('transaction index includes current balances for modal account options', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'initial_balance' => '100.00',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($account)->create([
+        'amount' => '-20.00',
+        'category_id' => null,
+        'payee_id' => null,
+        'transaction_date' => now()->toDateString(),
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('ledgers.transactions.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('accounts.0.name', 'Checking')
+            ->where('accounts.0.current_balance', '80.00')
+        );
 });
 
 test('uncategorized filter returns only non-transfer transactions without a category', function () {
@@ -72,8 +103,227 @@ test('uncategorized filter returns only non-transfer transactions without a cate
     $response->assertInertia(fn (Assert $page) => $page
         ->missing('transactions')
         ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions.data', 1)
-            ->where('transactions.data.0.description', 'No category')
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 1)
+                ->where('data.0.description', 'No category')
+                ->etc()
+            )
+        )
+    );
+});
+
+test('transaction index scroll payload includes transfer account data and split line relations for mobile rendering', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $sourceAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+    ]);
+    $destinationAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+    ]);
+    $foodCategory = Category::factory()->for($ledger)->create([
+        'name' => 'Food',
+    ]);
+    $travelCategory = Category::factory()->for($ledger)->create([
+        'name' => 'Travel',
+    ]);
+    $marketPayee = Payee::factory()->for($ledger)->create([
+        'name' => 'Market',
+    ]);
+    $airlinePayee = Payee::factory()->for($ledger)->create([
+        'name' => 'Airline',
+    ]);
+
+    $transferOut = Transaction::factory()->transferOut()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-21',
+    ]);
+
+    $transferIn = Transaction::factory()->transferIn()->for($ledger)->for($destinationAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-21',
+        'transfer_pair_id' => $transferOut->transfer_pair_id,
+    ]);
+
+    $transferOut->update(['transfer_pair_id' => $transferIn->transfer_pair_id]);
+
+    $splitTransaction = Transaction::factory()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Split purchase',
+        'transaction_date' => '2026-03-20',
+    ]);
+
+    $splitTransaction->splits()->createMany([
+        [
+            'category_id' => $foodCategory->id,
+            'payee_id' => $marketPayee->id,
+            'amount' => '-12.50',
+            'description' => 'Groceries',
+        ],
+        [
+            'category_id' => $travelCategory->id,
+            'payee_id' => $airlinePayee->id,
+            'amount' => '-7.50',
+            'description' => 'Baggage fee',
+        ],
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.transactions.index', $ledger));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->missing('transactions')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('transactions', fn (Assert $transactionsProp) => $transactionsProp
+                ->has('data', 3)
+                ->where('data', function ($transactions) use ($transferOut, $splitTransaction) {
+                    $transactions = collect($transactions);
+
+                    $transferPayload = $transactions->firstWhere('id', $transferOut->id);
+                    $splitPayload = $transactions->firstWhere('id', $splitTransaction->id);
+
+                    expect($transferPayload)->not->toBeNull();
+                    expect($splitPayload)->not->toBeNull();
+
+                    expect($transferPayload['transfer_pair']['id'] ?? null)->toBeInt();
+                    expect($transferPayload['transfer_pair']['account']['name'] ?? null)->toBe('Savings');
+
+                    expect($splitPayload['splits'] ?? [])->toHaveCount(2);
+
+                    $splitLines = collect($splitPayload['splits']);
+                    $groceries = $splitLines->firstWhere('description', 'Groceries');
+                    $baggageFee = $splitLines->firstWhere('description', 'Baggage fee');
+
+                    expect($groceries['category']['name'] ?? null)->toBe('Food');
+                    expect($groceries['payee']['name'] ?? null)->toBe('Market');
+                    expect($baggageFee['category']['name'] ?? null)->toBe('Travel');
+                    expect($baggageFee['payee']['name'] ?? null)->toBe('Airline');
+
+                    return true;
+                })
+                ->etc()
+            )
+        )
+    );
+});
+
+test('transaction index scroll payload keeps counterpart account data when only one transfer side is on the current page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $sourceAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+    ]);
+    $destinationAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+    ]);
+
+    $transferOut = Transaction::factory()->transferOut()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-22',
+    ]);
+
+    $transferIn = Transaction::factory()->transferIn()->for($ledger)->for($destinationAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-22',
+        'transfer_pair_id' => $transferOut->transfer_pair_id,
+    ]);
+
+    $transferOut->update(['transfer_pair_id' => $transferIn->transfer_pair_id]);
+
+    Transaction::factory()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Later transaction',
+        'transaction_date' => '2026-03-23',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Earlier transaction',
+        'transaction_date' => '2026-03-21',
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.transactions.index', [$ledger, 'per_page' => 2, 'page' => 2]));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->missing('transactions')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 2)
+                ->where('data.0.id', $transferOut->id)
+                ->where('data.0.transfer_pair.account.name', 'Savings')
+                ->etc()
+            )
+        )
+    );
+});
+
+test('transaction index transfer backfill stays within the current ledger', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $otherUser = User::factory()->create();
+    $otherLedger = Ledger::factory()->for($otherUser)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $otherAccountType = AccountType::factory()->for($otherLedger)->create();
+
+    $sourceAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+    ]);
+    $destinationAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+    ]);
+
+    $foreignAccount = Account::factory()->for($otherLedger)->for($otherAccountType)->create([
+        'name' => 'Foreign account',
+    ]);
+
+    $sharedPairId = 'pair-shared-across-ledgers';
+
+    $transferOut = Transaction::factory()->transferOut()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-22',
+        'transfer_pair_id' => $sharedPairId,
+    ]);
+
+    Transaction::factory()->transferIn()->for($ledger)->for($destinationAccount)->create([
+        'description' => 'Move to savings',
+        'transaction_date' => '2026-03-22',
+        'transfer_pair_id' => $sharedPairId,
+    ]);
+
+    Transaction::factory()->transferIn()->for($otherLedger)->for($foreignAccount)->create([
+        'description' => 'Other ledger transfer',
+        'transaction_date' => '2026-03-22',
+        'transfer_pair_id' => $sharedPairId,
+    ]);
+
+    Transaction::factory()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Later transaction',
+        'transaction_date' => '2026-03-23',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($sourceAccount)->create([
+        'description' => 'Earlier transaction',
+        'transaction_date' => '2026-03-21',
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.transactions.index', [$ledger, 'per_page' => 2, 'page' => 2]));
+
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->missing('transactions')
+        ->loadDeferredProps(fn (Assert $reload) => $reload
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 2)
+                ->where('data.0.id', $transferOut->id)
+                ->where('data.0.transfer_pair.account.name', 'Savings')
+                ->etc()
+            )
         )
     );
 });

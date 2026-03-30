@@ -152,7 +152,7 @@ export default function AdminDashboard() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Admin - Dashboard" />
-            <div className="space-y-6 p-4 md:p-6">
+            <div className="space-y-4 p-4 md:p-6">
                 {data ? (
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
                         {stats.map((stat) => (

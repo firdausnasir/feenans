@@ -9,6 +9,7 @@ use App\Notifications\BudgetExceeded;
 use App\Notifications\BudgetThresholdReached;
 use Carbon\CarbonImmutable;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Collection;
 
 class BudgetService
 {
@@ -67,6 +68,7 @@ class BudgetService
     public function getPeriodBounds(Budget $budget, Ledger $ledger): array
     {
         $today = CarbonImmutable::today();
+        $cycleBounds = $ledger->cycleBounds($today);
 
         return match ($budget->period) {
             'weekly' => [
@@ -78,8 +80,8 @@ class BudgetService
                 $today->endOfYear(),
             ],
             default => [
-                $ledger->cycleBounds($today)['start'],
-                $ledger->cycleBounds($today)['end'],
+                $cycleBounds['start'],
+                $cycleBounds['end'],
             ],
         };
     }
@@ -104,6 +106,8 @@ class BudgetService
         }
 
         $budgets = $query->get();
+        $spentByBudgetId = $this->getSpentByBudgetId($budgets, $ledger);
+        $unreadBudgetNotifications = $this->getUnreadBudgetNotificationLookup($user);
 
         foreach ($budgets as $budget) {
             $allocated = (float) $budget->amount;
@@ -112,27 +116,17 @@ class BudgetService
                 continue;
             }
 
-            $spent = $this->getSpent($budget, $ledger);
+            $spent = $spentByBudgetId[$budget->id] ?? 0.0;
             $percentage = round(($spent / $allocated) * 100, 1);
 
-            if ($percentage >= 100 && ! $this->hasUnreadBudgetNotification($user, $budget->id, 'budget_exceeded')) {
+            if ($percentage >= 100 && ! ($unreadBudgetNotifications[$this->budgetNotificationLookupKey($budget->id, 'budget_exceeded')] ?? false)) {
                 $user->notify(new BudgetExceeded($budget, $percentage, $spent));
-            } elseif ($percentage >= 80 && $percentage < 100 && ! $this->hasUnreadBudgetNotification($user, $budget->id, 'budget_threshold')) {
+                $unreadBudgetNotifications[$this->budgetNotificationLookupKey($budget->id, 'budget_exceeded')] = true;
+            } elseif ($percentage >= 80 && $percentage < 100 && ! ($unreadBudgetNotifications[$this->budgetNotificationLookupKey($budget->id, 'budget_threshold')] ?? false)) {
                 $user->notify(new BudgetThresholdReached($budget, $percentage, $spent));
+                $unreadBudgetNotifications[$this->budgetNotificationLookupKey($budget->id, 'budget_threshold')] = true;
             }
         }
-    }
-
-    private function hasUnreadBudgetNotification(User $user, int $budgetId, string $type): bool
-    {
-        return $user->unreadNotifications()
-            ->get()
-            ->contains(function (DatabaseNotification $notification) use ($budgetId, $type): bool {
-                $data = $notification->data;
-
-                return ($data['type'] ?? null) === $type
-                    && ($data['budget_id'] ?? null) === $budgetId;
-            });
     }
 
     /**
@@ -146,10 +140,11 @@ class BudgetService
             ->with('category')
             ->where('is_active', true)
             ->get();
+        $spentByBudgetId = $this->getSpentByBudgetId($budgets, $ledger);
 
-        return $budgets->map(function (Budget $budget) use ($ledger) {
+        return $budgets->map(function (Budget $budget) use ($ledger, $spentByBudgetId) {
             $allocated = (float) $budget->amount;
-            $spent = $this->getSpent($budget, $ledger);
+            $spent = $spentByBudgetId[$budget->id] ?? 0.0;
             $remaining = max(0, $allocated - $spent);
             $percentage = $allocated > 0 ? min(100, round(($spent / $allocated) * 100, 1)) : 0;
             [$periodStart, $periodEnd] = $this->getPeriodBounds($budget, $ledger);
@@ -171,5 +166,95 @@ class BudgetService
                 'start_date' => $budget->start_date?->toDateString(),
             ];
         })->all();
+    }
+
+    /**
+     * @param  Collection<int, Budget>  $budgets
+     * @return array<int, float>
+     */
+    private function getSpentByBudgetId(Collection $budgets, Ledger $ledger): array
+    {
+        if ($budgets->isEmpty()) {
+            return [];
+        }
+
+        $spentByBudgetId = [];
+
+        $budgets
+            ->groupBy(fn (Budget $budget): string => $this->getPeriodBoundsKey($budget, $ledger))
+            ->each(function (Collection $periodBudgets) use ($ledger, &$spentByBudgetId): void {
+                /** @var Budget $periodBudget */
+                $periodBudget = $periodBudgets->first();
+                [$periodStart, $periodEnd] = $this->getPeriodBounds($periodBudget, $ledger);
+
+                /** @var Collection<int, object> $periodSpendRows */
+                $periodSpendRows = $ledger->transactions()
+                    ->selectRaw('category_id, ABS(SUM(amount)) as spent')
+                    ->where('transaction_date', '>=', $periodStart)
+                    ->where('transaction_date', '<=', $periodEnd)
+                    ->where('amount', '<', 0)
+                    ->groupBy('category_id')
+                    ->get();
+
+                /** @var array{categories: array<int, float>, total: float} $periodSpend */
+                $periodSpend = $periodSpendRows->reduce(
+                    function (array $carry, object $row): array {
+                        $spent = (float) $row->spent;
+
+                        if ($row->category_id !== null) {
+                            $carry['categories'][(int) $row->category_id] = $spent;
+                        }
+
+                        $carry['total'] += $spent;
+
+                        return $carry;
+                    },
+                    ['categories' => [], 'total' => 0.0],
+                );
+
+                foreach ($periodBudgets as $budget) {
+                    $spentByBudgetId[$budget->id] = $budget->category_id === null
+                        ? $periodSpend['total']
+                        : (float) ($periodSpend['categories'][$budget->category_id] ?? 0.0);
+                }
+            });
+
+        return $spentByBudgetId;
+    }
+
+    private function getPeriodBoundsKey(Budget $budget, Ledger $ledger): string
+    {
+        [$periodStart, $periodEnd] = $this->getPeriodBounds($budget, $ledger);
+
+        return $periodStart->toDateString().'|'.$periodEnd->toDateString();
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function getUnreadBudgetNotificationLookup(User $user): array
+    {
+        $lookup = [];
+
+        $user->unreadNotifications()
+            ->get()
+            ->each(function (DatabaseNotification $notification) use (&$lookup): void {
+                $data = $notification->data;
+                $type = $data['type'] ?? null;
+                $budgetId = $data['budget_id'] ?? null;
+
+                if (! is_string($type) || ! is_numeric($budgetId)) {
+                    return;
+                }
+
+                $lookup[$this->budgetNotificationLookupKey((int) $budgetId, $type)] = true;
+            });
+
+        return $lookup;
+    }
+
+    private function budgetNotificationLookupKey(int $budgetId, string $type): string
+    {
+        return $type.'|'.$budgetId;
     }
 }

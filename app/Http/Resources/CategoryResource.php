@@ -23,10 +23,7 @@ class CategoryResource extends JsonResource
             'color' => $this->color,
             'icon' => $this->icon,
             'position' => $this->position,
-            'transactions_count' => $this->when(
-                $this->transactions_count !== null,
-                $this->transactions_count
-            ),
+            'transactions_count' => $this->whenCounted('transactions'),
             'children' => $this->whenLoaded(
                 'children',
                 fn () => CategoryResource::collection($this->children)->resolve()

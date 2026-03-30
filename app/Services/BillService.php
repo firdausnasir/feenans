@@ -9,10 +9,15 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class BillService
 {
+    private const AUTO_PROCESS_LOCK = 'bills:process-auto';
+
+    private const AUTO_PROCESS_LOCK_SECONDS = 300;
+
     public function __construct(private readonly TransactionService $transactionService) {}
 
     public function store(Ledger $ledger, array $data): Bill
@@ -153,33 +158,52 @@ class BillService
     {
         $today = CarbonImmutable::today();
 
-        $bills = Bill::query()
-            ->with('account', 'ledger')
-            ->active()
-            ->where('auto_create', true)
-            ->where('next_due_date', '<=', $today)
-            ->get();
+        Cache::lock(self::AUTO_PROCESS_LOCK, self::AUTO_PROCESS_LOCK_SECONDS)->get(function () use ($today): void {
+            $billIds = Bill::query()
+                ->active()
+                ->where('auto_create', true)
+                ->where('next_due_date', '<=', $today)
+                ->pluck('id');
 
-        foreach ($bills as $bill) {
-            // payBill() uses its own DB::transaction; Laravel handles nested transactions
-            // via savepoints, so nesting here is safe and intentional.
-            DB::transaction(function () use ($bill): void {
-                $missed = $this->computeMissedCycles($bill);
-                $cycles = max(1, $missed);
+            foreach ($billIds as $billId) {
+                $this->processLockedAutoBill((int) $billId, $today);
+            }
+        });
+    }
 
-                $dueDate = CarbonImmutable::parse($bill->next_due_date->toDateString());
+    private function processLockedAutoBill(int $billId, CarbonImmutable $today): void
+    {
+        // payBill() uses its own DB::transaction; Laravel handles nested transactions
+        // via savepoints, so nesting here is safe and intentional.
+        DB::transaction(function () use ($billId, $today): void {
+            /** @var Bill|null $bill */
+            $bill = Bill::query()
+                ->with('account', 'ledger')
+                ->lockForUpdate()
+                ->find($billId);
 
-                for ($i = 0; $i < $cycles; $i++) {
-                    $this->payBill($bill, ['date' => $dueDate]);
-                    $bill->refresh();
-                    $dueDate = $bill->next_due_date;
+            if (! $bill instanceof Bill
+                || ! $bill->is_active
+                || ! $bill->auto_create
+                || $bill->next_due_date->gt($today)) {
+                return;
+            }
 
-                    if ($bill->hasReachedEnd()) {
-                        break;
-                    }
+            $missed = $this->computeMissedCycles($bill);
+            $cycles = max(1, $missed);
+
+            $dueDate = CarbonImmutable::parse($bill->next_due_date->toDateString());
+
+            for ($i = 0; $i < $cycles; $i++) {
+                $this->payBill($bill, ['date' => $dueDate]);
+                $bill->refresh();
+                $dueDate = $bill->next_due_date;
+
+                if ($bill->hasReachedEnd()) {
+                    break;
                 }
-            });
-        }
+            }
+        });
     }
 
     /**

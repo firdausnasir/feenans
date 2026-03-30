@@ -5,6 +5,7 @@ import { CreditCard, Loader2, Paperclip, PlusCircle, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
+import { buildAddTransactionSubmitOptions } from '@/components/add-transaction-modal-options';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
@@ -433,6 +434,7 @@ export function AddTransactionModal({
 
         router.post(TransactionController.store.url(ledger.id), formData, {
             forceFormData: true,
+            ...buildAddTransactionSubmitOptions(),
             onSuccess: handleSuccess,
             onError: (errors) => {
                 setFormErrors(errors);

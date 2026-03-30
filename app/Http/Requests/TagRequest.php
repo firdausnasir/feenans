@@ -3,16 +3,15 @@
 namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 
-class TagRequest extends FormRequest
+class TagRequest extends LedgerAuthorizationRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Determine the ledger policy ability required by this request.
      */
-    public function authorize(): bool
+    protected function ledgerAbility(): string
     {
-        return true;
+        return $this->isMethod('post') ? 'view' : 'update';
     }
 
     /**

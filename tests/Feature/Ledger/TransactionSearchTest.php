@@ -47,8 +47,11 @@ test('search filters transactions by description', function () {
             ->where('filters.search', 'coffee')
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.description', 'Morning coffee at cafe')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.description', 'Morning coffee at cafe')
+                    ->etc()
+                )
             )
         );
 });
@@ -93,8 +96,11 @@ test('search filters transactions by notes', function () {
             ->where('filters.search', 'Birthday')
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 1)
-                ->where('transactions.data.0.description', 'Store purchase')
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 1)
+                    ->where('data.0.description', 'Store purchase')
+                    ->etc()
+                )
             )
         );
 });
@@ -123,12 +129,15 @@ test('search returns all transactions when search is empty', function () {
             ->where('filters.search', null)
             ->missing('transactions')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions.data', 3)
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 3)
+                    ->etc()
+                )
             )
         );
 });
 
-test('transaction index page renders immediate filters and defers transaction results', function () {
+test('transaction index page renders filters with native scroll transaction results', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -158,8 +167,11 @@ test('transaction index page renders immediate filters and defers transaction re
         ->has('tags', 0)
         ->missing('transactions')
         ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions.data', 1)
-            ->where('transactions.data.0.description', 'Test query result')
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 1)
+                ->where('data.0.description', 'Test query result')
+                ->etc()
+            )
         )
     );
 });

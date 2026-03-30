@@ -27,7 +27,9 @@ class TransactionResource extends JsonResource
             'notes' => $this->notes,
             'transaction_date' => $this->transaction_date?->toDateString(),
             'transfer_pair_id' => $this->transfer_pair_id,
-            'is_split' => $this->splits_count > 0 || ($this->relationLoaded('splits') && $this->splits->isNotEmpty()),
+            'splits_count' => $this->whenHas('splits_count'),
+            'is_split' => $this->whenHas('splits_count', fn () => $this->splits_count > 0, false)
+                || ($this->relationLoaded('splits') && $this->splits->isNotEmpty()),
             'attachments_count' => $this->whenCounted('attachments'),
             'account' => $this->whenLoaded('account', fn () => (new AccountResource($this->account))->resolve()),
             'category' => $this->whenLoaded('category', fn () => (new CategoryResource($this->category))->resolve()),

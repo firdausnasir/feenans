@@ -33,10 +33,10 @@ class TransactionService
     {
         $payeeName = $account->name;
 
-        return Payee::firstOrCreate(
-            ['ledger_id' => $ledger->id, 'name' => $payeeName],
-            ['is_active' => true]
-        );
+        return Payee::firstOrCreate([
+            'ledger_id' => $ledger->id,
+            'name' => $payeeName,
+        ]);
     }
 
     /**
@@ -370,7 +370,7 @@ class TransactionService
      */
     private function deleteAttachments(Transaction $transaction): void
     {
-        foreach ($transaction->attachments as $attachment) {
+        foreach ($transaction->attachments()->get() as $attachment) {
             Storage::delete($attachment->path);
             $attachment->delete();
         }

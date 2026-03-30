@@ -19,10 +19,7 @@ class TagResource extends JsonResource
             'ledger_id' => $this->ledger_id,
             'name' => $this->name,
             'color' => $this->color,
-            'transactions_count' => $this->when(
-                $this->transactions_count !== null,
-                $this->transactions_count
-            ),
+            'transactions_count' => $this->whenCounted('transactions'),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

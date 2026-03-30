@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Uri;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttachmentController extends Controller
@@ -83,6 +84,25 @@ class AttachmentController extends Controller
 
     private function redirectUrl(Request $request, Ledger $ledger, Transaction $transaction): string
     {
-        return $request->headers->get('referer') ?: route('ledgers.transactions.edit', [$ledger, $transaction]);
+        $fallback = route('ledgers.transactions.edit', [$ledger, $transaction]);
+        $referer = $request->headers->get('referer');
+
+        if (! is_string($referer) || $referer === '') {
+            return $fallback;
+        }
+
+        try {
+            $refererUri = Uri::of($referer);
+        } catch (\Throwable) {
+            return $fallback;
+        }
+
+        $currentOrigin = Uri::of($request->root());
+
+        if ($refererUri->scheme() !== $currentOrigin->scheme() || $refererUri->authority() !== $currentOrigin->authority()) {
+            return $fallback;
+        }
+
+        return (string) $refererUri;
     }
 }

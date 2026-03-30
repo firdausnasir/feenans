@@ -3,7 +3,6 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { update as updateRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
@@ -47,7 +46,7 @@ type FormData = {
     end_after_occurrences: string;
 };
 
-type FormErrors = Partial<Record<keyof FormData, string>>;
+type FormErrors = Partial<Record<keyof FormData | 'new_payee_name', string>>;
 
 export default function EditBill() {
     const { currentLedger } = usePage().props;
@@ -83,6 +82,7 @@ export default function EditBill() {
     });
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
+    const [newPayeeName, setNewPayeeName] = useState('');
 
     function setData<K extends keyof FormData>(key: K, value: FormData[K]) {
         setFormData((prev) => ({ ...prev, [key]: value }));
@@ -136,6 +136,10 @@ export default function EditBill() {
                 data.transaction_type === 'transfer'
                     ? null
                     : data.payee_id || null,
+            new_payee_name:
+                data.transaction_type === 'transfer'
+                    ? null
+                    : newPayeeName || null,
             recurrence_type: data.recurrence_type,
             recurrence_interval: data.recurrence_interval,
             recurrence_day: data.recurrence_day || null,
@@ -168,12 +172,7 @@ export default function EditBill() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Edit ${bill.name}`} />
 
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Edit Recurring Transaction"
-                    description="Update the recurring transaction details."
-                />
-
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
                 <form
                     onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
@@ -203,6 +202,7 @@ export default function EditBill() {
                                 if (value === 'transfer') {
                                     setData('category_id', '');
                                     setData('payee_id', '');
+                                    setNewPayeeName('');
 
                                     if (
                                         !data.to_account_id &&
@@ -336,15 +336,35 @@ export default function EditBill() {
                                         value: String(payee.id),
                                         label: payee.name,
                                     }))}
-                                    value={data.payee_id || null}
-                                    onValueChange={(value) =>
-                                        setData('payee_id', value ?? '')
+                                    value={
+                                        data.payee_id ||
+                                        (newPayeeName
+                                            ? `new:${newPayeeName}`
+                                            : null)
                                     }
+                                    onValueChange={(value) => {
+                                        setData('payee_id', value ?? '');
+                                        setNewPayeeName('');
+                                    }}
                                     placeholder="No payee"
                                     searchPlaceholder="Search payees..."
                                     allOption="No payee"
+                                    creatable
+                                    onCreate={(name) => {
+                                        setData('payee_id', '');
+                                        setNewPayeeName(name);
+                                    }}
+                                    createLabel={
+                                        newPayeeName
+                                            ? `${newPayeeName} (new)`
+                                            : undefined
+                                    }
                                 />
-                                <InputError message={errors.payee_id} />
+                                <InputError
+                                    message={
+                                        errors.payee_id ?? errors.new_payee_name
+                                    }
+                                />
                             </div>
                         </>
                     )}

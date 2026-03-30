@@ -27,8 +27,8 @@ class AccountController extends Controller
         $accountTypes = $ledger->accountTypes()->orderBy('position')->get();
 
         return Inertia::render('ledgers/accounts/index', [
-            'accounts' => fn () => $this->buildGroupedAccounts($ledger),
-            'accountTypes' => fn () => $accountTypes,
+            'accounts' => Inertia::defer(fn () => $this->buildGroupedAccounts($ledger), 'accounts'),
+            'accountTypes' => Inertia::defer(fn () => $accountTypes, 'accounts'),
             'netWorth' => Inertia::defer(fn () => $this->buildNetWorth($ledger)),
         ]);
     }
@@ -40,6 +40,7 @@ class AccountController extends Controller
     {
         $accounts = $ledger->accounts()
             ->with('accountType')
+            ->withCurrentBalance()
             ->visible()
             ->orderBy('position')
             ->orderBy('name')
@@ -55,6 +56,8 @@ class AccountController extends Controller
      */
     private function groupAccountsByTotals($accounts): array
     {
+        $accounts = self::loadCurrentBalanceAggregates($accounts);
+
         $groups = [
             ['key' => 'included', 'label' => 'Included in totals', 'filter' => true],
             ['key' => 'excluded', 'label' => 'Savings', 'filter' => false],
@@ -73,7 +76,7 @@ class AccountController extends Controller
                     'label' => $group['label'],
                     'accounts' => AccountResource::collection($filtered)->resolve(),
                     'total_balance' => number_format(
-                        $filtered->sum(fn ($a) => (float) $a->current_balance),
+                        $filtered->sum(fn (Account $account) => $account->currentBalanceAmount()),
                         2,
                         '.',
                         '',
@@ -92,6 +95,8 @@ class AccountController extends Controller
      */
     public static function groupAccountsByType($accounts, $accountTypes): array
     {
+        $accounts = self::loadCurrentBalanceAggregates($accounts);
+
         return $accountTypes
             ->map(function ($type) use ($accounts) {
                 $typeAccounts = $accounts->where('account_type_id', $type->id)->values();
@@ -109,7 +114,7 @@ class AccountController extends Controller
                     ],
                     'accounts' => AccountResource::collection($typeAccounts)->resolve(),
                     'total_balance' => number_format(
-                        $typeAccounts->sum(fn ($a) => (float) $a->current_balance),
+                        $typeAccounts->sum(fn (Account $account) => $account->currentBalanceAmount()),
                         2,
                         '.',
                         '',
@@ -121,6 +126,23 @@ class AccountController extends Controller
             ->all();
     }
 
+    private static function loadCurrentBalanceAggregates($accounts)
+    {
+        if ($accounts->isEmpty()) {
+            return $accounts;
+        }
+
+        $missingAggregates = $accounts->contains(
+            fn (Account $account) => ! array_key_exists('transactions_sum_amount', $account->getAttributes())
+        );
+
+        if ($missingAggregates) {
+            $accounts->loadSum('transactions', 'amount');
+        }
+
+        return $accounts;
+    }
+
     /**
      * @return array{assets: float, liabilities: float, net: float, trend: array}
      */
@@ -129,7 +151,7 @@ class AccountController extends Controller
         $flatAccounts = $ledger->accounts()
             ->visible()
             ->with('accountType')
-            ->withSum('transactions', 'amount')
+            ->withCurrentBalance()
             ->get()
             ->map(function ($account) {
                 $balance = (float) $account->initial_balance + (float) ($account->transactions_sum_amount ?? 0);

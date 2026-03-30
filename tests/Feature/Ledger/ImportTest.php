@@ -10,6 +10,16 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
+function pendingImportFilePathSessionKey(Ledger $ledger): string
+{
+    return "ledger-imports.{$ledger->id}.file_path";
+}
+
+function pendingImportFilePathSession(Ledger $ledger, string $path): array
+{
+    return [pendingImportFilePathSessionKey($ledger) => $path];
+}
+
 test('import page renders for authenticated user', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -130,6 +140,23 @@ test('parse can be completed through web routes', function () {
         });
 });
 
+test('parse stores the pending import file path in session for execute', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $csv = "date,amount,description\n2026-01-01,-25.00,Coffee\n2026-01-02,-30.00,Lunch";
+    $file = UploadedFile::fake()->createWithContent('import.csv', $csv);
+
+    $this->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file])
+        ->assertRedirect(route('ledgers.import.create', $ledger));
+
+    expect(session(pendingImportFilePathSessionKey($ledger)))->toBe(session('importParseResult.file_path'));
+});
+
 test('parse endpoint returns correct row count for larger CSV', function () {
     Storage::fake('local');
 
@@ -183,6 +210,7 @@ test('store imports transactions from mapped CSV', function () {
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -219,6 +247,7 @@ test('store can be completed through web routes', function () {
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -239,6 +268,73 @@ test('store can be completed through web routes', function () {
     Storage::disk('local')->assertMissing($path);
 });
 
+test('store rejects imports when there is no pending parsed file in session', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $path = 'imports/temp/no-session.csv';
+    Storage::disk('local')->put($path, "date,amount\n2026-01-01,-25.00");
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.execute', $ledger), [
+            'file_path' => $path,
+            'account_id' => $account->id,
+            'mapping' => [
+                'date' => 'date',
+                'amount' => 'amount',
+            ],
+            'skip_duplicates' => true,
+        ]);
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHasErrors('file_path');
+
+    expect($ledger->transactions()->count())->toBe(0);
+    Storage::disk('local')->assertExists($path);
+});
+
+test('store rejects file paths that do not match the pending parsed file in session', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $expectedPath = 'imports/temp/expected.csv';
+    $otherPath = 'imports/temp/other.csv';
+
+    Storage::disk('local')->put($expectedPath, "date,amount\n2026-01-01,-25.00");
+    Storage::disk('local')->put($otherPath, "date,amount\n2026-01-01,-50.00");
+
+    $response = $this
+        ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $expectedPath))
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.execute', $ledger), [
+            'file_path' => $otherPath,
+            'account_id' => $account->id,
+            'mapping' => [
+                'date' => 'date',
+                'amount' => 'amount',
+            ],
+            'skip_duplicates' => true,
+        ]);
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHasErrors('file_path');
+
+    expect($ledger->transactions()->count())->toBe(0);
+    Storage::disk('local')->assertExists($expectedPath);
+    Storage::disk('local')->assertExists($otherPath);
+});
+
 test('store imports income transactions when amount is positive', function () {
     Storage::fake('local');
 
@@ -253,6 +349,7 @@ test('store imports income transactions when amount is positive', function () {
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -292,6 +389,7 @@ test('store skips duplicate transactions when skip_duplicates is true', function
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -331,6 +429,7 @@ test('store imports all rows including duplicates when skip_duplicates is false'
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -361,6 +460,7 @@ test('store creates payees from CSV when payee column is mapped', function () {
 
     $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,
@@ -387,6 +487,7 @@ test('store returns error when import file is not found', function () {
 
     $response = $this
         ->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, 'imports/temp/nonexistent.csv'))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => 'imports/temp/nonexistent.csv',
@@ -415,6 +516,7 @@ test('store rejects account ids from another ledger', function () {
     Storage::disk('local')->put($path, "date,amount\n2026-01-01,-25.00");
 
     $response = $this->actingAs($user)
+        ->withSession(pendingImportFilePathSession($ledger, $path))
         ->from(route('ledgers.import.create', $ledger))
         ->post(route('ledgers.import.execute', $ledger), [
             'file_path' => $path,

@@ -7,7 +7,6 @@ import {
     store as storePayee,
     update as updatePayee,
 } from '@/actions/App/Http/Controllers/Ledger/PayeeController';
-import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -284,12 +283,8 @@ export default function PayeesIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} payees`} />
 
-            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Payees"
-                        description="Manage payees for this ledger."
-                    />
+            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                <div className="flex justify-end">
                     <Button
                         className="w-full sm:w-auto"
                         onClick={() => {

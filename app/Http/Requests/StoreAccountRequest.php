@@ -4,16 +4,19 @@ namespace App\Http\Requests;
 
 use App\Models\Ledger;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreAccountRequest extends FormRequest
+class StoreAccountRequest extends LedgerAuthorizationRequest
 {
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
+        if (! parent::authorize()) {
+            return false;
+        }
+
         if ($this->user()->isPremium()) {
             return true;
         }
@@ -21,7 +24,7 @@ class StoreAccountRequest extends FormRequest
         /** @var Ledger $ledger */
         $ledger = $this->route('ledger');
 
-        return $ledger instanceof Ledger && $ledger->accounts()->count() < 7;
+        return $ledger->accounts()->count() < 7;
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Services\BudgetService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 test('budget service stores a budget', function () {
     $ledger = Ledger::factory()->create();
@@ -261,4 +262,59 @@ test('budget service getBudgetsWithStats skips inactive budgets', function () {
     $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
 
     expect($stats)->toHaveCount(0);
+});
+
+test('budget service getBudgetsWithStats batches spend calculations for budgets in the same period', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
+
+    $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $categories = Category::factory()->for($ledger)->count(3)->create();
+
+    foreach ($categories as $category) {
+        Budget::query()->create([
+            'ledger_id' => $ledger->id,
+            'category_id' => $category->id,
+            'amount' => 100.00,
+            'period' => 'monthly',
+            'start_date' => '2026-03-01',
+            'is_active' => true,
+            'rollover' => false,
+        ]);
+
+        Transaction::factory()->for($ledger)->for($account)->for($category)->create([
+            'transaction_type' => TransactionType::Expense,
+            'amount' => '-25.00',
+            'transaction_date' => '2026-03-10',
+        ]);
+    }
+
+    Budget::query()->create([
+        'ledger_id' => $ledger->id,
+        'category_id' => null,
+        'amount' => 500.00,
+        'period' => 'monthly',
+        'start_date' => '2026-03-01',
+        'is_active' => true,
+        'rollover' => false,
+    ]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
+
+    $transactionQueries = collect(DB::getQueryLog())
+        ->filter(function (array $query): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'from "transactions"');
+        });
+
+    DB::disableQueryLog();
+
+    expect($stats)->toHaveCount(4)
+        ->and($transactionQueries)->toHaveCount(1);
 });

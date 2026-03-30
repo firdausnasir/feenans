@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -108,6 +109,8 @@ class ImportController extends Controller
         $total = count($allRows);
         $path = $file->store('imports/temp', $this->ledgerDisk());
 
+        $request->session()->put($this->pendingImportFilePathSessionKey($ledger), $path);
+
         $detectedBank = $this->detectBankFormat($headers);
         $suggestedMapping = $detectedBank !== null
             ? (self::BANK_MAPPINGS[$detectedBank] ?? null)
@@ -133,9 +136,11 @@ class ImportController extends Controller
         $this->authorize('view', $ledger);
 
         $validated = $request->validated();
-        $filePath = $validated['file_path'];
+        $filePath = (string) $request->session()->get($this->pendingImportFilePathSessionKey($ledger), '');
 
-        if (! Storage::disk($this->ledgerDisk())->exists($filePath)) {
+        if ($filePath === '' || ! Str::startsWith($filePath, 'imports/temp/') || ! Storage::disk($this->ledgerDisk())->exists($filePath)) {
+            $request->session()->forget($this->pendingImportFilePathSessionKey($ledger));
+
             return to_route('ledgers.import.create', $ledger)
                 ->withErrors(['file_path' => 'Import file not found. Please re-upload.']);
         }
@@ -143,7 +148,9 @@ class ImportController extends Controller
         $disk = Storage::disk($this->ledgerDisk());
         $stream = $disk->readStream($filePath);
 
-        if ($stream === null) {
+        if ($stream === false || $stream === null) {
+            $request->session()->forget($this->pendingImportFilePathSessionKey($ledger));
+
             return to_route('ledgers.import.create', $ledger)
                 ->withErrors(['file_path' => 'Import file could not be read. Please re-upload.']);
         }
@@ -263,6 +270,7 @@ class ImportController extends Controller
         ]);
 
         Storage::disk($this->ledgerDisk())->delete($filePath);
+        $request->session()->forget($this->pendingImportFilePathSessionKey($ledger));
 
         $message = "Imported {$imported} transactions";
 
@@ -271,6 +279,11 @@ class ImportController extends Controller
         }
 
         return to_route('ledgers.import.create', $ledger)->with('success', $message);
+    }
+
+    private function pendingImportFilePathSessionKey(Ledger $ledger): string
+    {
+        return "ledger-imports.{$ledger->id}.file_path";
     }
 
     public function storeMapping(StoreImportMappingRequest $request, Ledger $ledger): RedirectResponse

@@ -3,17 +3,16 @@
 namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateLedgerRequest extends FormRequest
+class UpdateLedgerRequest extends LedgerAuthorizationRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Determine the ledger policy ability required by this request.
      */
-    public function authorize(): bool
+    protected function ledgerAbility(): string
     {
-        return true;
+        return 'update';
     }
 
     /**

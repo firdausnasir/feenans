@@ -1,23 +1,22 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, InfiniteScroll, router, usePage } from '@inertiajs/react';
 import {
-    Copy,
+    ArrowRightLeft,
+    ChevronDown,
+    ChevronUp,
     MoreVertical,
     Paperclip,
-    Pencil,
     Receipt,
     Search,
     SlidersHorizontal,
-    Trash2,
     X,
 } from 'lucide-react';
+import type { ReactElement } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
-import Heading from '@/components/heading';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
-import { TransactionCard } from '@/components/transaction-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -60,6 +59,11 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import { useAttachments } from '@/hooks/use-attachments';
 import AppLayout from '@/layouts/app-layout';
@@ -87,21 +91,18 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import type { MobileTransactionListItem } from './mobile-transaction-groups';
+import { groupTransactionsForMobile } from './mobile-transaction-groups';
+import { MobileTransactionList } from './mobile-transaction-list';
+import { resolveTransferPairTitle } from './mobile-transaction-row-data';
+import type { Filters } from './query-params';
+import {
+    buildQueryParams,
+    deriveSelectionState,
+    EMPTY_FILTERS,
+} from './query-params';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-type Filters = {
-    search: string | null;
-    date_from: string;
-    date_to: string;
-    account_ids: string[];
-    category_ids: string[];
-    transaction_types: string[];
-    payee_ids: string[];
-    tag_ids: string[];
-    bill_id: string | null;
-    uncategorized: string | null;
-};
 
 type TransactionPageProps = {
     filters: Filters;
@@ -142,73 +143,14 @@ type FilterChip = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const EMPTY_FILTERS: Filters = {
-    search: null,
-    date_from: '',
-    date_to: '',
-    account_ids: [],
-    category_ids: [],
-    transaction_types: [],
-    payee_ids: [],
-    tag_ids: [],
-    bill_id: null,
-    uncategorized: null,
-};
-
 function amountColor(value: number): string {
     return value < 0 ? 'text-red-500 dark:text-red-400' : 'text-foreground';
-}
-
-function buildQueryParams(filters: Filters): Record<string, string | string[]> {
-    const params: Record<string, string | string[]> = {};
-
-    if (filters.search) {
-        params.search = filters.search;
-    }
-
-    if (filters.date_from) {
-        params.date_from = filters.date_from;
-    }
-
-    if (filters.date_to) {
-        params.date_to = filters.date_to;
-    }
-
-    if (filters.account_ids.length > 0) {
-        params['account_ids[]'] = filters.account_ids;
-    }
-
-    if (filters.category_ids.length > 0) {
-        params['category_ids[]'] = filters.category_ids;
-    }
-
-    if (filters.transaction_types.length > 0) {
-        params['transaction_types[]'] = filters.transaction_types;
-    }
-
-    if (filters.payee_ids.length > 0) {
-        params['payee_ids[]'] = filters.payee_ids;
-    }
-
-    if (filters.tag_ids.length > 0) {
-        params['tag_ids[]'] = filters.tag_ids;
-    }
-
-    if (filters.bill_id) {
-        params.bill_id = filters.bill_id;
-    }
-
-    if (filters.uncategorized) {
-        params.uncategorized = filters.uncategorized;
-    }
-
-    return params;
 }
 
 function buildExportUrl(ledgerId: number, filters: Filters): string {
     const params = new URLSearchParams();
 
-    for (const [key, val] of Object.entries(filters)) {
+    for (const [key, val] of Object.entries(buildQueryParams(filters))) {
         if (Array.isArray(val)) {
             for (const v of val) {
                 params.append(`${key}[]`, v);
@@ -1198,27 +1140,154 @@ function TransactionListSkeleton() {
 
             {/* Mobile skeleton */}
             <div className="space-y-3 sm:hidden">
-                {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                        key={i}
-                        className="rounded-lg border border-border p-4"
-                    >
-                        <div className="flex items-start justify-between">
-                            <div className="space-y-2">
-                                <Skeleton className="h-4 w-32" />
-                                <Skeleton className="h-3.5 w-24" />
-                                <Skeleton className="h-3 w-48" />
-                            </div>
-                            <Skeleton className="h-4 w-20" />
-                        </div>
-                        <div className="mt-2 flex items-center gap-2">
-                            <Skeleton className="h-3 w-16" />
-                            <Skeleton className="h-3 w-20" />
+                <div className="flex items-center gap-2 px-1">
+                    <Skeleton className="size-4 rounded" />
+                    <Skeleton className="h-3 w-16" />
+                </div>
+
+                {Array.from({ length: 2 }).map((_, groupIndex) => (
+                    <div key={groupIndex} className="space-y-1.5">
+                        <Skeleton className="h-3 w-20" />
+
+                        <div className="overflow-hidden rounded-xl border border-border">
+                            {Array.from({
+                                length: groupIndex === 0 ? 3 : 2,
+                            }).map((_, rowIndex) => (
+                                <div
+                                    key={`${groupIndex}-${rowIndex}`}
+                                    className="border-t border-border px-3 py-3 first:border-t-0"
+                                >
+                                    <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                        <Skeleton className="mt-1 size-4 rounded" />
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="h-4 w-32" />
+                                            <Skeleton className="h-3 w-40" />
+                                            <Skeleton className="h-3 w-24" />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="ml-auto h-4 w-18" />
+                                            <div className="flex justify-end gap-1">
+                                                <Skeleton className="size-8 rounded" />
+                                                <Skeleton className="size-8 rounded" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 ))}
             </div>
         </>
+    );
+}
+
+type BottomScrollTriggerProps = {
+    hasMore: boolean;
+    loading: boolean;
+    onFetch: () => void;
+};
+
+function BottomScrollTrigger({
+    hasMore,
+    loading,
+    onFetch,
+}: BottomScrollTriggerProps) {
+    const fetchTriggeredRef = useRef(false);
+
+    useEffect(() => {
+        if (!loading) {
+            fetchTriggeredRef.current = false;
+        }
+    }, [loading]);
+
+    useEffect(() => {
+        if (!hasMore || typeof window === 'undefined') {
+            return;
+        }
+
+        const handleScroll = () => {
+            if (window.scrollY <= 0) {
+                return;
+            }
+
+            const scrolledToBottom =
+                window.innerHeight + window.scrollY >=
+                document.documentElement.scrollHeight - 16;
+
+            if (scrolledToBottom && !loading && !fetchTriggeredRef.current) {
+                fetchTriggeredRef.current = true;
+                onFetch();
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [hasMore, loading, onFetch]);
+
+    return (
+        <>
+            <div className="h-1" />
+            {loading && (
+                <>
+                    <div className="space-y-2 py-3 sm:hidden">
+                        {Array.from({ length: 2 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="rounded-xl border border-border px-3 py-3"
+                            >
+                                <div className="grid grid-cols-[auto_1fr_auto] gap-2">
+                                    <Skeleton className="mt-1 size-4 rounded" />
+                                    <div className="space-y-1.5">
+                                        <Skeleton className="h-4 w-32" />
+                                        <Skeleton className="h-3 w-48" />
+                                    </div>
+                                    <Skeleton className="h-4 w-16" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="hidden space-y-1 py-2 sm:block">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="flex items-center gap-3 border-b border-border px-2 py-3"
+                            >
+                                <Skeleton className="size-4 rounded" />
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="h-4 w-48 flex-1" />
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="size-4" />
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </>
+    );
+}
+
+type TruncatedCellTextProps = {
+    text?: string | null;
+    className?: string;
+};
+
+function TruncatedCellText({
+    text,
+    className,
+}: TruncatedCellTextProps): ReactElement | null {
+    if (!text) {
+        return null;
+    }
+
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span className={cn('block truncate', className)}>{text}</span>
+            </TooltipTrigger>
+            <TooltipContent>{text}</TooltipContent>
+        </Tooltip>
     );
 }
 
@@ -1245,7 +1314,7 @@ function FilterFields({
     ]);
 
     return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {/* Date range */}
             <div className="grid gap-1 sm:col-span-2">
                 <Label className="text-xs">Date Range</Label>
@@ -1403,9 +1472,6 @@ export default function TransactionsIndex() {
 
     // Selection state
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [allAcrossPages, setAllAcrossPages] = useState(false);
-    const [loadingSelectAll, setLoadingSelectAll] = useState(false);
-    const [excludedIds, setExcludedIds] = useState<number[]>([]);
 
     // Modal state
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(
@@ -1438,6 +1504,17 @@ export default function TransactionsIndex() {
 
         return !window.matchMedia('(min-width: 640px)').matches;
     });
+    const [expandedDesktopPairIds, setExpandedDesktopPairIds] = useState<
+        string[]
+    >([]);
+
+    function toggleDesktopTransferPair(pairId: string): void {
+        setExpandedDesktopPairIds((current) =>
+            current.includes(pairId)
+                ? current.filter((id) => id !== pairId)
+                : [...current, pairId],
+        );
+    }
 
     // Track mobile viewport
     useEffect(() => {
@@ -1483,13 +1560,12 @@ export default function TransactionsIndex() {
 
         router.get(transactionsIndex.url(ledger.id), params, {
             only: ['transactions', 'filters'],
+            reset: ['transactions'],
             preserveState: true,
             preserveScroll: true,
             replace: true,
         });
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     function handleResetFilters() {
@@ -1500,32 +1576,18 @@ export default function TransactionsIndex() {
             {},
             {
                 only: ['transactions', 'filters'],
+                reset: ['transactions'],
                 preserveState: true,
                 preserveScroll: true,
                 replace: true,
             },
         );
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     const handleSearchChange = useCallback((value: string | null) => {
         setLocalFilters((prev) => ({ ...prev, search: value }));
     }, []);
-
-    function handlePageChange(newPage: number) {
-        const params: Record<string, string | string[]> =
-            buildQueryParams(committedFilters);
-        params.page = String(newPage);
-
-        router.get(transactionsIndex.url(ledger.id), params, {
-            only: ['transactions'],
-            preserveState: true,
-            replace: true,
-        });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
 
     // ─── Selection ───────────────────────────────────────────────────────
 
@@ -1534,69 +1596,32 @@ export default function TransactionsIndex() {
         [transactions],
     );
 
-    const allSelected =
-        allVisibleIds.length > 0 &&
-        allVisibleIds.every((id) => selectedIds.includes(id));
-    const someSelected =
-        !allSelected && allVisibleIds.some((id) => selectedIds.includes(id));
-    const selectedCount = allAcrossPages
-        ? Math.max((transactions?.total ?? 0) - excludedIds.length, 0)
-        : selectedIds.length;
+    const { allSelected, someSelected } = deriveSelectionState({
+        allVisibleIds,
+        selectedIds,
+    });
+    const selectedCount = selectedIds.length;
 
     function handleSelectAll(checked: boolean | 'indeterminate') {
         if (checked === true) {
-            if (allAcrossPages) {
-                setExcludedIds((prev) =>
-                    prev.filter((id) => !allVisibleIds.includes(id)),
-                );
-            } else {
-                setSelectedIds((prev) => [
-                    ...new Set([...prev, ...allVisibleIds]),
-                ]);
-            }
+            setSelectedIds((prev) => [...new Set([...prev, ...allVisibleIds])]);
         } else {
-            if (allAcrossPages) {
-                setExcludedIds((prev) => [
-                    ...new Set([...prev, ...allVisibleIds]),
-                ]);
-            } else {
-                setSelectedIds((prev) =>
-                    prev.filter((id) => !allVisibleIds.includes(id)),
-                );
-            }
+            setSelectedIds((prev) =>
+                prev.filter((id) => !allVisibleIds.includes(id)),
+            );
         }
     }
 
     function handleSelectOne(id: number, checked: boolean | 'indeterminate') {
-        if (allAcrossPages) {
-            if (checked === true) {
-                setExcludedIds((prev) => prev.filter((item) => item !== id));
-            } else {
-                setExcludedIds((prev) => [...new Set([...prev, id])]);
-            }
+        if (checked === true) {
+            setSelectedIds((prev) => [...new Set([...prev, id])]);
         } else {
-            if (checked === true) {
-                setSelectedIds((prev) => [...prev, id]);
-            } else {
-                setSelectedIds((prev) => prev.filter((i) => i !== id));
-                setAllAcrossPages(false);
-            }
+            setSelectedIds((prev) => prev.filter((i) => i !== id));
         }
-    }
-
-    function handleSelectAllAcrossPages() {
-        setLoadingSelectAll(true);
-
-        setAllAcrossPages(true);
-        setSelectedIds([]);
-        setExcludedIds([]);
-        setLoadingSelectAll(false);
     }
 
     function clearSelection() {
         setSelectedIds([]);
-        setAllAcrossPages(false);
-        setExcludedIds([]);
     }
 
     // ─── CRUD ────────────────────────────────────────────────────────────
@@ -1604,15 +1629,9 @@ export default function TransactionsIndex() {
     function handleBulkDelete() {
         router.post(
             bulkDestroyRoute.url(ledger.id),
-            allAcrossPages
-                ? {
-                      apply_to_all_matching: true,
-                      excluded_ids: excludedIds,
-                      filters: committedFilters,
-                  }
-                : {
-                      ids: selectedIds,
-                  },
+            {
+                ids: selectedIds,
+            },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1634,19 +1653,11 @@ export default function TransactionsIndex() {
 
         router.post(
             bulkUpdateRoute.url(ledger.id),
-            allAcrossPages
-                ? {
-                      apply_to_all_matching: true,
-                      excluded_ids: excludedIds,
-                      filters: committedFilters,
-                      action: bulkAction,
-                      value: Number(bulkActionValue),
-                  }
-                : {
-                      ids: selectedIds,
-                      action: bulkAction,
-                      value: Number(bulkActionValue),
-                  },
+            {
+                ids: selectedIds,
+                action: bulkAction,
+                value: Number(bulkActionValue),
+            },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -1734,7 +1745,7 @@ export default function TransactionsIndex() {
 
         const txns = transactions.data;
 
-        if (txns.length === 0 || transactions.current_page !== 1) {
+        if (txns.length === 0) {
             return null;
         }
 
@@ -1907,33 +1918,6 @@ export default function TransactionsIndex() {
 
         return (
             <>
-                {/* Showing X-Y of Z */}
-                {txs.total > 0 && (
-                    <div className="mb-3 text-xs text-muted-foreground">
-                        Showing {txs.from}-{txs.to} of {txs.total}
-                    </div>
-                )}
-
-                {/* Select all across pages banner */}
-                {allSelected &&
-                    !allAcrossPages &&
-                    txs.total > txs.data.length && (
-                        <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-center text-sm">
-                            All {txs.data.length} transactions on this page are
-                            selected.{' '}
-                            <button
-                                type="button"
-                                className="font-medium text-primary hover:underline"
-                                disabled={loadingSelectAll}
-                                onClick={handleSelectAllAcrossPages}
-                            >
-                                {loadingSelectAll
-                                    ? 'Loading...'
-                                    : `Select all ${txs.total} matching transactions`}
-                            </button>
-                        </div>
-                    )}
-
                 {/* Desktop table */}
                 <Table className="hidden sm:table">
                     <TableHeader>
@@ -1951,7 +1935,7 @@ export default function TransactionsIndex() {
                                     aria-label="Select all"
                                 />
                             </TableHead>
-                            <TableHead>Date</TableHead>
+                            <TableHead className="w-24">Date</TableHead>
                             <TableHead className="hidden md:table-cell">
                                 Account
                             </TableHead>
@@ -1960,7 +1944,9 @@ export default function TransactionsIndex() {
                             </TableHead>
                             <TableHead>Payee</TableHead>
                             <TableHead>Description</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="w-28 text-right">
+                                Amount
+                            </TableHead>
                             <TableHead className="w-16 text-center">
                                 Files
                             </TableHead>
@@ -1968,252 +1954,378 @@ export default function TransactionsIndex() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {txs.data.map((tx) => {
-                            const amount = parseFloat(tx.amount);
+                        {(() => {
+                            const groups = groupTransactionsForMobile(txs.data);
+                            const flatItems: MobileTransactionListItem[] =
+                                groups.flatMap((group) => group.items);
 
-                            return (
-                                <TableRow
-                                    key={tx.id}
-                                    className="cursor-pointer"
-                                    onClick={() => setEditTransaction(tx)}
-                                >
-                                    <TableCell
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <Checkbox
-                                            checked={
-                                                allAcrossPages
-                                                    ? !excludedIds.includes(
-                                                          tx.id,
-                                                      )
-                                                    : selectedIds.includes(
-                                                          tx.id,
-                                                      )
+                            return flatItems.flatMap((item) => {
+                                if (item.kind === 'transfer_pair') {
+                                    const outgoing =
+                                        item.transactions.find(
+                                            (t) =>
+                                                parseFloat(t.amount ?? '0') < 0,
+                                        ) ?? item.transactions[0];
+                                    const isPairExpanded =
+                                        expandedDesktopPairIds.includes(
+                                            item.pairId,
+                                        );
+                                    const pairTitle = resolveTransferPairTitle(
+                                        item.transactions,
+                                    );
+                                    const isPairSelected =
+                                        item.transactions.every((t) =>
+                                            selectedIds.includes(t.id),
+                                        );
+
+                                    const rows: ReactElement[] = [
+                                        <TableRow
+                                            key={`pair-${item.pairId}`}
+                                            className="cursor-pointer"
+                                            onClick={() =>
+                                                toggleDesktopTransferPair(
+                                                    item.pairId,
+                                                )
                                             }
-                                            onCheckedChange={(c) =>
-                                                handleSelectOne(tx.id, c)
-                                            }
-                                        />
-                                    </TableCell>
-                                    <TableCell className="whitespace-nowrap">
-                                        {formatDate(tx.transaction_date)}
-                                    </TableCell>
-                                    <TableCell className="hidden md:table-cell">
-                                        {tx.account?.name}
-                                    </TableCell>
-                                    <TableCell className="hidden lg:table-cell">
-                                        {tx.category?.name}
-                                    </TableCell>
-                                    <TableCell>{tx.payee?.name}</TableCell>
-                                    <TableCell>{tx.description}</TableCell>
-                                    <TableCell
-                                        className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
-                                    >
-                                        {formatAbsAmount(amount, privacyMode)}
-                                    </TableCell>
-                                    <TableCell
-                                        className="text-center"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        {(tx.attachments_count ?? 0) > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setAttachmentModalTransaction(
-                                                        tx,
-                                                    )
+                                        >
+                                            <TableCell
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
                                                 }
-                                                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                                             >
-                                                <Paperclip className="size-3" />
-                                                {tx.attachments_count}
-                                            </button>
-                                        )}
-                                    </TableCell>
-                                    <TableCell
-                                        onClick={(e) => e.stopPropagation()}
+                                                <Checkbox
+                                                    checked={isPairSelected}
+                                                    onCheckedChange={(c) =>
+                                                        item.transactions.forEach(
+                                                            (t) =>
+                                                                handleSelectOne(
+                                                                    t.id,
+                                                                    c,
+                                                                ),
+                                                        )
+                                                    }
+                                                />
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                                {formatDate(
+                                                    outgoing.transaction_date,
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="hidden md:table-cell">
+                                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-sm text-muted-foreground italic">
+                                                                <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                                                                Transfer
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            {pairTitle}
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleDesktopTransferPair(
+                                                                item.pairId,
+                                                            );
+                                                        }}
+                                                    >
+                                                        {isPairExpanded ? (
+                                                            <ChevronUp className="size-4" />
+                                                        ) : (
+                                                            <ChevronDown className="size-4" />
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="hidden lg:table-cell">
+                                                <TruncatedCellText
+                                                    text={
+                                                        outgoing.category?.name
+                                                    }
+                                                />
+                                            </TableCell>
+                                            <TableCell />
+                                            <TableCell>
+                                                <TruncatedCellText
+                                                    text={outgoing.description}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium text-foreground tabular-nums">
+                                                {formatAbsAmount(
+                                                    outgoing.amount,
+                                                    privacyMode,
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                className="text-center"
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                            >
+                                                {(outgoing.attachments_count ??
+                                                    0) > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setAttachmentModalTransaction(
+                                                                outgoing,
+                                                            )
+                                                        }
+                                                        className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                                                    >
+                                                        <Paperclip className="size-3" />
+                                                        {
+                                                            outgoing.attachments_count
+                                                        }
+                                                    </button>
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                            >
+                                                <div className="flex items-center gap-0.5">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                            asChild
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                            >
+                                                                <MoreVertical className="size-4" />
+                                                            </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
+                                                                    setEditTransaction(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
+                                                                    handleDuplicate(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Duplicate
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                className="text-destructive focus:text-destructive"
+                                                                onClick={() =>
+                                                                    setDeleteConfirmTransaction(
+                                                                        outgoing,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>,
+                                    ];
+
+                                    if (isPairExpanded) {
+                                        item.transactions.forEach((tx) => {
+                                            const txAmount = parseFloat(
+                                                tx.amount ?? '0',
+                                            );
+                                            rows.push(
+                                                <TableRow
+                                                    key={`pair-leg-${tx.id}`}
+                                                    className="bg-muted/30 hover:bg-muted/30"
+                                                >
+                                                    <TableCell />
+                                                    <TableCell />
+                                                    <TableCell className="hidden pl-8 text-sm text-muted-foreground md:table-cell">
+                                                        <TruncatedCellText
+                                                            text={
+                                                                tx.account?.name
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="hidden lg:table-cell" />
+                                                    <TableCell>
+                                                        <TruncatedCellText
+                                                            text={
+                                                                tx.payee?.name
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell />
+                                                    <TableCell
+                                                        className={cn(
+                                                            'text-right text-sm tabular-nums',
+                                                            amountColor(
+                                                                txAmount,
+                                                            ),
+                                                        )}
+                                                    >
+                                                        {formatAbsAmount(
+                                                            txAmount,
+                                                            privacyMode,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell />
+                                                    <TableCell />
+                                                </TableRow>,
+                                            );
+                                        });
+                                    }
+
+                                    return rows;
+                                }
+
+                                // Regular transaction (kind === 'transaction')
+                                const tx = item.transaction;
+                                const amount = parseFloat(tx.amount);
+
+                                return [
+                                    <TableRow
+                                        key={tx.id}
+                                        className="cursor-pointer"
+                                        onClick={() => setEditTransaction(tx)}
                                     >
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
+                                        <TableCell
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <Checkbox
+                                                checked={selectedIds.includes(
+                                                    tx.id,
+                                                )}
+                                                onCheckedChange={(c) =>
+                                                    handleSelectOne(tx.id, c)
+                                                }
+                                            />
+                                        </TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            {formatDate(tx.transaction_date)}
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell">
+                                            <TruncatedCellText
+                                                text={tx.account?.name}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="hidden lg:table-cell">
+                                            <TruncatedCellText
+                                                text={tx.category?.name}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <TruncatedCellText
+                                                text={tx.payee?.name}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <TruncatedCellText
+                                                text={tx.description}
+                                            />
+                                        </TableCell>
+                                        <TableCell
+                                            className={`text-right font-medium tabular-nums ${amountColor(amount)}`}
+                                        >
+                                            {formatAbsAmount(
+                                                amount,
+                                                privacyMode,
+                                            )}
+                                        </TableCell>
+                                        <TableCell
+                                            className="text-center"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {(tx.attachments_count ?? 0) >
+                                                0 && (
                                                 <button
                                                     type="button"
-                                                    className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-                                                >
-                                                    <MoreVertical className="size-4" />
-                                                </button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem
                                                     onClick={() =>
-                                                        setEditTransaction(tx)
-                                                    }
-                                                >
-                                                    Edit
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                    onClick={() =>
-                                                        handleDuplicate(tx)
-                                                    }
-                                                >
-                                                    Duplicate
-                                                </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuItem
-                                                    className="text-destructive focus:text-destructive"
-                                                    onClick={() =>
-                                                        setDeleteConfirmTransaction(
+                                                        setAttachmentModalTransaction(
                                                             tx,
                                                         )
                                                     }
+                                                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                                                 >
-                                                    Delete
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
+                                                    <Paperclip className="size-3" />
+                                                    {tx.attachments_count}
+                                                </button>
+                                            )}
+                                        </TableCell>
+                                        <TableCell
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                                                    >
+                                                        <MoreVertical className="size-4" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            setEditTransaction(
+                                                                tx,
+                                                            )
+                                                        }
+                                                    >
+                                                        Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            handleDuplicate(tx)
+                                                        }
+                                                    >
+                                                        Duplicate
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        className="text-destructive focus:text-destructive"
+                                                        onClick={() =>
+                                                            setDeleteConfirmTransaction(
+                                                                tx,
+                                                            )
+                                                        }
+                                                    >
+                                                        Delete
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>,
+                                ];
+                            });
+                        })()}
                     </TableBody>
                 </Table>
 
-                {/* Mobile cards */}
-                <div className="space-y-3 sm:hidden">
-                    {/* Mobile select all */}
-                    <div className="flex items-center gap-2">
-                        <Checkbox
-                            checked={
-                                allSelected
-                                    ? true
-                                    : someSelected
-                                      ? 'indeterminate'
-                                      : false
-                            }
-                            onCheckedChange={handleSelectAll}
-                            aria-label="Select all"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                            Select all
-                        </span>
-                    </div>
-
-                    {txs.data.map((tx) => (
-                        <TransactionCard
-                            key={tx.id}
-                            transaction={tx}
-                            selectable
-                            selected={
-                                allAcrossPages
-                                    ? !excludedIds.includes(tx.id)
-                                    : selectedIds.includes(tx.id)
-                            }
-                            onSelectChange={(c) => handleSelectOne(tx.id, c)}
-                            runningBalance={runningBalances?.get(tx.id) ?? null}
-                            onAttachmentClick={() =>
-                                setAttachmentModalTransaction(tx)
-                            }
-                            actions={[
-                                {
-                                    label: 'Edit',
-                                    icon: <Pencil className="size-3.5" />,
-                                    onClick: () => setEditTransaction(tx),
-                                },
-                                {
-                                    label: 'Duplicate',
-                                    icon: <Copy className="size-3.5" />,
-                                    onClick: () => handleDuplicate(tx),
-                                },
-                                {
-                                    label: 'Delete',
-                                    icon: <Trash2 className="size-3.5" />,
-                                    onClick: () =>
-                                        setDeleteConfirmTransaction(tx),
-                                    variant: 'destructive' as const,
-                                    separator: true,
-                                },
-                            ]}
-                        />
-                    ))}
-                </div>
-
-                {/* Pagination */}
-                {txs.last_page > 1 && (
-                    <div className="mt-4 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">
-                            Page {txs.current_page} of {txs.last_page}
-                        </span>
-
-                        {/* Mobile: Previous/Next only */}
-                        <div className="flex gap-1 sm:hidden">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!txs.prev_page_url}
-                                onClick={() =>
-                                    handlePageChange(txs.current_page - 1)
-                                }
-                            >
-                                Previous
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!txs.next_page_url}
-                                onClick={() =>
-                                    handlePageChange(txs.current_page + 1)
-                                }
-                            >
-                                Next
-                            </Button>
-                        </div>
-
-                        {/* Desktop: Full page links */}
-                        <div className="hidden gap-1 sm:flex">
-                            {txs.links.map((link, i) => {
-                                if (!link.url) {
-                                    return (
-                                        <Button
-                                            key={i}
-                                            variant="outline"
-                                            size="sm"
-                                            disabled
-                                            className="h-7 px-2.5 text-xs"
-                                            dangerouslySetInnerHTML={{
-                                                __html: link.label,
-                                            }}
-                                        />
-                                    );
-                                }
-
-                                const linkUrl = new URL(
-                                    link.url,
-                                    window.location.origin,
-                                );
-                                const linkPage = parseInt(
-                                    linkUrl.searchParams.get('page') ?? '1',
-                                    10,
-                                );
-
-                                return (
-                                    <Button
-                                        key={i}
-                                        variant={
-                                            link.active ? 'default' : 'outline'
-                                        }
-                                        size="sm"
-                                        className="h-7 px-2.5 text-xs"
-                                        onClick={() =>
-                                            handlePageChange(linkPage)
-                                        }
-                                        dangerouslySetInnerHTML={{
-                                            __html: link.label,
-                                        }}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
+                <MobileTransactionList
+                    transactions={txs.data}
+                    allSelected={allSelected}
+                    someSelected={someSelected}
+                    selectedIds={selectedIds}
+                    runningBalances={runningBalances}
+                    onSelectAll={handleSelectAll}
+                    onSelectOne={handleSelectOne}
+                    onEdit={setEditTransaction}
+                    onDuplicate={handleDuplicate}
+                    onDelete={setDeleteConfirmTransaction}
+                    onAttachmentClick={setAttachmentModalTransaction}
+                />
             </>
         );
     }
@@ -2224,171 +2336,165 @@ export default function TransactionsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} transactions`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                {/* Header */}
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <Heading
-                        title="Transactions"
-                        description={`Review all activity in ${ledger.name}.`}
-                    />
-                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                        <Button
-                            variant="outline"
-                            size="default"
-                            className="flex-1 sm:flex-initial"
-                            asChild
-                        >
-                            <a
-                                href={buildExportUrl(
-                                    ledger.id,
-                                    committedFilters,
-                                )}
-                                download
-                            >
-                                Export CSV
-                            </a>
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Filters bar */}
-                <Card>
-                    <CardContent className="px-4 py-3">
-                        <div className="flex flex-col gap-2">
-                            {/* Top row: search + filter toggle */}
-                            <div className="flex items-center gap-2">
-                                <div className="relative flex-1">
-                                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Search transactions..."
-                                        value={localFilters.search ?? ''}
-                                        onChange={(e) =>
-                                            handleSearchChange(
-                                                e.target.value || null,
-                                            )
-                                        }
-                                        className="pl-9"
-                                    />
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 gap-1.5"
-                                    onClick={() => setFiltersOpen(!filtersOpen)}
-                                >
-                                    <SlidersHorizontal className="size-4" />
-                                    <span className="hidden sm:inline">
-                                        Filters
-                                    </span>
-                                    {activeFilterCount > 0 && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="ml-0.5 size-5 rounded-full p-0 text-[10px]"
-                                        >
-                                            {activeFilterCount}
-                                        </Badge>
-                                    )}
-                                </Button>
-                            </div>
-
-                            {/* Filter chips row (from committed state) */}
-                            {filterChips.length > 0 && (
+            <div className="flex h-full flex-1 flex-col gap-3 p-4 md:gap-4 md:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <Card className="min-w-0 flex-1 py-1">
+                        <CardContent className="px-4 py-2">
+                            <div className="flex flex-col gap-1">
+                                {/* Top row: search + filter toggle */}
                                 <div className="flex items-center gap-2">
-                                    <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-                                        {filterChips.map((chip) => (
-                                            <Badge
-                                                key={chip.key}
-                                                variant="secondary"
-                                                className="shrink-0 gap-1 pr-1 text-xs font-normal"
-                                            >
-                                                <span className="max-w-[120px] truncate">
-                                                    {chip.label}
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextFilters =
-                                                            chip.onRemove(
-                                                                localFilters,
-                                                            );
-                                                        setLocalFilters(
-                                                            nextFilters,
-                                                        );
-                                                        applyFiltersWith(
-                                                            nextFilters,
-                                                        );
-                                                    }}
-                                                    className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
-                                                >
-                                                    <X className="size-3" />
-                                                </button>
-                                            </Badge>
-                                        ))}
+                                    <div className="relative flex-1">
+                                        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search transactions..."
+                                            value={localFilters.search ?? ''}
+                                            onChange={(e) =>
+                                                handleSearchChange(
+                                                    e.target.value || null,
+                                                )
+                                            }
+                                            className="pl-9"
+                                        />
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                                        onClick={handleResetFilters}
-                                    >
-                                        Clear all
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Unsaved changes indicator */}
-                            {filtersChanged && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-amber-600 dark:text-amber-400">
-                                        Filters changed
-                                    </span>
                                     <Button
-                                        size="sm"
-                                        variant="default"
-                                        className="h-6 px-2 text-xs"
-                                        onClick={applyFilters}
-                                    >
-                                        Apply
-                                    </Button>
-                                </div>
-                            )}
-
-                            {/* Desktop filter panel (inline) */}
-                            <div
-                                className={`flex-col gap-3 ${filtersOpen && !isMobile ? 'flex' : 'hidden'}`}
-                            >
-                                <FilterFields
-                                    localFilters={localFilters}
-                                    setLocalFilters={setLocalFilters}
-                                    accounts={accounts}
-                                    categories={categories}
-                                    payees={payees}
-                                    tags={tags}
-                                />
-                                <div className="flex items-center gap-2">
-                                    <Button size="sm" onClick={applyFilters}>
-                                        Apply filters
-                                    </Button>
-                                    <Button
-                                        size="sm"
                                         variant="outline"
-                                        onClick={handleResetFilters}
+                                        size="sm"
+                                        className="shrink-0 gap-1.5"
+                                        onClick={() =>
+                                            setFiltersOpen(!filtersOpen)
+                                        }
                                     >
-                                        Reset
-                                    </Button>
-                                    {activeFilterCount > 0 && (
-                                        <span className="text-xs text-muted-foreground">
-                                            {activeFilterCount} filter
-                                            {activeFilterCount !== 1
-                                                ? 's'
-                                                : ''}{' '}
-                                            active
+                                        <SlidersHorizontal className="size-4" />
+                                        <span className="hidden sm:inline">
+                                            Filters
                                         </span>
-                                    )}
+                                        {activeFilterCount > 0 && (
+                                            <Badge
+                                                variant="secondary"
+                                                className="ml-0.5 size-5 rounded-full p-0 text-[10px]"
+                                            >
+                                                {activeFilterCount}
+                                            </Badge>
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {/* Filter chips row (from committed state) */}
+                                {filterChips.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5">
+                                            {filterChips.map((chip) => (
+                                                <Badge
+                                                    key={chip.key}
+                                                    variant="secondary"
+                                                    className="shrink-0 gap-1 py-0 pr-1 text-[11px] font-normal"
+                                                >
+                                                    <span className="max-w-[120px] truncate">
+                                                        {chip.label}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const nextFilters =
+                                                                chip.onRemove(
+                                                                    localFilters,
+                                                                );
+                                                            setLocalFilters(
+                                                                nextFilters,
+                                                            );
+                                                            applyFiltersWith(
+                                                                nextFilters,
+                                                            );
+                                                        }}
+                                                        className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
+                                                    >
+                                                        <X className="size-3" />
+                                                    </button>
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={handleResetFilters}
+                                        >
+                                            Clear all
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Unsaved changes indicator */}
+                                {filtersChanged && (
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                                            Filters changed
+                                        </span>
+                                        <Button
+                                            size="sm"
+                                            variant="default"
+                                            className="h-6 px-2 text-xs"
+                                            onClick={applyFilters}
+                                        >
+                                            Apply
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {/* Desktop filter panel (inline) */}
+                                <div
+                                    className={`flex-col gap-2 ${filtersOpen && !isMobile ? 'flex' : 'hidden'}`}
+                                >
+                                    <FilterFields
+                                        localFilters={localFilters}
+                                        setLocalFilters={setLocalFilters}
+                                        accounts={accounts}
+                                        categories={categories}
+                                        payees={payees}
+                                        tags={tags}
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                        <Button
+                                            size="sm"
+                                            onClick={applyFilters}
+                                        >
+                                            Apply filters
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleResetFilters}
+                                        >
+                                            Reset
+                                        </Button>
+                                        {activeFilterCount > 0 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                {activeFilterCount} filter
+                                                {activeFilterCount !== 1
+                                                    ? 's'
+                                                    : ''}{' '}
+                                                active
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+
+                    <Button
+                        variant="outline"
+                        size="default"
+                        className="w-full sm:w-auto sm:shrink-0"
+                        asChild
+                    >
+                        <a
+                            href={buildExportUrl(ledger.id, committedFilters)}
+                            download
+                        >
+                            Export CSV
+                        </a>
+                    </Button>
+                </div>
 
                 {/* Mobile filter panel (bottom sheet) */}
                 <Sheet
@@ -2409,7 +2515,7 @@ export default function TransactionsIndex() {
                                 Narrow down your transactions
                             </SheetDescription>
                         </SheetHeader>
-                        <div className="flex flex-col gap-3 px-4">
+                        <div className="flex flex-col gap-2.5 px-4">
                             <FilterFields
                                 localFilters={localFilters}
                                 setLocalFilters={setLocalFilters}
@@ -2420,7 +2526,7 @@ export default function TransactionsIndex() {
                             />
                         </div>
                         <SheetFooter>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                                 <Button
                                     size="sm"
                                     onClick={() => {
@@ -2450,23 +2556,7 @@ export default function TransactionsIndex() {
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                         <span className="text-sm font-medium text-muted-foreground">
                             {selectedCount} selected
-                            {allAcrossPages && ' (all pages)'}
                         </span>
-                        {!allAcrossPages &&
-                            transactions &&
-                            transactions.total > transactions.data.length && (
-                                <Button
-                                    size="sm"
-                                    variant="link"
-                                    className="h-auto p-0 text-xs"
-                                    disabled={loadingSelectAll}
-                                    onClick={handleSelectAllAcrossPages}
-                                >
-                                    {loadingSelectAll
-                                        ? 'Loading...'
-                                        : `Select all ${transactions.total} transactions`}
-                                </Button>
-                            )}
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
                                 size="sm"
@@ -2514,14 +2604,25 @@ export default function TransactionsIndex() {
                 )}
 
                 {/* Transaction list */}
-                <div>
-                    <Deferred
+                {transactions ? (
+                    <InfiniteScroll
                         data="transactions"
-                        fallback={<TransactionListSkeleton />}
+                        manual
+                        onlyNext
+                        preserveUrl
+                        next={({ hasMore, loading, fetch }) => (
+                            <BottomScrollTrigger
+                                hasMore={hasMore}
+                                loading={loading}
+                                onFetch={fetch}
+                            />
+                        )}
                     >
-                        {transactions && renderTransactionList(transactions)}
-                    </Deferred>
-                </div>
+                        {renderTransactionList(transactions)}
+                    </InfiniteScroll>
+                ) : (
+                    <TransactionListSkeleton />
+                )}
             </div>
 
             {/* Edit modal */}

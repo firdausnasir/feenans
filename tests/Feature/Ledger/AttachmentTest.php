@@ -65,6 +65,27 @@ test('store supports multiple attachments', function () {
     expect($transaction->attachments()->count())->toBe(2);
 });
 
+test('store falls back to the transaction edit page when referer is external', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $response = $this
+        ->actingAs($user)
+        ->from('https://evil.example/phish')
+        ->post(route('ledgers.transactions.attachments.store', [$ledger, $transaction]), [
+            'file' => $file,
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
+});
+
 test('store validates file type and rejects unsupported mimes', function () {
     Storage::fake('local');
 
@@ -139,6 +160,34 @@ test('destroy deletes attachment record and file from disk', function () {
 
     expect($transaction->fresh()->attachments()->count())->toBe(0);
     Storage::disk('local')->assertMissing($attachment->path);
+});
+
+test('destroy falls back to the transaction edit page when referer is external', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->post(route('ledgers.transactions.attachments.store', [$ledger, $transaction]), [
+            'file' => $file,
+        ])
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
+
+    $attachment = $transaction->fresh()->attachments()->first();
+
+    $response = $this
+        ->actingAs($user)
+        ->from('https://evil.example/phish')
+        ->delete(route('ledgers.transactions.attachments.destroy', [$ledger, $transaction, $attachment]));
+
+    $response->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
 });
 
 test('show returns file content for authorized user', function () {

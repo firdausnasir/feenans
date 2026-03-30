@@ -3,7 +3,6 @@ import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { CurrencySelect } from '@/components/currency-select';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,12 +44,7 @@ export default function CreateLedger({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Create workspace" />
 
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Create your workspace"
-                    description="Set up a new financial space with custom accounts and categories."
-                />
-
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
                 <form
                     onSubmit={submit}
                     className="space-y-6 rounded-xl border border-sidebar-border/70 p-6"
@@ -82,9 +76,7 @@ export default function CreateLedger({
                         <InputError message={errors.currency_code} />
                     </div>
 
-                    <Button disabled={processing}>
-                        Create workspace
-                    </Button>
+                    <Button disabled={processing}>Create workspace</Button>
                 </form>
             </div>
         </AppLayout>

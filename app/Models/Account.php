@@ -82,10 +82,31 @@ class Account extends Model
         return $query->where('is_hidden', true);
     }
 
+    public function scopeWithCurrentBalance(Builder $query): Builder
+    {
+        return $query->withSum('transactions', 'amount');
+    }
+
+    public function currentBalanceAmount(): float
+    {
+        $attributes = $this->getAttributes();
+
+        return (float) ($attributes['initial_balance'] ?? 0) + $this->transactionsTotalAmount();
+    }
+
+    public function transactionsTotalAmount(): float
+    {
+        $attributes = $this->getAttributes();
+
+        if (array_key_exists('transactions_sum_amount', $attributes)) {
+            return (float) ($attributes['transactions_sum_amount'] ?? 0);
+        }
+
+        return (float) $this->transactions()->sum('amount');
+    }
+
     public function getCurrentBalanceAttribute(): string
     {
-        $balance = (float) $this->initial_balance + (float) $this->transactions()->sum('amount');
-
-        return number_format($balance, 2, '.', '');
+        return number_format($this->currentBalanceAmount(), 2, '.', '');
     }
 }

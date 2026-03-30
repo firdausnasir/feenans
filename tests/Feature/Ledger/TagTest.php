@@ -222,8 +222,11 @@ test('transaction index can be filtered by tag', function () {
     $response->assertInertia(fn (Assert $page) => $page
         ->missing('transactions')
         ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions.data', 1)
-            ->where('transactions.data.0.id', $tagged->id)
+            ->has('transactions', fn (Assert $transactions) => $transactions
+                ->has('data', 1)
+                ->where('data.0.id', $tagged->id)
+                ->etc()
+            )
         )
     );
 });
