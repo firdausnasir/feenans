@@ -10,7 +10,7 @@ use Illuminate\Notifications\Notification;
 
 class BillOverdue extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use FormatsBillCurrency, Queueable;
 
     public function __construct(public readonly Bill $bill) {}
 
@@ -24,13 +24,15 @@ class BillOverdue extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        $this->bill->loadMissing('ledger');
+
         $daysOverdue = $this->bill->next_due_date->diffInDays(now());
 
         return (new MailMessage)
             ->subject("Overdue: {$this->bill->name}")
             ->greeting("Hi {$notifiable->name},")
             ->line("Your bill **{$this->bill->name}** was due on {$this->bill->next_due_date->format('d M Y')} and is now {$daysOverdue} day(s) overdue.")
-            ->line('Amount: '.number_format((float) $this->bill->amount, 2))
+            ->line('Amount: '.$this->formatBillAmount($this->bill))
             ->action('View Bills', url('/'))
             ->line('Please log in to record the payment.');
     }
