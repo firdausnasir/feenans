@@ -9,24 +9,6 @@ use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('users can create a tag in a ledger', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->from(route('ledgers.tags.index', $ledger))
-        ->post(route('ledgers.tags.store', $ledger), [
-            'name' => 'groceries',
-            'color' => '#4ade80',
-        ]);
-
-    $response->assertRedirect(route('ledgers.tags.index', $ledger))
-        ->assertSessionHasNoErrors();
-
-    expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
-});
-
 test('tag store does not create duplicate tags for the same ledger', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -40,21 +22,6 @@ test('tag store does not create duplicate tags for the same ledger', function ()
         ->post(route('ledgers.tags.store', $ledger), ['name' => 'dining']);
 
     expect($ledger->tags()->where('name', 'dining')->count())->toBe(1);
-});
-
-test('users can delete a tag', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $tag = Tag::factory()->for($ledger)->create(['name' => 'to-delete']);
-
-    $response = $this
-        ->actingAs($user)
-        ->from(route('ledgers.tags.index', $ledger))
-        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
-
-    $response->assertRedirect(route('ledgers.tags.index', $ledger));
-
-    expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
 });
 
 test('tag index renders the inertia shell for api-driven tag data', function () {
@@ -135,6 +102,45 @@ test('tag web create uses shared tag request validation messages', function () {
         ]);
 });
 
+test('tag web create uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => 'shared-create',
+            'color' => '#22c55e',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Tag created.');
+});
+
+test('tag web update rejects duplicate names within the same ledger', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Tag::factory()->for($ledger)->create(['name' => 'existing-tag']);
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'editable-tag']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'existing-tag',
+            'color' => '#22c55e',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasErrors(['name']);
+
+    expect($tag->fresh()->name)->toBe('editable-tag');
+});
+
 test('tag can be updated through web routes', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -154,6 +160,27 @@ test('tag can be updated through web routes', function () {
     expect($tag->fresh()->name)->toBe('new-tag');
 });
 
+test('tag web update uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'before-update']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'after-update',
+            'color' => '#3b82f6',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Tag updated.');
+});
+
 test('tag can be deleted through web routes', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -167,6 +194,52 @@ test('tag can be deleted through web routes', function () {
     $response->assertRedirect(route('ledgers.tags.index', $ledger));
 
     expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
+});
+
+test('tag web delete uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'delete-shared']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHas('success', 'Tag deleted.');
+});
+
+test('tag web routes continue to enforce ledger authorization through shared actions', function () {
+    $owner = User::factory()->create();
+    $outsider = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+    $tag = Tag::factory()->for($ledger)->create();
+
+    $this->actingAs($outsider)
+        ->get(route('ledgers.tags.index', $ledger))
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => 'forbidden-create',
+            'color' => '#22c55e',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'forbidden-update',
+            'color' => '#3b82f6',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]))
+        ->assertForbidden();
 });
 
 test('transaction with tags syncs tags correctly on store', function () {
