@@ -1,15 +1,23 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowRight,
+    Check,
     CheckCheck,
+    Code,
     Download,
     EyeOff,
     FolderOpen,
+    Github,
+    HardDrive,
     History,
     Key,
+    Landmark,
     Lock,
+    MessageSquareQuote,
     Paperclip,
+    Server,
     ShieldCheck,
+    ShieldOff,
     Upload,
 } from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
@@ -65,14 +73,14 @@ type TrustBannerItem = {
 
 const trustBannerItems: readonly TrustBannerItem[] = [
     {
-        icon: ShieldCheck,
-        title: 'No admin access to your data',
+        icon: Code,
+        title: 'Open source',
         description:
-            'Operators can never browse your transactions, ledgers, or budgets.',
+            'Full source code available. Audit it, fork it, or self-host it on your own server.',
     },
     {
         icon: Lock,
-        title: 'End-to-end data isolation',
+        title: 'Data isolation',
         description:
             "Every query is scoped to your account — your data never mingles with anyone else's.",
     },
@@ -148,16 +156,28 @@ const moreFeatures: readonly TrustBannerItem[] = [
 
 const trustGridItems: readonly TrustBannerItem[] = [
     {
-        icon: ShieldCheck,
-        title: 'No Admin Access',
+        icon: Code,
+        title: 'Open Source',
         description:
-            'No interface can browse, search, or export your ledgers or transactions.',
+            'Full source code available. Read every line before you trust it.',
+    },
+    {
+        icon: Server,
+        title: 'Self-Hostable',
+        description:
+            'Deploy on your own server. Your infrastructure, your rules. Nobody else touches your data.',
     },
     {
         icon: Lock,
         title: 'Data Isolation',
         description:
             'Every query scoped to your account. Your data never mingles with others.',
+    },
+    {
+        icon: ShieldCheck,
+        title: 'Cloud Privacy',
+        description:
+            'Staff access is restricted and logged. We only access data to operate the service or at your request.',
     },
     {
         icon: Key,
@@ -171,6 +191,76 @@ const trustGridItems: readonly TrustBannerItem[] = [
         description:
             'Export everything as JSON or CSV anytime. Delete your account permanently with one click.',
     },
+] as const;
+
+type PersonaItem = {
+    readonly icon: ComponentType<SVGAttributes<SVGElement>>;
+    readonly title: string;
+    readonly description: string;
+};
+
+const personaItems: readonly PersonaItem[] = [
+    {
+        icon: Landmark,
+        title: 'The multi-account juggler',
+        description:
+            "You have a checking account, a savings account, maybe a credit card or two, and a cash stash you pretend doesn't exist. You need one place that tracks all of them without selling your spending habits to advertisers.",
+    },
+    {
+        icon: ShieldOff,
+        title: 'The ex-Mint refugee',
+        description:
+            'You tried the free finance apps. Then you noticed the "personalized offers," the credit score upsells, and the feeling that you were the product. You want a tracker that tracks — and nothing else.',
+    },
+    {
+        icon: HardDrive,
+        title: 'The own-your-data type',
+        description:
+            "You export everything. You back up everything. You'd rather run it on your own server than trust someone else's. Feenans is open source — self-host it and nobody touches your data but you.",
+    },
+] as const;
+
+type TestimonialItem = {
+    readonly quote: string;
+    readonly name: string;
+    readonly detail: string;
+};
+
+const testimonialItems: readonly TestimonialItem[] = [
+    {
+        quote: 'Easy onboarding, really simple to start. The reports are really nice and the custom cycle is a nice touch. Really easy for someone like me who just wants to track monthly expenses.',
+        name: 'A.F.K.',
+        detail: 'Monthly expense tracker',
+    },
+    {
+        quote: 'This app is really meant for someone who tracks daily. The notification for recurring transactions really helps me organize my subscriptions in a way I never thought before. It also helps me make more wise financial decisions.',
+        name: 'M.A.F.',
+        detail: 'Daily tracker',
+    },
+] as const;
+
+const freeFeatures: readonly string[] = [
+    'Unlimited transactions',
+    'Up to 7 accounts per workspace',
+    'Hierarchical categories',
+    'CSV and JSON import/export',
+    'Privacy mode and two-factor auth',
+    'Receipt attachments and audit trail',
+] as const;
+
+const premiumPreview: readonly string[] = [
+    'Unlimited accounts and workspaces',
+    'Financial reports with PDF export',
+    'Recurring bill tracking',
+    'Budget goals by category',
+] as const;
+
+const selfHostedFeatures: readonly string[] = [
+    'All premium features included',
+    'Deploy on your own infrastructure',
+    'Full control over your database',
+    'No data leaves your server',
+    'Open source — audit every line',
 ] as const;
 
 export default function Welcome({
@@ -196,6 +286,16 @@ export default function Welcome({
                             </span>
                         </div>
                         <nav className="flex items-center gap-2">
+                            <Button asChild variant="ghost" size="icon">
+                                <a
+                                    href="https://github.com/firdausnasir/feenans"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label="View on GitHub"
+                                >
+                                    <Github className="size-5" />
+                                </a>
+                            </Button>
                             {auth.user ? (
                                 <Button asChild variant="outline">
                                     <Link href={dashboard.url()}>
@@ -236,8 +336,8 @@ export default function Welcome({
                             </h1>
                             <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
                                 Track spending, plan budgets, and understand
-                                your financial health. No ads, no data mining,
-                                no admin looking over your shoulder.
+                                your financial health. No ads, no data mining.
+                                Use our cloud or self-host it — your call.
                             </p>
                             <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row">
                                 {auth.user ? (
@@ -299,6 +399,42 @@ export default function Welcome({
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </section>
+
+                {/* Who is Feenans for? */}
+                <section className="px-4 py-16 sm:px-6 sm:py-24">
+                    <div className="mx-auto max-w-6xl">
+                        <div className="mx-auto mb-12 max-w-2xl text-center">
+                            <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
+                                Built for
+                            </p>
+                            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                                People who don&apos;t trust their finance app
+                            </h2>
+                            <p className="mt-4 text-muted-foreground">
+                                If you&apos;ve ever wondered who&apos;s looking
+                                at your data, you&apos;re in the right place.
+                            </p>
+                        </div>
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            {personaItems.map((persona) => (
+                                <div
+                                    key={persona.title}
+                                    className="rounded-lg border border-border bg-card p-6"
+                                >
+                                    <div className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                                        <persona.icon className="size-5 text-primary" />
+                                    </div>
+                                    <h3 className="mb-1 font-semibold text-card-foreground">
+                                        {persona.title}
+                                    </h3>
+                                    <p className="text-sm leading-relaxed text-muted-foreground">
+                                        {persona.description}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </section>
 
@@ -452,11 +588,11 @@ export default function Welcome({
                                 Your data stays yours. Period.
                             </h2>
                             <p className="mt-4 text-muted-foreground">
-                                Built secure from the ground up. No admin
-                                access, no data mining, full encryption.
+                                Use our cloud with restricted, logged access —
+                                or self-host and trust nobody but yourself.
                             </p>
                         </div>
-                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                             {trustGridItems.map((item) => (
                                 <div
                                     key={item.title}
@@ -477,6 +613,197 @@ export default function Welcome({
                     </div>
                 </section>
 
+                {/* Social Proof */}
+                <section className="border-y border-border bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
+                    <div className="mx-auto max-w-6xl">
+                        <div className="mx-auto mb-12 max-w-2xl text-center">
+                            <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
+                                Don&apos;t take our word for it
+                            </p>
+                            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                                People who switched and stayed
+                            </h2>
+                        </div>
+                        <div className="mx-auto grid max-w-3xl gap-6 sm:grid-cols-2">
+                            {testimonialItems.map((testimonial) => (
+                                <div
+                                    key={testimonial.name}
+                                    className="flex flex-col rounded-lg border border-border bg-card p-6"
+                                >
+                                    <MessageSquareQuote className="mb-4 size-5 text-muted-foreground/50" />
+                                    <p className="flex-1 leading-relaxed text-card-foreground">
+                                        &ldquo;{testimonial.quote}&rdquo;
+                                    </p>
+                                    <div className="mt-6 border-t border-border pt-4">
+                                        <p className="text-sm font-medium text-foreground">
+                                            — {testimonial.name}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {testimonial.detail}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                {/* Pricing */}
+                <section className="px-4 py-16 sm:px-6 sm:py-24">
+                    <div className="mx-auto max-w-6xl">
+                        <div className="mx-auto mb-12 max-w-2xl text-center">
+                            <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
+                                Pricing
+                            </p>
+                            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                                Free right now. Freemium later. Self-host
+                                forever.
+                            </h2>
+                            <p className="mt-4 text-muted-foreground">
+                                No trial. No credit card. Everything is unlocked
+                                while we build — or skip the cloud entirely and
+                                host it yourself.
+                            </p>
+                        </div>
+                        <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-3">
+                            <div className="rounded-lg border border-border bg-card p-8">
+                                <p className="mb-6 text-lg font-semibold text-card-foreground">
+                                    Free — always
+                                </p>
+                                <ul className="flex flex-col gap-3">
+                                    {freeFeatures.map((feature) => (
+                                        <li
+                                            key={feature}
+                                            className="flex items-start gap-3 text-sm text-muted-foreground"
+                                        >
+                                            <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                                            <span>{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="rounded-lg border border-border bg-card p-8">
+                                <div className="mb-6 flex items-center gap-2">
+                                    <p className="text-lg font-semibold text-card-foreground">
+                                        Premium
+                                    </p>
+                                    <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
+                                        Coming soon
+                                    </span>
+                                </div>
+                                <p className="mb-4 text-sm text-muted-foreground">
+                                    Everything in Free, plus:
+                                </p>
+                                <ul className="flex flex-col gap-3">
+                                    {premiumPreview.map((feature) => (
+                                        <li
+                                            key={feature}
+                                            className="flex items-start gap-3 text-sm text-muted-foreground"
+                                        >
+                                            <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                                            <span>{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="rounded-lg border border-primary/50 bg-card p-8">
+                                <div className="mb-6 flex items-center gap-2">
+                                    <p className="text-lg font-semibold text-card-foreground">
+                                        Self-Hosted
+                                    </p>
+                                    <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                                        Open source
+                                    </span>
+                                </div>
+                                <ul className="mb-6 flex flex-col gap-3">
+                                    {selfHostedFeatures.map((feature) => (
+                                        <li
+                                            key={feature}
+                                            className="flex items-start gap-3 text-sm text-muted-foreground"
+                                        >
+                                            <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                                            <span>{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <Button
+                                    asChild
+                                    variant="outline"
+                                    className="w-full"
+                                >
+                                    <a
+                                        href="https://github.com/firdausnasir/feenans"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <Github className="mr-2 size-4" />
+                                        View on GitHub
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="mx-auto mt-8 max-w-5xl">
+                            <p className="text-sm leading-relaxed text-muted-foreground">
+                                <span className="font-medium text-foreground">
+                                    Heads up:
+                                </span>{' '}
+                                Right now, everything is unlocked on the cloud
+                                for all users. When premium launches, some
+                                features will move behind the paid tier. Early
+                                signups don&apos;t guarantee free access forever
+                                — but we&apos;ll give plenty of notice before
+                                anything changes. Self-hosted users always get
+                                everything.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Built By */}
+                <section className="border-y border-border bg-muted/30 px-4 py-16 sm:px-6 sm:py-24">
+                    <div className="mx-auto max-w-6xl">
+                        <div className="mx-auto max-w-2xl">
+                            <p className="mb-2 text-sm font-medium tracking-wide text-primary uppercase">
+                                Behind Feenans
+                            </p>
+                            <h2 className="mb-6 text-2xl font-bold tracking-tight sm:text-3xl">
+                                Built by someone who actually uses it
+                            </h2>
+                            <div className="space-y-4 leading-relaxed text-muted-foreground">
+                                <p>
+                                    I&apos;ve used YNAB, Money Lover, Money
+                                    Manager, ezbookkeeping, Expense Owl, Actual
+                                    Budget — you name it. Most of them got me
+                                    halfway there. None of them gave me
+                                    everything I needed without a subscription
+                                    or a catch.
+                                </p>
+                                <p>
+                                    So I built Feenans. I took what I thought
+                                    was best from every app I&apos;d tried and
+                                    merged it into one tool that actually fits
+                                    how I manage money. I use it every day —
+                                    which means if something&apos;s broken or
+                                    annoying, I notice before anyone else does.
+                                </p>
+                                <p>
+                                    On the cloud, your data is encrypted in
+                                    transit and protected at rest. Staff access
+                                    is restricted and logged — I only touch your
+                                    data if it&apos;s needed to keep the service
+                                    running or if you ask me to. And if that
+                                    still isn&apos;t enough trust, the code is
+                                    open source. Self-host it and nobody sees
+                                    your data but you.
+                                </p>
+                            </div>
+                            <p className="mt-6 font-medium text-foreground">
+                                — Firdaus, maker of Feenans
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
                 {/* CTA */}
                 <section className="px-4 py-16 sm:px-6 sm:py-24">
                     <div className="mx-auto max-w-2xl text-center">
@@ -484,9 +811,9 @@ export default function Welcome({
                             Take control of your finances — privately.
                         </h2>
                         <p className="mt-4 text-lg text-muted-foreground">
-                            No ads. No data mining. No admin access to your
-                            ledgers. Just a clean, powerful finance tracker
-                            built for people who value their privacy.
+                            No ads. No data mining. Use the cloud with
+                            restricted, logged access — or self-host and own
+                            everything. Open source, always.
                         </p>
                         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                             {auth.user ? (
@@ -529,10 +856,21 @@ export default function Welcome({
                                 Feenans
                             </span>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                            &copy; {new Date().getFullYear()} Feenans. Your
-                            finances, your privacy.
-                        </p>
+                        <div className="flex items-center gap-4">
+                            <a
+                                href="https://github.com/firdausnasir/feenans"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="View on GitHub"
+                                className="text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                                <Github className="size-4" />
+                            </a>
+                            <p className="text-sm text-muted-foreground">
+                                &copy; {new Date().getFullYear()} Feenans. Your
+                                finances, your privacy.
+                            </p>
+                        </div>
                     </div>
                 </footer>
             </div>

@@ -13,22 +13,10 @@ class HomeController extends Controller
     /**
      * Show the welcome page or redirect authenticated users.
      */
-    public function __invoke(Request $request): Response|RedirectResponse
+    public function __invoke(): Response|RedirectResponse
     {
-        $user = $request->user();
-
-        if ($user === null) {
-            return Inertia::render('welcome', [
-                'canRegister' => Features::enabled(Features::registration()),
-            ]);
-        }
-
-        $ledger = $user->ledgers()->orderBy('id')->first();
-
-        if ($ledger === null) {
-            return to_route('onboarding.show');
-        }
-
-        return to_route('ledgers.dashboard', $ledger);
+        return Inertia::render('welcome', [
+            'canRegister' => Features::enabled(Features::registration()),
+        ]);
     }
 }

@@ -5,6 +5,11 @@ import {
     markAllRead as markAllReadRoute,
     markRead as markReadRoute,
 } from '@/actions/App/Http/Controllers/NotificationController';
+import {
+    getNotificationCopy
+    
+} from '@/components/notification-bell-copy';
+import type {NotificationData} from '@/components/notification-bell-copy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,19 +17,6 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-
-type NotificationData = {
-    type?: string;
-    bill_id?: number;
-    bill_name?: string;
-    budget_id?: number;
-    budget_name?: string;
-    due_date?: string;
-    amount?: number;
-    percentage?: number;
-    spent?: number;
-    limit?: number;
-};
 
 type NotificationItem = {
     id: string;
@@ -48,36 +40,6 @@ function notificationIcon(type: string | undefined) {
     }
 
     return <Bell className="size-4 shrink-0 text-blue-500" />;
-}
-
-function notificationTitle(data: NotificationData): string {
-    switch (data.type) {
-        case 'bill_due_reminder':
-            return 'Bill Due Soon';
-        case 'bill_overdue':
-            return 'Bill Overdue';
-        case 'budget_threshold':
-            return 'Budget Warning';
-        case 'budget_exceeded':
-            return 'Budget Exceeded';
-        default:
-            return 'Notification';
-    }
-}
-
-function notificationBody(data: NotificationData): string {
-    switch (data.type) {
-        case 'bill_due_reminder':
-            return `${data.bill_name} is due on ${data.due_date}`;
-        case 'bill_overdue':
-            return `${data.bill_name} was due on ${data.due_date}`;
-        case 'budget_threshold':
-            return `${data.budget_name} budget is at ${data.percentage}%`;
-        case 'budget_exceeded':
-            return `${data.budget_name} budget exceeded (${data.percentage}%)`;
-        default:
-            return data.bill_name ?? data.budget_name ?? '';
-    }
 }
 
 function relativeTime(dateString: string): string {
@@ -194,30 +156,38 @@ export function NotificationBell() {
                                         : 'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950'
                                 }`}
                             >
-                                <div className="mt-0.5">
-                                    {notificationIcon(notification.data.type)}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="leading-tight font-medium">
-                                        {notificationTitle(notification.data)}
-                                    </p>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {notificationBody(notification.data)}
-                                    </p>
-                                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                                        {relativeTime(notification.created_at)}
-                                    </p>
-                                </div>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-6 shrink-0"
-                                    onClick={() => markOneRead(notification.id)}
-                                    title="Mark as read"
-                                >
-                                    <Check className="size-3" />
-                                </Button>
+                                {(() => {
+                                    const copy = getNotificationCopy(notification.data);
+
+                                    return (
+                                        <>
+                                            <div className="mt-0.5">
+                                                {notificationIcon(notification.data.type)}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="leading-tight font-medium">
+                                                    {copy.title}
+                                                </p>
+                                                <p className="truncate text-xs text-muted-foreground">
+                                                    {copy.body}
+                                                </p>
+                                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                    {relativeTime(notification.created_at)}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="size-6 shrink-0"
+                                                onClick={() => markOneRead(notification.id)}
+                                                title="Mark as read"
+                                            >
+                                                <Check className="size-3" />
+                                            </Button>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         ))}
                     </div>

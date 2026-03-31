@@ -5,13 +5,14 @@ namespace App\Notifications;
 use App\Models\Bill;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 
 class BillDueReminder extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use FormatsBillCurrency, Queueable;
 
     /**
      * @param  Collection<int, Bill>  $upcomingBills
@@ -34,6 +35,10 @@ class BillDueReminder extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        $this->loadBillLedgers($this->upcomingBills);
+        $this->loadBillLedgers($this->dueTodayBills);
+        $this->loadBillLedgers($this->overdueBills);
+
         $totalBills = $this->upcomingBills->count() + $this->dueTodayBills->count() + $this->overdueBills->count();
 
         $mailMessage = (new MailMessage)
@@ -44,7 +49,7 @@ class BillDueReminder extends Notification implements ShouldQueue
             $mailMessage->line('**Overdue Bills:**');
             foreach ($this->overdueBills as $bill) {
                 $daysOverdue = $bill->next_due_date->diffInDays(now());
-                $mailMessage->line("• {$bill->name} - Due: {$bill->next_due_date->format('d M Y')} ({$daysOverdue} days overdue) - Amount: $".number_format((float) $bill->amount, 2));
+                $mailMessage->line("• {$bill->name} - Due: {$bill->next_due_date->format('d M Y')} ({$daysOverdue} days overdue) - Amount: {$this->formatBillAmount($bill)}");
             }
             $mailMessage->line('');
         }
@@ -52,7 +57,7 @@ class BillDueReminder extends Notification implements ShouldQueue
         if ($this->dueTodayBills->isNotEmpty()) {
             $mailMessage->line('**Due Today:**');
             foreach ($this->dueTodayBills as $bill) {
-                $mailMessage->line("• {$bill->name} - Amount: $".number_format((float) $bill->amount, 2));
+                $mailMessage->line("• {$bill->name} - Amount: {$this->formatBillAmount($bill)}");
             }
             $mailMessage->line('');
         }
@@ -60,7 +65,7 @@ class BillDueReminder extends Notification implements ShouldQueue
         if ($this->upcomingBills->isNotEmpty()) {
             $mailMessage->line('**Upcoming Bills (Next 3 Days):**');
             foreach ($this->upcomingBills as $bill) {
-                $mailMessage->line("• {$bill->name} - Due: {$bill->next_due_date->format('d M Y')} - Amount: $".number_format((float) $bill->amount, 2));
+                $mailMessage->line("• {$bill->name} - Due: {$bill->next_due_date->format('d M Y')} - Amount: {$this->formatBillAmount($bill)}");
             }
             $mailMessage->line('');
         }
@@ -69,6 +74,20 @@ class BillDueReminder extends Notification implements ShouldQueue
             ->line('Log in to mark bills as paid.');
 
         return $mailMessage;
+    }
+
+    /**
+     * @param  Collection<int, Bill>  $bills
+     */
+    private function loadBillLedgers(Collection $bills): void
+    {
+        if ($bills instanceof EloquentCollection) {
+            $bills->loadMissing('ledger');
+
+            return;
+        }
+
+        $bills->each(fn (Bill $bill) => $bill->loadMissing('ledger'));
     }
 
     /**
