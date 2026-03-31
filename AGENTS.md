@@ -55,6 +55,8 @@ This project has domain-specific skills available. You MUST activate the relevan
 
 - Stick to existing directory structure; don't create new base folders without approval.
 - Do not change the application's dependencies without approval.
+- Approved exception for the web/api shared-core architecture rollout: adding `spatie/laravel-data` is allowed, and `spatie/laravel-typescript-transformer` or `spatie/laravel-query-builder` may be added later only if their planned rollout phase is reached.
+- Approved exception for the web/api shared-core architecture rollout: new app subdirectories such as `app/Data`, `app/Actions`, and `app/Exceptions/Domain` may be introduced as part of the approved architecture.
 
 ## Frontend Bundling
 
@@ -243,7 +245,8 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 
 ## Frontend Architecture
 
-- All new frontend features must fetch data from backend API endpoints. Inertia is used only to render the initial page view — dynamic data comes from API calls.
+- Browser-facing product pages use web and Inertia routes by default. Use Inertia features such as deferred props, partial reloads, merges, and form visits instead of browser calls to `/api/*` unless a specific exception is approved.
+- `/api/*` routes are for first-party non-browser clients such as mobile, desktop, CLI, or explicit admin exceptions while the architecture rollout is in progress.
 
 ## Linting
 
