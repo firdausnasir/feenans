@@ -17,7 +17,8 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
-        "league/flysystem-aws-s3-v3": "^3.32"
+        "league/flysystem-aws-s3-v3": "^3.32",
+        "spatie/laravel-data": "^4.18"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
