@@ -25,26 +25,29 @@ test('welcome page passes canRegister prop to frontend', function () {
     );
 });
 
-test('authenticated users with no ledgers are redirected to onboarding', function () {
+test('authenticated users with no ledgers see the welcome page', function () {
+    $this->withoutVite();
+
     $user = User::factory()->create();
 
     $response = $this
         ->actingAs($user)
         ->get(route('home'));
 
-    $response->assertRedirect(route('onboarding.show'));
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page->component('welcome'));
 });
 
-test('authenticated users with ledgers are redirected to the lowest id ledger', function () {
+test('authenticated users with ledgers see the welcome page', function () {
+    $this->withoutVite();
+
     $user = User::factory()->create();
-    $secondLedger = Ledger::factory()->for($user)->create();
-    $firstLedger = Ledger::factory()->for($user)->create();
+    Ledger::factory()->for($user)->create();
 
     $response = $this
         ->actingAs($user)
         ->get(route('home'));
 
-    $lowestIdLedger = $user->ledgers()->orderBy('id')->first();
-
-    $response->assertRedirect(route('ledgers.dashboard', $lowestIdLedger));
+    $response->assertSuccessful();
+    $response->assertInertia(fn (Assert $page) => $page->component('welcome'));
 });
