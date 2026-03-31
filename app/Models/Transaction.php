@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TransactionType;
 use Database\Factories\TransactionFactory;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -49,6 +50,13 @@ class Transaction extends Model
             'transaction_date' => 'date:Y-m-d',
             'is_sample' => 'boolean',
         ];
+    }
+
+    public function setTransactionDateAttribute(mixed $value): void
+    {
+        $this->attributes['transaction_date'] = $value instanceof DateTimeInterface
+            ? $value->format('Y-m-d')
+            : $value;
     }
 
     public function ledger(): BelongsTo
