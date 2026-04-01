@@ -35,6 +35,8 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Validator;
 
@@ -437,8 +439,6 @@ test('SaveOnboardingStepRequest step 3 requires no validation', function () {
 });
 
 dataset('controller form request signatures', [
-    'ledger payee store' => [LedgerPayeeController::class, 'store', UpdatePayeeRequest::class],
-    'ledger payee update' => [LedgerPayeeController::class, 'update', UpdatePayeeRequest::class],
     'ledger attachment store' => [AttachmentController::class, 'store', StoreAttachmentRequest::class],
     'ledger import mapping store' => [LedgerImportController::class, 'storeMapping', StoreImportMappingRequest::class],
     'ledger settings account type update' => [LedgerSettingsController::class, 'updateAccountType', UpdateAccountTypeRequest::class],
@@ -453,6 +453,28 @@ test('controllers use form requests for refactored validation endpoints', functi
     expect($parameterType)->not->toBeNull();
     expect($parameterType->getName())->toBe($requestClass);
 })->with('controller form request signatures');
+
+dataset('shared-core payee controller methods', [
+    'ledger payee store' => [LedgerPayeeController::class, 'store'],
+    'ledger payee update' => [LedgerPayeeController::class, 'update'],
+]);
+
+test('shared-core payee controller actions no longer use UpdatePayeeRequest', function (string $controller, string $method) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterTypes = collect($reflection->getParameters())
+        ->map(fn (ReflectionParameter $parameter): ?string => $parameter->getType()?->getName())
+        ->all();
+
+    expect($parameterTypes)->not->toContain(UpdatePayeeRequest::class);
+
+    collect($parameterTypes)
+        ->filter()
+        ->each(function (string $parameterType) {
+            expect(is_a($parameterType, Request::class, true))->toBeFalse();
+            expect(is_a($parameterType, FormRequest::class, true))->toBeFalse();
+        });
+})->with('shared-core payee controller methods');
 
 dataset('ledger authorization requests', [
     'adjust balance' => [AdjustBalanceRequest::class, 'POST'],

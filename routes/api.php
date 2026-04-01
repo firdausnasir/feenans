@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Architecture\ProofTagController as ApiProofTagController;
 use App\Http\Controllers\Api\V1\Auth\ApiTokenController;
+use App\Http\Controllers\Api\V1\Ledger\CategoryController as ApiCategoryController;
+use App\Http\Controllers\Api\V1\Ledger\PayeeController as ApiPayeeController;
 use App\Http\Controllers\Api\V1\Ledger\TagController as ApiTagController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,4 +41,24 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
         ->name('ledgers.tags.update');
     Route::delete('ledgers/{ledger}/tags/{tag}', [ApiTagController::class, 'destroy'])
         ->name('ledgers.tags.destroy');
+
+    Route::get('ledgers/{ledger}/categories', [ApiCategoryController::class, 'index'])
+        ->name('ledgers.categories.index');
+    Route::post('ledgers/{ledger}/categories', [ApiCategoryController::class, 'store'])
+        ->name('ledgers.categories.store');
+    Route::patch('ledgers/{ledger}/categories/{category}', [ApiCategoryController::class, 'update'])
+        ->name('ledgers.categories.update');
+    Route::delete('ledgers/{ledger}/categories/{category}', [ApiCategoryController::class, 'destroy'])
+        ->name('ledgers.categories.destroy');
+    Route::post('ledgers/{ledger}/categories/reorder', [ApiCategoryController::class, 'reorder'])
+        ->name('ledgers.categories.reorder');
+
+    Route::get('ledgers/{ledger}/payees', [ApiPayeeController::class, 'index'])
+        ->name('ledgers.payees.index');
+    Route::post('ledgers/{ledger}/payees', [ApiPayeeController::class, 'store'])
+        ->name('ledgers.payees.store');
+    Route::patch('ledgers/{ledger}/payees/{payee}', [ApiPayeeController::class, 'update'])
+        ->name('ledgers.payees.update');
+    Route::delete('ledgers/{ledger}/payees/{payee}', [ApiPayeeController::class, 'destroy'])
+        ->name('ledgers.payees.destroy');
 });

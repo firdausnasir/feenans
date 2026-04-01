@@ -78,7 +78,7 @@ test('category update is forbidden for another users ledger', function () {
 test('category store assigns position based on existing count', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
-    Category::factory()->for($ledger)->create(['name' => 'Existing']);
+    Category::factory()->for($ledger)->create(['name' => 'Existing', 'position' => 1]);
 
     $response = $this
         ->actingAs($user)
@@ -94,4 +94,72 @@ test('category store assigns position based on existing count', function () {
     $newCat = $ledger->categories()->where('name', 'New Category')->first();
     expect($newCat)->not->toBeNull()
         ->and($newCat->position)->toBe(2); // 1 existing + 1
+});
+
+test('category store assigns the next highest sibling position when positions are sparse', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    Category::factory()->for($ledger)->create(['name' => 'First', 'position' => 1]);
+    Category::factory()->for($ledger)->create(['name' => 'Third', 'position' => 3]);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.store', $ledger), [
+            'name' => 'New Category',
+            'transaction_type' => 'expense',
+        ]);
+
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasNoErrors();
+
+    $newCategory = $ledger->categories()->where('name', 'New Category')->first();
+
+    expect($newCategory)->not->toBeNull()
+        ->and($newCategory->position)->toBe(4);
+});
+
+test('category reorder rejects duplicate ids', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $category = Category::factory()->for($ledger)->create(['position' => 1]);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.reorder', $ledger), [
+            'items' => [
+                ['id' => $category->id, 'position' => 1],
+                ['id' => $category->id, 'position' => 2],
+            ],
+        ]);
+
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasErrors(['items.1.id']);
+
+    expect($category->fresh()->position)->toBe(1);
+});
+
+test('category reorder rejects duplicate positions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $firstCategory = Category::factory()->for($ledger)->create(['position' => 1]);
+    $secondCategory = Category::factory()->for($ledger)->create(['position' => 2]);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.categories.index', $ledger))
+        ->post(route('ledgers.categories.reorder', $ledger), [
+            'items' => [
+                ['id' => $firstCategory->id, 'position' => 1],
+                ['id' => $secondCategory->id, 'position' => 1],
+            ],
+        ]);
+
+    $response->assertRedirect(route('ledgers.categories.index', $ledger))
+        ->assertSessionHasErrors(['items.1.position']);
+
+    expect($firstCategory->fresh()->position)->toBe(1)
+        ->and($secondCategory->fresh()->position)->toBe(2);
 });
