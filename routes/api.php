@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Architecture\ProofTagController as ApiProofTagController;
 use App\Http\Controllers\Api\V1\Auth\ApiTokenController;
+use App\Http\Controllers\Api\V1\Ledger\AccountController as ApiAccountController;
+use App\Http\Controllers\Api\V1\Ledger\BudgetController as ApiBudgetController;
 use App\Http\Controllers\Api\V1\Ledger\CategoryController as ApiCategoryController;
 use App\Http\Controllers\Api\V1\Ledger\PayeeController as ApiPayeeController;
 use App\Http\Controllers\Api\V1\Ledger\TagController as ApiTagController;
@@ -32,6 +34,19 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
     Route::delete('auth/tokens/{token}', [ApiTokenController::class, 'destroy'])
         ->whereNumber('token')
         ->name('auth.tokens.destroy');
+
+    Route::get('ledgers/{ledger}/accounts', [ApiAccountController::class, 'index'])
+        ->name('ledgers.accounts.index');
+    Route::post('ledgers/{ledger}/accounts', [ApiAccountController::class, 'store'])
+        ->name('ledgers.accounts.store');
+    Route::patch('ledgers/{ledger}/accounts/{account}', [ApiAccountController::class, 'update'])
+        ->name('ledgers.accounts.update');
+    Route::delete('ledgers/{ledger}/accounts/{account}', [ApiAccountController::class, 'destroy'])
+        ->name('ledgers.accounts.destroy');
+    Route::post('ledgers/{ledger}/accounts/reorder', [ApiAccountController::class, 'reorder'])
+        ->name('ledgers.accounts.reorder');
+    Route::post('ledgers/{ledger}/accounts/{account}/adjust-balance', [ApiAccountController::class, 'adjustBalance'])
+        ->name('ledgers.accounts.adjust-balance');
 
     Route::get('ledgers/{ledger}/tags', [ApiTagController::class, 'index'])
         ->name('ledgers.tags.index');
@@ -61,4 +76,15 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
         ->name('ledgers.payees.update');
     Route::delete('ledgers/{ledger}/payees/{payee}', [ApiPayeeController::class, 'destroy'])
         ->name('ledgers.payees.destroy');
+
+    Route::middleware('premium')->group(function () {
+        Route::get('ledgers/{ledger}/budgets', [ApiBudgetController::class, 'index'])
+            ->name('ledgers.budgets.index');
+        Route::post('ledgers/{ledger}/budgets', [ApiBudgetController::class, 'store'])
+            ->name('ledgers.budgets.store');
+        Route::patch('ledgers/{ledger}/budgets/{budget}', [ApiBudgetController::class, 'update'])
+            ->name('ledgers.budgets.update');
+        Route::delete('ledgers/{ledger}/budgets/{budget}', [ApiBudgetController::class, 'destroy'])
+            ->name('ledgers.budgets.destroy');
+    });
 });
