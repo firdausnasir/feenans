@@ -24,6 +24,6 @@ test('composer dev flow does not require a separate inertia ssr daemon', functio
     $composer = json_decode(File::get(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
     $devScript = $composer['scripts']['dev'] ?? [];
 
-    expect($devScript)->not->toContain(fn (string $command) => str_contains($command, 'inertia:start-ssr'));
+    expect(implode(' ', $devScript))->not->toContain('inertia:start-ssr');
     expect($composer['scripts'])->not->toHaveKey('dev:ssr');
 });
