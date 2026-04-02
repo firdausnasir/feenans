@@ -1,5 +1,10 @@
 <?php
 
+use App\Actions\Bills\Queries\GetBillFormPageQuery;
+use App\Actions\Bills\Queries\GetBillIndexPageQuery;
+use App\Data\Bills\Input\GetBillFormPageData;
+use App\Data\Bills\Input\GetBillIndexPageData;
+use App\Data\Bills\Input\StoreBillData;
 use App\Enums\RecurrenceType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -9,6 +14,25 @@ use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
+
+function billPageRequest(User $user, Ledger $ledger): Request
+{
+    $request = Request::create('/ledgers/'.$ledger->id.'/bills', 'GET');
+    $request->setUserResolver(fn () => $user);
+    $request->setRouteResolver(fn () => tap(new Route(['GET'], '/ledgers/{ledger}/bills', []), function (Route $route) use ($ledger, $request) {
+        $route->bind($request);
+        $route->setParameter('ledger', $ledger);
+    }));
+
+    return $request;
+}
+
+dataset('bill page data classes', [
+    'index page' => GetBillIndexPageData::class,
+    'form page' => GetBillFormPageData::class,
+]);
 
 test('bill active scope returns only active bills', function () {
     $ledger = Ledger::factory()->create();
@@ -236,6 +260,86 @@ test('bill index renders successfully', function () {
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/index')
     );
+});
+
+test('bill page data classes require access to the current ledger', function (string $dataClass) {
+    $owner = User::factory()->create();
+    $outsider = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    expect($dataClass::authorize(billPageRequest($owner, $ledger)))->toBeTrue()
+        ->and($dataClass::authorize(billPageRequest($outsider, $ledger)))->toBeFalse();
+})->with('bill page data classes');
+
+test('store bill data authorization requires ledger update access', function () {
+    $ledger = Ledger::factory()->create();
+    $user = Mockery::mock(User::class);
+
+    $user->shouldReceive('can')
+        ->once()
+        ->with('update', $ledger)
+        ->andReturn(false);
+
+    $request = Request::create('/ledgers/'.$ledger->id.'/bills', 'POST');
+    $request->setUserResolver(fn () => $user);
+    $request->setRouteResolver(fn () => tap(new Route(['POST'], '/ledgers/{ledger}/bills', []), function (Route $route) use ($ledger, $request) {
+        $route->bind($request);
+        $route->setParameter('ledger', $ledger);
+    }));
+
+    expect(StoreBillData::authorize($request))->toBeFalse();
+});
+
+test('bill index routes data fetching through GetBillIndexPageQuery', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = false;
+    $real = app()->make(GetBillIndexPageQuery::class);
+
+    app()->bind(GetBillIndexPageQuery::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->get(route('ledgers.bills.index', $ledger))
+        ->assertSuccessful();
+
+    expect($called)->toBeTrue('BillController@index must resolve GetBillIndexPageQuery from the container');
+});
+
+test('bill create and edit route through GetBillFormPageQuery', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = 0;
+    $real = app()->make(GetBillFormPageQuery::class);
+
+    app()->bind(GetBillFormPageQuery::class, function () use ($real, &$called) {
+        $called++;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->get(route('ledgers.bills.create', $ledger))
+        ->assertSuccessful();
+
+    $this->actingAs($user)
+        ->get(route('ledgers.bills.edit', [$ledger, $bill]))
+        ->assertSuccessful();
+
+    expect($called)->toBe(2, 'BillController@create and BillController@edit must resolve GetBillFormPageQuery from the container');
 });
 
 test('bill store creates a bill via HTTP', function () {

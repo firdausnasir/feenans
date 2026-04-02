@@ -29,27 +29,10 @@ import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type NetWorthEntry = {
-    month: string;
-    assets: number;
-    liabilities: number;
-    net_worth: number;
-};
-
-type SavingsRateEntry = {
-    month: string;
-    income: number;
-    expense: number;
-    savings: number;
-    rate: number;
-};
-
-type CurrentSnapshot = {
-    assets: number;
-    liabilities: number;
-    net_worth: number;
-    debt_to_asset_ratio: number;
-};
+type FinancialHealthReport = App.Data.Reports.Output.Web.FinancialHealthReportData;
+type NetWorthEntry = FinancialHealthReport['net_worth_history'][number];
+type SavingsRateEntry = FinancialHealthReport['savings_rate_history'][number];
+type CurrentSnapshot = FinancialHealthReport['current_snapshot'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -339,11 +322,7 @@ function FinancialHealthSkeleton() {
 
 export default function FinancialHealthPage() {
     const { currentLedger, health } = usePage<{
-        health?: {
-            net_worth_history: NetWorthEntry[];
-            savings_rate_history: SavingsRateEntry[];
-            current_snapshot: CurrentSnapshot;
-        };
+        health?: FinancialHealthReport;
     }>().props;
     const ledger = currentLedger!;
 

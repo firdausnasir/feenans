@@ -19,12 +19,16 @@ class TagData extends BaseOutputData
 
     public static function fromModel(Tag $tag): self
     {
+        $attributes = $tag->getAttributes();
+
         return new self(
             id: $tag->id,
             ledger_id: $tag->ledger_id,
             name: $tag->name,
             color: $tag->color,
-            transactions_count: $tag->transactions_count,
+            transactions_count: array_key_exists('transactions_count', $attributes)
+                ? (int) $attributes['transactions_count']
+                : null,
             created_at: $tag->created_at?->toIso8601String(),
             updated_at: $tag->updated_at?->toIso8601String(),
         );

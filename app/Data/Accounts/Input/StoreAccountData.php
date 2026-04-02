@@ -35,7 +35,7 @@ class StoreAccountData extends BaseInputData
         $user = $request->user();
         $ledger = $request->route('ledger');
 
-        if ($user === null || ! $ledger instanceof Ledger || ! $user->can('view', $ledger)) {
+        if ($user === null || ! $ledger instanceof Ledger || ! $user->can('update', $ledger)) {
             return false;
         }
 

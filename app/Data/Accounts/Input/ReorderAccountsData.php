@@ -19,7 +19,7 @@ class ReorderAccountsData extends BaseInputData
     public function __construct(
         #[FromRouteParameter('ledger')] public Ledger $ledger,
         #[FromAuthenticatedUser] public User $user,
-        public array $items = [],
+        public array $items,
     ) {}
 
     public static function normalizers(): array
@@ -41,10 +41,15 @@ class ReorderAccountsData extends BaseInputData
     {
         /** @var Ledger|null $ledger */
         $ledger = request()->route('ledger');
+        $idRules = ['required', 'integer', 'distinct:strict'];
+
+        if (request()->expectsJson()) {
+            $idRules[] = Rule::exists('accounts', 'id')->where('ledger_id', $ledger?->id);
+        }
 
         return [
             'items' => ['required', 'array'],
-            'items.*.id' => ['required', 'integer', 'distinct:strict', Rule::exists('accounts', 'id')->where('ledger_id', $ledger?->id)],
+            'items.*.id' => $idRules,
             'items.*.position' => ['required', 'integer', 'min:0', 'distinct:strict'],
         ];
     }

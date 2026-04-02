@@ -1003,6 +1003,7 @@ export default function AccountsIndex() {
             { items },
             {
                 preserveScroll: true,
+                preserveState: true,
                 onSuccess: () => {
                     isReorderingRef.current = false;
                 },

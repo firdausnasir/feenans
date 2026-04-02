@@ -10,6 +10,7 @@
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
+        "types:generate": "php artisan typescript:transform",
         "types:check": "tsc --noEmit"
     },
     "devDependencies": {

@@ -228,6 +228,35 @@ test('bulk delete with confirmation deletes all selected transactions', function
     }
 });
 
+test('bulk delete removes both sides of a transfer when one side is selected', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $fromAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $toAccount = Account::factory()->for($ledger)->for($accountType)->create();
+    $pairId = (string) Str::uuid();
+
+    $source = Transaction::factory()->for($ledger)->for($fromAccount)->transferOut()->create([
+        'transfer_pair_id' => $pairId,
+    ]);
+
+    $paired = Transaction::factory()->for($ledger)->for($toAccount)->transferIn()->create([
+        'transfer_pair_id' => $pairId,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.bulk-destroy', $ledger), [
+            'ids' => [$source->id],
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transactions deleted.');
+
+    expect(Transaction::query()->whereKey($source->id)->exists())->toBeFalse()
+        ->and(Transaction::query()->whereKey($paired->id)->exists())->toBeFalse();
+});
+
 test('bulk change category can target all matching filtered transactions without select-all ids', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();

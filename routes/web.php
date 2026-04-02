@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardPageController;
+use App\Http\Controllers\Admin\AdminFeedbackPageController;
 use App\Http\Controllers\Admin\AdminMembershipPageController;
 use App\Http\Controllers\Admin\AdminUserPageController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
@@ -26,12 +28,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::patch('user/privacy-mode', PrivacyModeController::class)->name('user.privacy-mode.toggle');
     Route::get('premium', PremiumPageController::class)->name('premium');
+
+    Route::post('feedback', [FeedbackController::class, 'store'])->name('feedback.store');
 });
 
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->group(function () {
     Route::get('/', AdminDashboardPageController::class)->name('admin.index');
     Route::get('users', AdminUserPageController::class)->name('admin.users');
     Route::get('memberships', AdminMembershipPageController::class)->name('admin.memberships');
+    Route::get('feedbacks', AdminFeedbackPageController::class)->name('admin.feedbacks');
 });
 
 require __DIR__.'/ledger.php';

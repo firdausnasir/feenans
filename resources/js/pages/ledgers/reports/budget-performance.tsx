@@ -18,16 +18,8 @@ import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type BudgetStat = {
-    id: number;
-    category_name: string;
-    amount: number;
-    spent: number;
-    remaining: number;
-    percentage: number;
-    period: string;
-    status: 'good' | 'warning' | 'danger' | 'over';
-};
+type BudgetPerformanceReport = App.Data.Reports.Output.Web.BudgetPerformanceReportData;
+type BudgetStat = BudgetPerformanceReport['budget_stats'][number];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -230,7 +222,7 @@ function BudgetPerformanceSkeleton() {
 
 export default function BudgetPerformancePage() {
     const { currentLedger, performance } = usePage<{
-        performance?: { budget_stats: BudgetStat[]; period_label: string };
+        performance?: BudgetPerformanceReport;
     }>().props;
     const ledger = currentLedger!;
 

@@ -1,5 +1,8 @@
 <?php
 
+use App\Actions\Transactions\UseCases\DeleteTransactionAction;
+use App\Actions\Transactions\UseCases\StoreTransactionAction;
+use App\Actions\Transactions\UseCases\UpdateTransactionAction;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -10,6 +13,104 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+
+test('transaction store routes through StoreTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+
+    $called = false;
+    $real = app()->make(StoreTransactionAction::class);
+    app()->bind(StoreTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.store', $ledger), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => 25.00,
+            'description' => 'Store through action',
+            'transaction_date' => '2026-03-13',
+        ])
+        ->assertRedirect();
+
+    expect($called)->toBeTrue();
+});
+
+test('transaction update routes through UpdateTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before action update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $called = false;
+    $real = app()->make(UpdateTransactionAction::class);
+    app()->bind(UpdateTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => 25.00,
+            'description' => 'Updated through action',
+            'transaction_date' => '2026-03-20',
+        ])
+        ->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction updated.');
+
+    expect($called)->toBeTrue();
+});
+
+test('transaction destroy routes through DeleteTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->expense()
+        ->create();
+
+    $called = false;
+    $real = app()->make(DeleteTransactionAction::class);
+    app()->bind(DeleteTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction deleted.');
+
+    expect($called)->toBeTrue();
+});
 
 test('users can create an income transaction', function () {
     $user = User::factory()->create();

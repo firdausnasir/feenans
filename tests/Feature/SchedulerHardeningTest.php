@@ -14,7 +14,16 @@ test('scheduled bill tasks prevent overlaps across scheduler runs', function () 
         fn (mixed $event) => str_contains((string) $event->command, 'bills:check-reminders')
     );
 
+    $callback = $processAutoBills instanceof CallbackEvent
+        ? (fn () => $this->callback)->call($processAutoBills)
+        : null;
+
+    $scheduledAction = is_callable($callback)
+        ? app()->call($callback)
+        : null;
+
     expect($processAutoBills)->not->toBeNull()
+        ->and($scheduledAction)->toBeNull()
         ->and($processAutoBills->withoutOverlapping)->toBeTrue()
         ->and($processAutoBills->onOneServer)->toBeTrue()
         ->and($checkBillReminders)->not->toBeNull()

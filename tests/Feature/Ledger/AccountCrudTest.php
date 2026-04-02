@@ -5,10 +5,13 @@ use App\Actions\Accounts\UseCases\DeleteAccountAction;
 use App\Actions\Accounts\UseCases\ReorderAccountsAction;
 use App\Actions\Accounts\UseCases\StoreAccountAction;
 use App\Actions\Accounts\UseCases\UpdateAccountAction;
+use App\Data\Accounts\Input\StoreAccountData;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 beforeEach(function () {
     config()->set('app.paywall_enabled', true);
@@ -126,9 +129,30 @@ test('account reorder routes through ReorderAccountsAction', function () {
         ->post(route('ledgers.accounts.reorder', $ledger), [
             'items' => [['id' => $account->id, 'position' => 1]],
         ])
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertSessionMissing('success');
 
     expect($called)->toBeTrue();
+});
+
+test('store account data authorization requires ledger update access', function () {
+    $ledger = Ledger::factory()->create();
+    $user = Mockery::mock(User::class);
+
+    $user->shouldReceive('can')
+        ->once()
+        ->with('update', $ledger)
+        ->andReturn(false);
+    $user->shouldNotReceive('isPremium');
+
+    $request = Request::create('/ledgers/'.$ledger->id.'/accounts', 'POST');
+    $request->setUserResolver(fn () => $user);
+    $request->setRouteResolver(fn () => tap(new Route(['POST'], '/ledgers/{ledger}/accounts', []), function (Route $route) use ($ledger, $request) {
+        $route->bind($request);
+        $route->setParameter('ledger', $ledger);
+    }));
+
+    expect(StoreAccountData::authorize($request))->toBeFalse();
 });
 
 test('account adjust balance routes through AdjustAccountBalanceAction', function () {

@@ -2,150 +2,117 @@
 
 namespace App\Http\Controllers\Ledger;
 
+use App\Actions\Bills\Queries\GetBillFormPageQuery;
+use App\Actions\Bills\Queries\GetBillIndexPageQuery;
+use App\Actions\Bills\UseCases\DeleteBillAction;
+use App\Actions\Bills\UseCases\PayBillAction;
+use App\Actions\Bills\UseCases\StoreBillAction;
+use App\Actions\Bills\UseCases\ToggleBillAction;
+use App\Actions\Bills\UseCases\UpdateBillAction;
+use App\Data\Bills\Input\GetBillFormPageData;
+use App\Data\Bills\Input\GetBillIndexPageData;
+use App\Data\Bills\Input\PayBillData;
+use App\Data\Bills\Input\StoreBillData;
+use App\Data\Bills\Input\UpdateBillData;
+use App\Data\Bills\Output\Web\BillPageData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\PayBillRequest;
-use App\Http\Requests\StoreBillRequest;
-use App\Http\Requests\UpdateBillRequest;
-use App\Http\Resources\BillResource;
 use App\Models\Bill;
 use App\Models\Ledger;
-use App\Services\BillService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class BillController extends Controller
 {
-    public function __construct(private readonly BillService $billService) {}
-
-    public function index(Request $request, Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
+    public function index(
+        Ledger $ledger,
+        GetBillIndexPageData $input,
+        GetBillIndexPageQuery $getBillIndexPage,
+    ): Response {
+        $resolved = null;
+        $resolve = function () use ($input, $getBillIndexPage, &$resolved): BillPageData {
+            return $resolved ??= $getBillIndexPage($input->ledger);
+        };
 
         return Inertia::render('ledgers/bills/index', [
-            'accounts' => fn () => $this->billAccountOptions($ledger),
-            'categories' => fn () => $ledger->categories()->orderBy('position')->get(),
-            'payees' => fn () => $ledger->payees()->orderBy('name')->get(),
-            'bills' => Inertia::defer(function () use ($ledger) {
-                $bills = $ledger->bills()
-                    ->with(['account', 'toAccount', 'category', 'payee', 'transactions' => fn ($q) => $q->with('account')->latest('transaction_date')->limit(5)])
-                    ->oldest('next_due_date')
-                    ->get();
-
-                $bills->each(function (Bill $bill): void {
-                    $bill->missed_cycles = $this->billService->computeMissedCycles($bill);
-                });
-
-                return BillResource::collection($bills)->resolve();
-            }),
+            'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
+            'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
+            'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
+            'bills' => Inertia::defer(fn () => $resolve()->bills(), 'bills'),
         ]);
     }
 
-    public function create(Request $request, Ledger $ledger): Response
-    {
-        $this->authorize('view', $ledger);
+    public function create(
+        Ledger $ledger,
+        GetBillFormPageData $input,
+        GetBillFormPageQuery $getBillFormPage,
+    ): Response {
+        $resolved = null;
+        $resolve = function () use ($input, $getBillFormPage, &$resolved): BillPageData {
+            return $resolved ??= $getBillFormPage($input->ledger);
+        };
 
         return Inertia::render('ledgers/bills/create', [
-            'accounts' => fn () => $this->billAccountOptions($ledger),
-            'categories' => fn () => $ledger->categories()->orderBy('position')->get(),
-            'payees' => fn () => $ledger->payees()->orderBy('name')->get(),
+            'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
+            'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
+            'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
         ]);
     }
 
-    public function edit(Request $request, Ledger $ledger, Bill $bill): Response
-    {
-        $this->authorize('view', $ledger);
+    public function edit(
+        Ledger $ledger,
+        Bill $bill,
+        GetBillFormPageData $input,
+        GetBillFormPageQuery $getBillFormPage,
+    ): Response {
+        $resolved = null;
+        $resolve = function () use ($input, $getBillFormPage, $bill, &$resolved): BillPageData {
+            return $resolved ??= $getBillFormPage($input->ledger, $bill);
+        };
 
         return Inertia::render('ledgers/bills/edit', [
-            'bill' => new BillResource($bill->load(['account', 'toAccount', 'category', 'payee'])),
-            'accounts' => fn () => $this->billAccountOptions($ledger),
-            'categories' => fn () => $ledger->categories()->orderBy('position')->get(),
-            'payees' => fn () => $ledger->payees()->orderBy('name')->get(),
+            'bill' => fn () => $resolve()->bill?->toArray(),
+            'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
+            'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
+            'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
         ]);
     }
 
-    /**
-     * @return array<int, array{id: int, ledger_id: int, name: string, color: ?string}>
-     */
-    private function billAccountOptions(Ledger $ledger): array
+    public function store(Ledger $ledger, StoreBillData $data, StoreBillAction $storeBill): RedirectResponse
     {
-        return $ledger->accounts()
-            ->visible()
-            ->orderBy('name')
-            ->get(['id', 'ledger_id', 'name', 'color'])
-            ->map(fn ($account) => [
-                'id' => $account->id,
-                'ledger_id' => $account->ledger_id,
-                'name' => $account->name,
-                'color' => $account->color,
-            ])
-            ->all();
-    }
-
-    public function store(StoreBillRequest $request, Ledger $ledger): RedirectResponse
-    {
-        $this->authorize('view', $ledger);
-
-        $validated = $this->resolveInlinePayee($request->validated(), $ledger);
-
-        $this->billService->store($ledger, $validated);
+        $storeBill($data);
 
         return redirect()->route('ledgers.bills.index', $ledger)->with('success', 'Recurring transaction created.');
     }
 
-    public function update(UpdateBillRequest $request, Ledger $ledger, Bill $bill): RedirectResponse
+    public function update(Ledger $ledger, Bill $bill, UpdateBillData $data, UpdateBillAction $updateBill): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $validated = $this->resolveInlinePayee($request->validated(), $ledger);
-
-        $this->billService->update($bill, $validated);
+        $updateBill($data);
 
         return redirect()->route('ledgers.bills.index', $ledger)->with('success', 'Recurring transaction updated.');
     }
 
-    public function destroy(Ledger $ledger, Bill $bill): RedirectResponse
+    public function destroy(Ledger $ledger, Bill $bill, DeleteBillAction $deleteBill): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $bill->delete();
+        $deleteBill($bill);
 
         return back()->with('success', 'Recurring transaction deleted.');
     }
 
-    public function toggle(Ledger $ledger, Bill $bill): RedirectResponse
+    public function toggle(Ledger $ledger, Bill $bill, ToggleBillAction $toggleBill): RedirectResponse
     {
         $this->authorize('update', $ledger);
 
-        $bill->update(['is_active' => ! $bill->is_active]);
+        $bill = $toggleBill($bill);
 
         return back()->with('success', $bill->is_active ? 'Recurring transaction activated.' : 'Recurring transaction deactivated.');
     }
 
-    /**
-     * @param  array<string, mixed>  $validated
-     * @return array<string, mixed>
-     */
-    private function resolveInlinePayee(array $validated, Ledger $ledger): array
+    public function pay(Ledger $ledger, Bill $bill, PayBillData $data, PayBillAction $payBill): RedirectResponse
     {
-        $newPayeeName = trim((string) ($validated['new_payee_name'] ?? ''));
-
-        if ($newPayeeName === '' || ! empty($validated['payee_id'])) {
-            return $validated;
-        }
-
-        $payee = $ledger->payees()->create(['name' => $newPayeeName]);
-        $validated['payee_id'] = $payee->id;
-
-        return $validated;
-    }
-
-    public function pay(PayBillRequest $request, Ledger $ledger, Bill $bill): RedirectResponse
-    {
-        $this->authorize('update', $ledger);
-
-        $this->billService->payBill($bill, $request->validated());
+        $payBill($data);
 
         return back()->with('success', "{$bill->name} marked as paid.");
     }

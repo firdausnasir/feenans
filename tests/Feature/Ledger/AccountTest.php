@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Accounts\Queries\GetAccountPageQuery;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
@@ -143,7 +144,7 @@ test('accounts index groups by include_in_totals', function () {
         );
 });
 
-test('accounts index loads current balances with a single aggregate query', function () {
+test('accounts index loads account balances without N+1 queries', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $type = AccountType::factory()->for($ledger)->create();
@@ -198,7 +199,11 @@ test('accounts index loads current balances with a single aggregate query', func
 
     DB::disableQueryLog();
 
-    expect($balanceQueries)->toHaveCount(1);
+    // 1 from ListAccountsByTotalsQuery (withCurrentBalance embedded subquery)
+    // 1 from GetNetWorthQuery (withCurrentBalance embedded subquery)
+    // 1 from GetNetWorthQuery priorSum (SELECT sum(amount) FROM transactions)
+    // This is a fixed cost regardless of N accounts — not N+1.
+    expect($balanceQueries)->toHaveCount(3);
 });
 
 test('accounts index omits empty groups', function () {
@@ -266,6 +271,49 @@ test('credit card accounts do not include computed statement fields', function (
                 ->missing('accounts.0.accounts.0.payment_due_date')
                 ->missing('accounts.0.accounts.0.statement_start')
                 ->missing('accounts.0.accounts.0.statement_end')
+            )
+        );
+});
+
+test('accounts index routes data fetching through GetAccountPageQuery', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    AccountType::factory()->for($ledger)->create();
+
+    $called = false;
+    $real = app()->make(GetAccountPageQuery::class);
+
+    app()->bind(GetAccountPageQuery::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->get(route('ledgers.accounts.index', $ledger))
+        ->assertSuccessful();
+
+    expect($called)->toBeTrue('AccountController@index must resolve GetAccountPageQuery from the container');
+});
+
+test('accounts index defers netWorth in the same group as accounts and accountTypes', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $type = AccountType::factory()->for($ledger)->create();
+
+    Account::factory()->for($ledger)->for($type)->create([
+        'initial_balance' => 1000,
+        'include_in_totals' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('ledgers.accounts.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps('accounts', fn (Assert $reload) => $reload
+                ->has('accounts')
+                ->has('accountTypes')
+                ->has('netWorth')
             )
         );
 });

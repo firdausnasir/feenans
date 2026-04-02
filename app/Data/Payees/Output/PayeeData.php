@@ -19,12 +19,16 @@ class PayeeData extends BaseOutputData
 
     public static function fromModel(Payee $payee): self
     {
+        $attributes = $payee->getAttributes();
+
         return new self(
             id: $payee->id,
             ledger_id: $payee->ledger_id,
             name: $payee->name,
             is_sample: $payee->is_sample,
-            transactions_count: $payee->transactions_count,
+            transactions_count: array_key_exists('transactions_count', $attributes)
+                ? (int) $attributes['transactions_count']
+                : null,
             created_at: $payee->created_at?->toIso8601String(),
             updated_at: $payee->updated_at?->toIso8601String(),
         );

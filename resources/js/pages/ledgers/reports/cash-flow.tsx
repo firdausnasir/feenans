@@ -36,21 +36,9 @@ import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type DailyCashFlowEntry = {
-    date: string;
-    income: number;
-    expense: number;
-    net: number;
-};
-
-type UpcomingBill = {
-    id: number;
-    name: string;
-    amount: number;
-    transaction_type: string;
-    next_due_date: string;
-    account_name: string | null;
-};
+type CashFlowReport = App.Data.Reports.Output.Web.CashFlowReportData;
+type DailyCashFlowEntry = CashFlowReport['daily_cash_flow'][number];
+type UpcomingBill = CashFlowReport['upcoming_bills'][number];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -264,11 +252,7 @@ function CashFlowSkeleton() {
 
 export default function CashFlowPage() {
     const { currentLedger, cashFlow } = usePage<{
-        cashFlow?: {
-            daily_cash_flow: DailyCashFlowEntry[];
-            upcoming_bills: UpcomingBill[];
-            period_label: string;
-        };
+        cashFlow?: CashFlowReport;
     }>().props;
     const ledger = currentLedger!;
     const { privacyMode } = usePrivacyMode();

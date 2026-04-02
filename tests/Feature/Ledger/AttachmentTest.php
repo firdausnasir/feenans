@@ -1,12 +1,77 @@
 <?php
 
+use App\Actions\Transactions\UseCases\DeleteTransactionAttachmentAction;
+use App\Actions\Transactions\UseCases\StoreTransactionAttachmentsAction;
 use App\Models\Account;
 use App\Models\AccountType;
+use App\Models\Attachment;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+
+test('attachment store routes through StoreTransactionAttachmentsAction', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+    $file = UploadedFile::fake()->create('receipt.pdf', 256, 'application/pdf');
+
+    $called = false;
+    $real = app()->make(StoreTransactionAttachmentsAction::class);
+    app()->bind(StoreTransactionAttachmentsAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->post(route('ledgers.transactions.attachments.store', [$ledger, $transaction]), [
+            'file' => $file,
+        ])
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]));
+
+    expect($called)->toBeTrue();
+});
+
+test('attachment destroy routes through DeleteTransactionAttachmentAction', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()->for($ledger)->for($account)->create();
+    Storage::disk('local')->put("attachments/{$ledger->id}/receipt.pdf", 'fake');
+    $attachment = Attachment::query()->create([
+        'transaction_id' => $transaction->id,
+        'filename' => 'receipt.pdf',
+        'path' => "attachments/{$ledger->id}/receipt.pdf",
+        'mime_type' => 'application/pdf',
+        'size' => 256,
+    ]);
+
+    $called = false;
+    $real = app()->make(DeleteTransactionAttachmentAction::class);
+    app()->bind(DeleteTransactionAttachmentAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->delete(route('ledgers.transactions.attachments.destroy', [$ledger, $transaction, $attachment]))
+        ->assertRedirect(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->assertSessionHas('success', 'Attachment deleted.');
+
+    expect($called)->toBeTrue();
+});
 
 test('store uploads attachment and returns created response', function () {
     Storage::fake('local');

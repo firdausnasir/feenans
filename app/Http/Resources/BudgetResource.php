@@ -14,7 +14,7 @@ class BudgetResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        // BudgetService::getBudgetsWithStats() returns plain arrays
+        // Shared-core budget queries may return plain arrays.
         if (is_array($this->resource)) {
             return $this->resource;
         }
@@ -30,7 +30,7 @@ class BudgetResource extends JsonResource
             'rollover' => (bool) $this->rollover,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
-            // Enriched stats (added by controller via BudgetService, not model attributes)
+            // Enriched stats are attached by shared-core budget queries, not model attributes.
             'category_name' => $this->when(isset($this->category_name), $this->category_name),
             'category_color' => $this->when(isset($this->category_color), $this->category_color),
             'spent' => $this->when(isset($this->spent), $this->spent),

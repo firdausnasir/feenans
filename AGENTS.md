@@ -55,8 +55,6 @@ This project has domain-specific skills available. You MUST activate the relevan
 
 - Stick to existing directory structure; don't create new base folders without approval.
 - Do not change the application's dependencies without approval.
-- Approved exception for the web/api shared-core architecture rollout: adding `spatie/laravel-data` is allowed, and `spatie/laravel-typescript-transformer` or `spatie/laravel-query-builder` may be added later only if their planned rollout phase is reached.
-- Approved exception for the web/api shared-core architecture rollout: new app subdirectories such as `app/Data`, `app/Actions`, and `app/Exceptions/Domain` may be introduced as part of the approved architecture.
 
 ## Frontend Bundling
 

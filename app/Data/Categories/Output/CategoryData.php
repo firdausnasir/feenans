@@ -28,6 +28,8 @@ class CategoryData extends BaseOutputData
 
     public static function fromModel(Category $category): self
     {
+        $attributes = $category->getAttributes();
+
         return new self(
             id: $category->id,
             ledger_id: $category->ledger_id,
@@ -37,7 +39,9 @@ class CategoryData extends BaseOutputData
             color: $category->color,
             icon: $category->icon,
             position: $category->position,
-            transactions_count: $category->transactions_count,
+            transactions_count: array_key_exists('transactions_count', $attributes)
+                ? (int) $attributes['transactions_count']
+                : null,
             children: $category->relationLoaded('children')
                 ? $category->children->map(fn (Category $child) => self::fromModel($child)->toArray())->values()->all()
                 : Optional::create(),

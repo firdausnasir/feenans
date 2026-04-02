@@ -2,61 +2,56 @@
 
 namespace App\Http\Controllers\Ledger;
 
+use App\Actions\Budgets\Queries\GetBudgetPageQuery;
+use App\Actions\Budgets\UseCases\DeleteBudgetAction;
+use App\Actions\Budgets\UseCases\StoreBudgetAction;
+use App\Actions\Budgets\UseCases\UpdateBudgetAction;
+use App\Actions\Categories\Queries\ListCategoriesQuery;
+use App\Data\Budgets\Input\StoreBudgetData;
+use App\Data\Budgets\Input\UpdateBudgetData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreBudgetRequest;
-use App\Http\Requests\UpdateBudgetRequest;
-use App\Http\Resources\CategoryResource;
 use App\Models\Budget;
 use App\Models\Ledger;
-use App\Services\BudgetService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class BudgetController extends Controller
 {
-    public function __construct(private readonly BudgetService $budgetService) {}
-
-    public function index(Request $request, Ledger $ledger): Response
-    {
+    public function index(
+        Ledger $ledger,
+        ListCategoriesQuery $listCategories,
+        GetBudgetPageQuery $getBudgetPage,
+    ): Response {
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/budgets/index', [
-            'categories' => fn () => CategoryResource::collection(
-                $ledger->categories()
-                    ->with('children')
-                    ->parents()
-                    ->orderBy('position')
-                    ->get()
-            )->resolve(),
-            'budgets' => Inertia::defer(fn () => $this->budgetService->getBudgetsWithStats($ledger)),
+            'categories' => $listCategories($ledger)->map->toArray()->values()->all(),
+            'budgets' => Inertia::defer(function () use ($ledger, $getBudgetPage) {
+                return $getBudgetPage($ledger)->toInertiaProps()['budgets'];
+            }),
         ]);
     }
 
-    public function store(StoreBudgetRequest $request, Ledger $ledger): RedirectResponse
+    public function store(Ledger $ledger, StoreBudgetData $data, StoreBudgetAction $storeBudget): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $this->budgetService->store($ledger, $request->validated());
+        $storeBudget($data);
 
         return to_route('ledgers.budgets.index', $ledger)->with('success', 'Budget created.');
     }
 
-    public function update(UpdateBudgetRequest $request, Ledger $ledger, Budget $budget): RedirectResponse
+    public function update(Ledger $ledger, Budget $budget, UpdateBudgetData $data, UpdateBudgetAction $updateBudget): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $this->budgetService->update($budget, $request->validated());
+        $updateBudget($data);
 
         return to_route('ledgers.budgets.index', $ledger)->with('success', 'Budget updated.');
     }
 
-    public function destroy(Ledger $ledger, Budget $budget): RedirectResponse
+    public function destroy(Ledger $ledger, Budget $budget, DeleteBudgetAction $deleteBudget): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $budget->delete();
+        $deleteBudget($budget);
 
         return to_route('ledgers.budgets.index', $ledger)->with('success', 'Budget deleted.');
     }

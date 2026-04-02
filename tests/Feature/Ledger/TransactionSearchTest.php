@@ -175,3 +175,67 @@ test('transaction index page renders filters with native scroll transaction resu
         )
     );
 });
+
+test('transaction index accepts comma separated account filter input', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $checking = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+    ]);
+    $savings = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+    ]);
+    $cash = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Cash',
+    ]);
+    $category = Category::factory()->for($ledger)->create();
+
+    $checkingTransaction = Transaction::factory()->for($ledger)->for($checking)->for($category)->create([
+        'description' => 'Checking transaction',
+        'transaction_date' => '2026-03-20',
+    ]);
+
+    $savingsTransaction = Transaction::factory()->for($ledger)->for($savings)->for($category)->create([
+        'description' => 'Savings transaction',
+        'transaction_date' => '2026-03-19',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($cash)->for($category)->create([
+        'description' => 'Cash transaction',
+        'transaction_date' => '2026-03-18',
+    ]);
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('ledgers.transactions.index', [
+            'ledger' => $ledger,
+            'account_ids' => $checking->id.','.$savings->id,
+        ]));
+
+    $response->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/transactions/index')
+            ->where('filters.account_ids', [
+                (string) $checking->id,
+                (string) $savings->id,
+            ])
+            ->missing('transactions')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('transactions', fn (Assert $transactions) => $transactions
+                    ->has('data', 2)
+                    ->where('data', function ($items) use ($checkingTransaction, $savingsTransaction) {
+                        $ids = collect($items)->pluck('id')->sort()->values()->all();
+
+                        expect($ids)->toBe([
+                            $checkingTransaction->id,
+                            $savingsTransaction->id,
+                        ]);
+
+                        return true;
+                    })
+                    ->etc()
+                )
+            )
+        );
+});

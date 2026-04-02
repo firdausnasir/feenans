@@ -1,5 +1,12 @@
 <?php
 
+use App\Actions\Budgets\Queries\GetBudgetPeriodBoundsQuery;
+use App\Actions\Budgets\Queries\GetBudgetSpentQuery;
+use App\Actions\Budgets\Queries\ListBudgetsQuery;
+use App\Actions\Budgets\UseCases\StoreBudgetAction;
+use App\Actions\Budgets\UseCases\UpdateBudgetAction;
+use App\Data\Budgets\Input\StoreBudgetData;
+use App\Data\Budgets\Input\UpdateBudgetData;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -7,23 +14,25 @@ use App\Models\Budget;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
-use App\Services\BudgetService;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
-test('budget service stores a budget', function () {
-    $ledger = Ledger::factory()->create();
+test('store budget action stores a budget', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create();
 
-    $budget = app(BudgetService::class)->store($ledger, [
-        'category_id' => $category->id,
-        'amount' => 500.00,
-        'period' => 'monthly',
-        'start_date' => '2026-03-01',
-        'end_date' => null,
-        'is_active' => true,
-        'rollover' => false,
-    ]);
+    $budget = app(StoreBudgetAction::class)(new StoreBudgetData(
+        category_id: $category->id,
+        amount: 500.00,
+        period: 'monthly',
+        start_date: '2026-03-01',
+        end_date: null,
+        rollover: false,
+        ledger: $ledger,
+        user: $user,
+    ));
 
     expect($budget)->toBeInstanceOf(Budget::class)
         ->and($budget->ledger_id)->toBe($ledger->id)
@@ -32,8 +41,9 @@ test('budget service stores a budget', function () {
         ->and($budget->period)->toBe('monthly');
 });
 
-test('budget service updates a budget', function () {
-    $ledger = Ledger::factory()->create();
+test('update budget action updates a budget', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
     $category = Category::factory()->for($ledger)->create();
 
     $budget = Budget::query()->create([
@@ -46,18 +56,23 @@ test('budget service updates a budget', function () {
         'rollover' => false,
     ]);
 
-    $updated = app(BudgetService::class)->update($budget, [
-        'category_id' => $category->id,
-        'amount' => 600.00,
-        'period' => 'weekly',
-        'start_date' => '2026-03-01',
-    ]);
+    $updated = app(UpdateBudgetAction::class)(new UpdateBudgetData(
+        category_id: $category->id,
+        amount: 600.00,
+        period: 'weekly',
+        start_date: '2026-03-01',
+        end_date: null,
+        rollover: false,
+        ledger: $ledger,
+        budget: $budget,
+        user: $user,
+    ));
 
     expect((string) $updated->amount)->toBe('600.00')
         ->and($updated->period)->toBe('weekly');
 });
 
-test('budget service getSpent returns total expenses for category in current period', function () {
+test('budget spend query returns total expenses for category in current period', function () {
     $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -97,12 +112,12 @@ test('budget service getSpent returns total expenses for category in current per
         'rollover' => false,
     ]);
 
-    $spent = app(BudgetService::class)->getSpent($budget, $ledger);
+    $spent = app(GetBudgetSpentQuery::class)($budget, $ledger);
 
     expect($spent)->toBe(100.0);
 });
 
-test('budget service getSpent for overall budget counts all expenses', function () {
+test('budget spend query for overall budget counts all expenses', function () {
     $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -134,12 +149,12 @@ test('budget service getSpent for overall budget counts all expenses', function 
         'rollover' => false,
     ]);
 
-    $spent = app(BudgetService::class)->getSpent($budget, $ledger);
+    $spent = app(GetBudgetSpentQuery::class)($budget, $ledger);
 
     expect($spent)->toBe(50.0);
 });
 
-test('budget service getPeriodBounds returns weekly bounds for weekly period', function () {
+test('budget period bounds query returns weekly bounds for weekly period', function () {
     $ledger = Ledger::factory()->create();
 
     $budget = Budget::query()->create([
@@ -151,14 +166,14 @@ test('budget service getPeriodBounds returns weekly bounds for weekly period', f
         'rollover' => false,
     ]);
 
-    [$start, $end] = app(BudgetService::class)->getPeriodBounds($budget, $ledger);
+    [$start, $end] = app(GetBudgetPeriodBoundsQuery::class)($budget, $ledger);
 
     $today = CarbonImmutable::today();
     expect($start->toDateString())->toBe($today->startOfWeek()->toDateString())
         ->and($end->toDateString())->toBe($today->endOfWeek()->toDateString());
 });
 
-test('budget service getPeriodBounds returns yearly bounds for yearly period', function () {
+test('budget period bounds query returns yearly bounds for yearly period', function () {
     $ledger = Ledger::factory()->create();
 
     $budget = Budget::query()->create([
@@ -170,14 +185,14 @@ test('budget service getPeriodBounds returns yearly bounds for yearly period', f
         'rollover' => false,
     ]);
 
-    [$start, $end] = app(BudgetService::class)->getPeriodBounds($budget, $ledger);
+    [$start, $end] = app(GetBudgetPeriodBoundsQuery::class)($budget, $ledger);
 
     $today = CarbonImmutable::today();
     expect($start->toDateString())->toBe($today->startOfYear()->toDateString())
         ->and($end->toDateString())->toBe($today->endOfYear()->toDateString());
 });
 
-test('budget service getBudgetsWithStats returns enriched data', function () {
+test('budget list query returns enriched data', function () {
     $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -202,7 +217,7 @@ test('budget service getBudgetsWithStats returns enriched data', function () {
         'transaction_date' => $start->addDay()->toDateString(),
     ]);
 
-    $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
+    $stats = app(ListBudgetsQuery::class)($ledger)->map->toArray()->all();
 
     expect($stats)->toHaveCount(1)
         ->and($stats[0]['category_name'])->toBe('Groceries')
@@ -213,7 +228,7 @@ test('budget service getBudgetsWithStats returns enriched data', function () {
         ->and($stats[0]['status'])->toBe('warning');
 });
 
-test('budget service getBudgetsWithStats returns over status when exceeded', function () {
+test('budget list query returns over status when exceeded', function () {
     $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
@@ -238,14 +253,14 @@ test('budget service getBudgetsWithStats returns over status when exceeded', fun
         'transaction_date' => $start->addDay()->toDateString(),
     ]);
 
-    $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
+    $stats = app(ListBudgetsQuery::class)($ledger)->map->toArray()->all();
 
     expect($stats[0]['status'])->toBe('over')
         ->and($stats[0]['percentage'])->toBe(100)
         ->and($stats[0]['remaining'])->toBe(0);
 });
 
-test('budget service getBudgetsWithStats skips inactive budgets', function () {
+test('budget list query skips inactive budgets', function () {
     $ledger = Ledger::factory()->create();
     $category = Category::factory()->for($ledger)->create();
 
@@ -259,12 +274,12 @@ test('budget service getBudgetsWithStats skips inactive budgets', function () {
         'rollover' => false,
     ]);
 
-    $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
+    $stats = app(ListBudgetsQuery::class)($ledger)->map->toArray()->all();
 
     expect($stats)->toHaveCount(0);
 });
 
-test('budget service getBudgetsWithStats batches spend calculations for budgets in the same period', function () {
+test('budget list query batches spend calculations for budgets in the same period', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 
     $ledger = Ledger::factory()->create(['cycle_start_day' => 1]);
@@ -303,7 +318,7 @@ test('budget service getBudgetsWithStats batches spend calculations for budgets 
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $stats = app(BudgetService::class)->getBudgetsWithStats($ledger);
+    $stats = app(ListBudgetsQuery::class)($ledger)->map->toArray()->all();
 
     $transactionQueries = collect(DB::getQueryLog())
         ->filter(function (array $query): bool {
