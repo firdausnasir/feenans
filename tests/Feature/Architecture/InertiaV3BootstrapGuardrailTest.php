@@ -22,8 +22,11 @@ test('package json includes the inertia vite package', function () {
 
 test('composer dev flow does not require a separate inertia ssr daemon', function () {
     $composer = json_decode(File::get(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
-    $devScript = $composer['scripts']['dev'] ?? [];
+    $package = json_decode(File::get(base_path('package.json')), true, flags: JSON_THROW_ON_ERROR);
+    $composerDevScript = $composer['scripts']['dev'] ?? [];
+    $packageDevScript = $package['scripts']['dev'] ?? '';
 
-    expect(implode(' ', $devScript))->not->toContain('inertia:start-ssr');
+    expect(implode(' ', $composerDevScript))->not->toContain('inertia:start-ssr');
+    expect($packageDevScript)->not->toContain('inertia:start-ssr');
     expect($composer['scripts'])->not->toHaveKey('dev:ssr');
 });
