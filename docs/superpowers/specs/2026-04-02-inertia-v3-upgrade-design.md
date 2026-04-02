@@ -77,8 +77,9 @@ This means the migration should stay focused on the bootstrap/config/SSR surface
 
 Use a full plugin-native Inertia v3 upgrade.
 
-- `resources/js/app.tsx` becomes the canonical Inertia entry point.
-- `@inertiajs/vite` owns page resolution and development SSR behavior.
+- `resources/js/app.tsx` becomes the canonical browser entry point.
+- `@inertiajs/vite` owns plugin-native page resolution and development SSR behavior.
+- Production SSR continues to use a dedicated SSR bundle and `php artisan inertia:start-ssr` unless version-specific implementation work proves a different setup is both supported and necessary.
 - `resources/views/app.blade.php` moves to the v3 root-template shape with a single app entry instead of page-specific asset injection.
 - `config/inertia.php` is republished and then re-customized on top of the new structure.
 
@@ -100,7 +101,7 @@ Upgrade versions now and postpone the Blade/bootstrap cleanup to a follow-up pas
 - Pros: smallest first diff.
 - Cons: prolongs the time spent in a mixed v2/v3 shape and creates immediate follow-up work.
 
-The plugin-native approach is preferred. If SSR safety proves unexpectedly difficult, a very small temporary SSR entry can be retained only as a short-lived fallback, not as the target architecture.
+The plugin-native approach is preferred. The target is still a cleaner v3 bootstrap, but this design does not assume that production SSR should stop using a dedicated `resources/js/ssr.tsx` entry during the upgrade.
 
 ## Likely Files Touched
 
@@ -111,7 +112,7 @@ The plugin-native approach is preferred. If SSR safety proves unexpectedly diffi
 - `config/inertia.php`
 - `vite.config.ts`
 - `resources/js/app.tsx`
-- `resources/js/ssr.tsx` if retained temporarily or deleted once redundant
+- `resources/js/ssr.tsx`
 - `resources/views/app.blade.php`
 - `resources/js/hooks/use-appearance.tsx`
 - Any page or component that needs an explicit `Deferred` reloading treatment after verification
@@ -128,30 +129,31 @@ The plugin-native approach is preferred. If SSR safety proves unexpectedly diffi
 - Re-apply this app's SSR and history configuration intentionally instead of guessing through a blind merge.
 - Clear cached views after the config and Blade updates.
 
-The new `config/inertia.php` structure should replace the old top-level page configuration keys with the v3 layout.
+The new `config/inertia.php` structure should be reapplied with the actual v2-to-v3 key move this repo needs: page path and extension settings move from `testing.page_paths` and `testing.page_extensions` into top-level `pages.paths` and `pages.extensions`, while `testing.ensure_pages_exist` remains as the testing-specific flag.
 
 ### 2. Frontend Bootstrap Layer
 
 - Refactor `resources/js/app.tsx` to the v3 plugin-native `createInertiaApp()` shape.
 - Remove manual page resolution and manual bootstrap code that the plugin now handles.
 - Preserve current global providers such as tooltip and privacy-mode wrappers.
-- Ensure the entry file is SSR-safe and does not execute browser-only side effects at import time.
+- Ensure the browser entry file is SSR-safe where shared code paths require it and does not execute browser-only side effects at import time.
+- Use the correct client hydration path for SSR-rendered HTML instead of unconditionally remounting the app on the client.
 
-The main repo-specific issue here is `initializeTheme()`. It currently runs at module scope, so it must move behind a browser-only boundary or equivalent SSR-safe guard before the shared entry can safely run in SSR mode.
+The main repo-specific issues here are `initializeTheme()` and client hydration. `initializeTheme()` currently runs at module scope, so it must move behind a browser-only boundary or equivalent SSR-safe guard. The browser entry also currently uses `createRoot(...)`, which must be replaced with the documented SSR-compatible hydration path when rendering pages that were server-rendered.
 
 ### 3. SSR And Vite Layer
 
 - Add `inertia()` from `@inertiajs/vite` to `vite.config.ts`.
 - Let the plugin handle development SSR when running `npm run dev`.
-- Keep production SSR based on a built bundle plus `php artisan inertia:start-ssr`.
-- Remove redundant manual wiring once the plugin-native path is confirmed working.
+- Keep production SSR based on a dedicated SSR bundle plus `php artisan inertia:start-ssr`.
+- Simplify redundant client-side bootstrap wiring, but do not remove the dedicated production SSR entry unless the final implementation proves that change is both supported and safe.
 
 The upgrade should preserve current production behavior while simplifying the development flow.
 
 ### 4. Blade Root Template Layer
 
 - Replace page-specific `@vite` asset loading with a single app entry.
-- Prefer the v3 Blade components `<x-inertia::head>` and `<x-inertia::app>` over the older directives.
+- Optionally adopt the v3 Blade components `<x-inertia::head>` and `<x-inertia::app>` if their head/title fallback behavior is useful; keeping `@inertiaHead` and `@inertia` is also acceptable if that proves lower risk for this upgrade.
 - Remove the old `<title inertia>` pattern in favor of the component-based root template.
 - Keep the dark-mode no-flash handling only if it still serves a real purpose after the entry-point cleanup.
 
@@ -165,7 +167,10 @@ Most page components should remain unchanged.
 - Existing Wayfinder-generated route helpers should remain in use.
 - Existing deferred props should continue to work.
 
-The only page-level behavior that requires deliberate verification is v3's `Deferred` reloading semantics. In v3, deferred content stays visible during partial reloads instead of returning to the fallback. If any current view depends on the fallback reappearing, that page should use the `reloading` render prop explicitly.
+The page and component layer still needs compatibility verification in two specific areas.
+
+- `Deferred` reloading semantics changed in v3. Deferred content stays visible during partial reloads instead of returning to the fallback. If any current view depends on the fallback reappearing, that page should use the `reloading` render prop explicitly.
+- Form submit-state timing also needs verification. This repo is form-heavy across auth, onboarding, settings, security, and ledger create/edit flows, and v3 changes when `processing` and `progress` reset relative to `onFinish`. Existing loading and disabled-state behavior must be re-tested instead of assumed.
 
 ## Data Flow
 
@@ -178,7 +183,7 @@ Initial page visits remain Laravel-driven.
 The key change is not the overall request model; it is the bootstrap authority.
 
 - In v2, this repository manually wires page resolution and SSR setup.
-- In v3, `@inertiajs/vite` becomes the primary bootstrap mechanism.
+- In v3, `@inertiajs/vite` becomes the primary browser bootstrap mechanism while production SSR still uses the explicit SSR bundle/service flow unless implementation evidence supports a deeper consolidation.
 
 ### Development
 
@@ -226,12 +231,18 @@ Verification should happen in layers so failures are easy to localize.
 - Run `npm run lint`.
 - Run `npm run types:check`.
 - Run `npm run build`.
+- Run the repo's SSR build path explicitly with `npm run build:ssr` unless the package scripts are intentionally changed during the upgrade.
 
-The production build is important because it validates the updated plugin/bootstrap shape and catches page-resolution or manifest issues.
+The production builds are important because they validate the updated plugin/bootstrap shape and catch page-resolution or manifest issues in both the browser and SSR bundles.
 
 ### 4. SSR Verification
 
+- In development, run the normal Vite dev server only and verify a known SSR route renders without starting `php artisan inertia:start-ssr`.
 - Confirm the application still renders with SSR enabled.
+- Start the SSR service with `php artisan inertia:start-ssr` after producing the SSR bundle.
+- Verify the SSR service is healthy with `php artisan inertia:check-ssr`.
+- Verify at least one SSR-rendered route loads successfully through the upgraded stack.
+- Verify the browser hydrates the SSR-rendered route without remounting the app or producing hydration warnings.
 - Check for hydration mismatches, browser-only SSR crashes, or page-resolution failures.
 - Review browser logs after the upgrade to surface silent runtime problems.
 
@@ -282,7 +293,8 @@ Compare the new published file with the existing app settings and reapply only t
 - `@inertiajs/vite` is installed and used as the primary Inertia bootstrap path.
 - `resources/views/app.blade.php` matches the v3 root-template strategy with a single app entry.
 - Development SSR works through the normal Vite dev flow.
-- Production build output is valid and the app still supports production SSR startup.
+- Browser and SSR build output are valid, and the app still supports production SSR startup and health checks.
+- SSR-rendered routes hydrate cleanly on the client without hydration warnings or full remount behavior.
 - Existing targeted Inertia architecture, exception, deferred, and partial reload tests pass.
 - No new hydration, SSR, or page-resolution errors appear in browser logs for critical flows.
 - No user-visible regressions are introduced in forms, deferred sections, partial reloads, or exception pages.
