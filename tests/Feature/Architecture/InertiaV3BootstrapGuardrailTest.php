@@ -30,3 +30,17 @@ test('composer dev flow does not require a separate inertia ssr daemon', functio
     expect($packageDevScript)->not->toContain('inertia:start-ssr');
     expect($composer['scripts'])->not->toHaveKey('dev:ssr');
 });
+
+test('inertia config uses the v3 pages structure', function () {
+    $config = File::get(config_path('inertia.php'));
+
+    expect($config)
+        ->toContain("'pages' => [")
+        ->toContain("resource_path('js/pages')")
+        ->toContain("'paths' => [")
+        ->toContain("'extensions' => [")
+        ->toContain("'testing' => [")
+        ->toContain("'ensure_pages_exist' => true")
+        ->not->toContain("'page_paths' => [")
+        ->not->toContain("'page_extensions' => [");
+});
