@@ -1,7 +1,6 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { pay as payRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -17,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 import type { Account, Bill } from '@/types';
+import { pay as payRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 
 type PayBillDialogProps = {
     bill: Bill | null;

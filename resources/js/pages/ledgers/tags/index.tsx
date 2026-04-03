@@ -2,11 +2,6 @@ import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Hash, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import {
-    destroy as destroyTag,
-    store as storeTag,
-    update as updateTag,
-} from '@/actions/App/Http/Controllers/Ledger/TagController';
 import { TagPill } from '@/components/tag-pill';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,9 +27,14 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { mapInertiaErrorsArray } from '@/lib/utils';
+import type { BreadcrumbItem, Tag } from '@/types';
+import {
+    destroy as destroyTag,
+    store as storeTag,
+    update as updateTag,
+} from '@/actions/App/Http/Controllers/Ledger/TagController';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as tagsIndex } from '@/routes/ledgers/tags';
-import type { BreadcrumbItem, Tag } from '@/types';
 
 type TagWithCount = Tag & { transactions_count: number };
 

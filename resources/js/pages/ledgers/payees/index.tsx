@@ -2,11 +2,6 @@ import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import { ExternalLink, Pencil, Search, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import {
-    destroy as destroyPayee,
-    store as storePayee,
-    update as updatePayee,
-} from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -25,10 +20,15 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
+import type { BreadcrumbItem, Payee } from '@/types';
+import {
+    destroy as destroyPayee,
+    store as storePayee,
+    update as updatePayee,
+} from '@/actions/App/Http/Controllers/Ledger/PayeeController';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as payeesIndex } from '@/routes/ledgers/payees';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { BreadcrumbItem, Payee } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
 

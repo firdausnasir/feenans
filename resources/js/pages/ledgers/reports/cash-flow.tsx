@@ -27,12 +27,12 @@ import {
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
+import type { BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     index as reportsIndex,
     cashFlow as cashFlowRoute,
 } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

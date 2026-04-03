@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { ComponentType, SVGAttributes } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
+import { welcomeHeaderClassName } from '@/components/layout-header-classes';
 import ScreenshotImage from '@/components/screenshot-image';
 import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
@@ -275,7 +276,7 @@ export default function Welcome({
             <Head title="Welcome" />
             <div className="flex min-h-screen flex-col bg-background text-foreground">
                 {/* Header */}
-                <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
+                <header className={welcomeHeaderClassName}>
                     <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
                         <div className="flex items-center gap-2">
                             <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">

@@ -52,11 +52,11 @@ import AppLayout from '@/layouts/app-layout';
 import { amountColor, formatAbsAmount, formatAmount } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
 import { resolveDeferredArray } from '@/pages/ledgers/accounts/deferred-data';
+import type { Account, AccountType, BreadcrumbItem } from '@/types';
 import { premium } from '@/routes';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
-import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
 type AccountGroup = {
     group: 'included' | 'excluded';

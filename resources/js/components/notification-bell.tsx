@@ -2,10 +2,6 @@ import { router, usePage } from '@inertiajs/react';
 import { BarChart3, Bell, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
-    markAllRead as markAllReadRoute,
-    markRead as markReadRoute,
-} from '@/actions/App/Http/Controllers/NotificationController';
-import {
     getNotificationCopy
     
 } from '@/components/notification-bell-copy';
@@ -17,6 +13,10 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+    markAllRead as markAllReadRoute,
+    markRead as markReadRoute,
+} from '@/actions/App/Http/Controllers/NotificationController';
 
 type NotificationItem = {
     id: string;
