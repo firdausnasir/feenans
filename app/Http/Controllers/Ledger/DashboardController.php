@@ -23,14 +23,8 @@ class DashboardController extends Controller
 
         return Inertia::render('ledgers/dashboard', [
             'cycle' => $data->cycle,
-            'summary' => fn () => $data->summary,
-            'accounts' => fn () => $data->accounts,
-            'dailyTrend' => Inertia::defer($data->dailyTrend),
-            'topCategories' => Inertia::defer($data->topCategories),
-            'recentTransactions' => Inertia::defer($data->recentTransactions),
-            'uncategorizedCount' => Inertia::defer($data->uncategorizedCount),
-            'upcomingBills' => Inertia::defer($data->upcomingBills),
-            'topBudgets' => Inertia::defer($data->topBudgets),
+            'summary' => $data->summary,
+            'accounts' => $data->accounts,
         ]);
     }
 }

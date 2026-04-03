@@ -43,7 +43,9 @@ class GetImportPageRequestNormalizer implements Normalizer
         }
 
         return [
-            'parseResult' => $value->session()->get('importParseResult'),
+            'parseResult' => $value->hasSession()
+                ? $value->session()->get('importParseResult')
+                : null,
         ];
     }
 }

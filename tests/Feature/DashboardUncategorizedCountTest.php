@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -24,14 +25,12 @@ test('uncategorized count returns 0 when all transactions have categories', func
         'transaction_date' => now(),
     ]);
 
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    Sanctum::actingAs($this->user, ['*']);
+
+    $this
+        ->getJson(route('api.v1.ledgers.categories.dashboard-uncategorized-count', $this->ledger))
         ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
-            ->loadDeferredProps(fn ($reload) => $reload
-                ->where('uncategorizedCount', 0)
-            )
-        );
+        ->assertJsonPath('data.count', 0);
 });
 
 test('uncategorized count returns correct count when some transactions lack categories', function () {
@@ -51,14 +50,12 @@ test('uncategorized count returns correct count when some transactions lack cate
         'transaction_date' => now(),
     ]);
 
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    Sanctum::actingAs($this->user, ['*']);
+
+    $this
+        ->getJson(route('api.v1.ledgers.categories.dashboard-uncategorized-count', $this->ledger))
         ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
-            ->loadDeferredProps(fn ($reload) => $reload
-                ->where('uncategorizedCount', 2)
-            )
-        );
+        ->assertJsonPath('data.count', 2);
 });
 
 test('transfer transactions are excluded from the uncategorized count', function () {
@@ -73,12 +70,10 @@ test('transfer transactions are excluded from the uncategorized count', function
         'transaction_date' => now(),
     ]);
 
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    Sanctum::actingAs($this->user, ['*']);
+
+    $this
+        ->getJson(route('api.v1.ledgers.categories.dashboard-uncategorized-count', $this->ledger))
         ->assertSuccessful()
-        ->assertInertia(fn ($page) => $page
-            ->loadDeferredProps(fn ($reload) => $reload
-                ->where('uncategorizedCount', 1)
-            )
-        );
+        ->assertJsonPath('data.count', 1);
 });

@@ -8,7 +8,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('search filters transactions by description', function () {
+test('search preserves description query in transaction shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -46,17 +46,12 @@ test('search filters transactions by description', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.search', 'coffee')
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Morning coffee at cafe')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('search filters transactions by notes', function () {
+test('search preserves notes query in transaction shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -95,17 +90,12 @@ test('search filters transactions by notes', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.search', 'Birthday')
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Store purchase')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('search returns all transactions when search is empty', function () {
+test('search leaves transaction shell props unfiltered when search is empty', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -128,16 +118,12 @@ test('search returns all transactions when search is empty', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.search', null)
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 3)
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index page renders filters with native scroll transaction results', function () {
+test('transaction index page renders shell filters without deferred transactions', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -166,17 +152,12 @@ test('transaction index page renders filters with native scroll transaction resu
         ->has('payees', 0)
         ->has('tags', 0)
         ->missing('transactions')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions', fn (Assert $transactions) => $transactions
-                ->has('data', 1)
-                ->where('data.0.description', 'Test query result')
-                ->etc()
-            )
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index accepts comma separated account filter input', function () {
+test('transaction index accepts comma separated account filter input in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -221,21 +202,7 @@ test('transaction index accepts comma separated account filter input', function 
                 (string) $savings->id,
             ])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 2)
-                    ->where('data', function ($items) use ($checkingTransaction, $savingsTransaction) {
-                        $ids = collect($items)->pluck('id')->sort()->values()->all();
-
-                        expect($ids)->toBe([
-                            $checkingTransaction->id,
-                            $savingsTransaction->id,
-                        ]);
-
-                        return true;
-                    })
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });

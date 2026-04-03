@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia as Assert;
+use Laravel\Sanctum\Sanctum;
 
 test('report page renders with comparison query params', function () {
     $user = User::factory()->create();
@@ -59,35 +60,28 @@ test('report comparison payload preserves summary and delta contract', function 
             'transaction_date' => '2026-02-06',
         ]);
 
-        $response = $this
-            ->actingAs($user)
-            ->get(route('ledgers.reports.index', $ledger).'?date_from=2026-03-01&date_to=2026-03-31&compare_start=2026-02-01&compare_end=2026-02-28');
+        Sanctum::actingAs($user, ['*']);
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->component('ledgers/reports/index')
-            ->where('dateRange.date_from', '2026-03-01')
-            ->where('dateRange.date_to', '2026-03-31')
-            ->where('dateRange.preset', 'this_month')
-            ->missing('report')
+        $response = $this->getJson(
+            route('api.v1.ledgers.reports.index', $ledger)
+            .'?date_from=2026-03-01&date_to=2026-03-31&compare_start=2026-02-01&compare_end=2026-02-28'
         );
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->where('report.comparison.current_period.from', '2026-03-01')
-                ->where('report.comparison.current_period.to', '2026-03-31')
-                ->where('report.comparison.compare_period.from', '2026-02-01')
-                ->where('report.comparison.compare_period.to', '2026-02-28')
-                ->where('report.comparison.summary.current_expense', fn (mixed $value): bool => (float) $value === 90.0)
-                ->where('report.comparison.summary.compare_expense', fn (mixed $value): bool => (float) $value === 60.0)
-                ->where('report.comparison.summary.expense_delta', fn (mixed $value): bool => (float) $value === 30.0)
-                ->where('report.comparison.summary.current_income', fn (mixed $value): bool => (float) $value === 300.0)
-                ->where('report.comparison.summary.compare_income', fn (mixed $value): bool => (float) $value === 200.0)
-                ->where('report.comparison.summary.biggest_change.name', 'Food')
-                ->where('report.comparison.categoryDeltas.0.name', 'Food')
-                ->where('report.comparison.trendOverlay.0.current_expense', fn (mixed $value): bool => (float) $value === 90.0)
-                ->where('report.comparison.trendOverlay.0.compare_expense', fn (mixed $value): bool => (float) $value === 60.0)
-            )
-        );
+        $response->assertSuccessful()
+            ->assertJsonPath('data.comparison.current_period.from', '2026-03-01')
+            ->assertJsonPath('data.comparison.current_period.to', '2026-03-31')
+            ->assertJsonPath('data.comparison.compare_period.from', '2026-02-01')
+            ->assertJsonPath('data.comparison.compare_period.to', '2026-02-28')
+            ->assertJsonPath('data.comparison.categoryDeltas.0.name', 'Food')
+            ->assertJsonPath('data.comparison.trendOverlay.0.current_expense', 90.0)
+            ->assertJsonPath('data.comparison.trendOverlay.0.compare_expense', 60.0);
+
+        expect($response->json('data.comparison.summary.current_expense'))->toBe(90.0)
+            ->and($response->json('data.comparison.summary.compare_expense'))->toBe(60.0)
+            ->and($response->json('data.comparison.summary.expense_delta'))->toBe(30.0)
+            ->and($response->json('data.comparison.summary.current_income'))->toBe(300.0)
+            ->and($response->json('data.comparison.summary.compare_income'))->toBe(200.0)
+            ->and($response->json('data.comparison.summary.biggest_change.name'))->toBe('Food');
     } finally {
         CarbonImmutable::setTestNow();
     }

@@ -36,13 +36,11 @@ test('tag index renders the inertia shell for api-driven tag data', function () 
             ->component('ledgers/tags/index')
             ->where('currentLedger.id', $ledger->id)
             ->missing('tags')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('tags', 1, fn (Assert $tagPage) => $tagPage
-                    ->where('name', 'shell-tag')
-                    ->etc()
-                )
-            )
         );
+
+    $this->actingAs($user)
+        ->get(route('ledgers.tags.index', $ledger))
+        ->assertViewMissing('page.deferredProps');
 });
 
 test('tag can be created through web routes', function () {
@@ -61,26 +59,6 @@ test('tag can be created through web routes', function () {
         ->assertSessionHasNoErrors();
 
     expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
-});
-
-test('tag index supports partial reloads for tags', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    Tag::factory()->for($ledger)->create(['name' => 'groceries']);
-
-    $response = $this->actingAs($user)
-        ->get(route('ledgers.tags.index', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->reloadOnly('tags', fn (Assert $reload) => $reload
-            ->has('tags', 1, fn (Assert $tagPage) => $tagPage
-                ->where('name', 'groceries')
-                ->etc()
-            )
-            ->missing('currentLedger')
-        )
-    );
 });
 
 test('tag web create uses shared tag request validation messages', function () {
@@ -268,7 +246,7 @@ test('transaction with tags syncs tags correctly on store', function () {
         ->toBe(collect([$tag1->id, $tag2->id])->sort()->values()->toArray());
 });
 
-test('transaction index can be filtered by tag', function () {
+test('transaction index preserves tag filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -293,15 +271,11 @@ test('transaction index can be filtered by tag', function () {
 
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
+        ->where('filters.tag_ids', [(string) $tag->id])
         ->missing('transactions')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions', fn (Assert $transactions) => $transactions
-                ->has('data', 1)
-                ->where('data.0.id', $tagged->id)
-                ->etc()
-            )
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('transaction tags are synced on update', function () {
@@ -336,7 +310,7 @@ test('transaction tags are synced on update', function () {
     expect($transaction->tags()->pluck('tags.id')->toArray())->toBe([$tag2->id]);
 });
 
-test('tag index page loads deferred tags data', function () {
+test('tag index page keeps only shell props for api-backed reads', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     Tag::factory()->for($ledger)->create([
@@ -351,13 +325,11 @@ test('tag index page loads deferred tags data', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/tags/index')
+        ->where('currentLedger.id', $ledger->id)
         ->missing('tags')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('tags', 1)
-            ->where('tags.0.name', 'travel')
-            ->where('tags.0.color', '#4ade80')
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('ledger tag web routes are available for inertia actions', function () {

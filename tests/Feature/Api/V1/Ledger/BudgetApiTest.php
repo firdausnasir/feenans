@@ -60,6 +60,53 @@ test('token authenticated premium client can list budgets for a ledger', functio
         ->assertJsonPath('data.0.start_date', fn (mixed $value): bool => is_string($value) && $value !== '');
 });
 
+test('budget api dashboard top loader returns the top three budgets by usage', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $categories = collect([
+        ['name' => 'Food', 'amount' => 100, 'spent' => -90],
+        ['name' => 'Travel', 'amount' => 100, 'spent' => -80],
+        ['name' => 'Bills', 'amount' => 100, 'spent' => -70],
+        ['name' => 'Fun', 'amount' => 100, 'spent' => -60],
+    ])->map(function (array $definition) use ($ledger, $account) {
+        $category = Category::factory()->for($ledger)->create([
+            'name' => $definition['name'],
+        ]);
+
+        Budget::factory()->for($ledger)->create([
+            'category_id' => $category->id,
+            'amount' => $definition['amount'],
+            'period' => 'monthly',
+            'start_date' => now()->startOfMonth()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        Transaction::factory()->for($ledger)->for($account)->for($category)->expense()->create([
+            'amount' => $definition['spent'],
+            'transaction_date' => now()->toDateString(),
+        ]);
+
+        return $category;
+    });
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.budgets.dashboard-top', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('data.0.category_name', $categories[0]->name)
+        ->assertJsonPath('data.0.percentage', 90.0)
+        ->assertJsonPath('data.1.category_name', $categories[1]->name)
+        ->assertJsonPath('data.1.percentage', 80.0)
+        ->assertJsonPath('data.2.category_name', $categories[2]->name)
+        ->assertJsonPath('data.2.percentage', 70.0);
+});
+
 test('budget api create returns validation errors as json', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);

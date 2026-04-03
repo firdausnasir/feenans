@@ -1,6 +1,6 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, useHttp, usePage } from '@inertiajs/react';
 import { ArrowDown, ArrowUp, BarChart3, Minus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Bar,
     CartesianGrid,
@@ -16,6 +16,7 @@ import {
     YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import { index as spendingReportLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/ReportController';
 import { ReportDateRangePicker } from '@/components/report-date-range-picker';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
@@ -34,8 +35,12 @@ import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import { index as reportsIndex } from '@/routes/ledgers/reports';
+import {
+    exportPdf as exportReportPdf,
+    index as reportsIndex,
+} from '@/routes/ledgers/reports';
 import type { BreadcrumbItem } from '@/types';
+import { buildReportsUrl, getNextReportsFilters } from './page-state';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -158,6 +163,10 @@ type Filters = {
     account_id: string | null;
     compare_start: string | null;
     compare_end: string | null;
+};
+
+type ApiEnvelope<T> = {
+    data: T;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1566,28 +1575,53 @@ function buildSummarySentence(summary: ComparisonSummary): string | null {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportsIndex() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
-    const { dateRange, report } = usePage<{
+    const page = usePage<{
         dateRange: {
             date_from: string;
             date_to: string;
             preset: string;
             account_id: string | null;
         };
-        report?: SpendingReport;
-    }>().props;
+    }>();
+    const { currentLedger } = page.props;
+    const ledger = currentLedger!;
+    const { dateRange } = page.props;
+    const reportLoaderState = useHttp<Record<string, never>, ApiEnvelope<SpendingReport>>({});
+
+    const pageQuery = new URLSearchParams(page.url.split('?')[1] ?? '');
+    const initialCompareStart = pageQuery.get('compare_start');
+    const initialCompareEnd = pageQuery.get('compare_end');
+    const initialFilters = useMemo(
+        () =>
+            ({
+                date_from: dateRange.date_from,
+                date_to: dateRange.date_to,
+                preset: dateRange.preset,
+                account_id: dateRange.account_id,
+                compare_start: initialCompareStart,
+                compare_end: initialCompareEnd,
+            }) satisfies Filters,
+        [
+            dateRange.account_id,
+            dateRange.date_from,
+            dateRange.date_to,
+            dateRange.preset,
+            initialCompareEnd,
+            initialCompareStart,
+        ],
+    );
+
+    const [report, setReport] = useState<SpendingReport | null>(null);
+    const [reportError, setReportError] = useState<string | null>(null);
+    const [hasLoadedReport, setHasLoadedReport] = useState(false);
+    const latestRequestRef = useRef(0);
+    const [filters, setFilters] = useState<Filters>(initialFilters);
 
     const [compareEnabled, setCompareEnabled] = useState(
-        () =>
-            !!(
-                report?.comparison?.compare_period.from &&
-                report?.comparison?.compare_period.to
-            ),
+        () => !!(initialCompareStart && initialCompareEnd),
     );
     const [isExporting, setIsExporting] = useState(false);
 
-    // Derived from deferred report (safe defaults)
     const monthlyTrend = report?.monthly_trends ?? [];
     const categoryBreakdown = report?.category_breakdown ?? {
         items: [],
@@ -1602,36 +1636,94 @@ export default function ReportsIndex() {
     const spendingHeatmap = report?.spending_heatmap ?? [];
     const comparison = report?.comparison ?? null;
 
-    const filters: Filters = {
-        date_from: dateRange.date_from,
-        date_to: dateRange.date_to,
-        preset: dateRange.preset,
-        account_id: dateRange.account_id,
-        compare_start: comparison?.compare_period.from ?? null,
-        compare_end: comparison?.compare_period.to ?? null,
-    };
+    async function loadReport(nextFilters: Filters): Promise<void> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+        reportLoaderState.cancel();
+        setReportError(null);
+
+        try {
+            const response = await reportLoaderState.get(
+                spendingReportLoader.url(
+                    { ledger: ledger.id },
+                    {
+                        query: Object.fromEntries(
+                            Object.entries({
+                                date_from: nextFilters.date_from,
+                                date_to: nextFilters.date_to,
+                                account_id: nextFilters.account_id,
+                                compare_start: nextFilters.compare_start,
+                                compare_end: nextFilters.compare_end,
+                            }).filter(([, value]) => value != null && value !== ''),
+                        ),
+                    },
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setReport(response.data);
+            }
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setReportError('Failed to load report.');
+            }
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedReport(true);
+            }
+        }
+    }
+
+    useEffect(() => {
+        setFilters(initialFilters);
+        setHasLoadedReport(false);
+    }, [initialFilters]);
+
+    useEffect(() => {
+        void loadReport(filters);
+
+        return () => {
+            reportLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        ledger.id,
+        filters.date_from,
+        filters.date_to,
+        filters.account_id,
+        filters.compare_start,
+        filters.compare_end,
+    ]);
+
+    useEffect(() => {
+        setCompareEnabled(!!(filters.compare_start && filters.compare_end));
+    }, [filters.compare_end, filters.compare_start]);
 
     const navigateWithFilters = (newFilters: Partial<Filters>) => {
-        const merged = { ...filters, ...newFilters };
+        const merged = getNextReportsFilters(filters, newFilters);
 
-        router.get(
-            reportsIndex.url(ledger.id),
-            Object.fromEntries(
-                Object.entries({
-                    date_from: merged.date_from,
-                    date_to: merged.date_to,
-                    account_id: merged.account_id,
-                    compare_start: merged.compare_start,
-                    compare_end: merged.compare_end,
-                }).filter(([, v]) => v != null && v !== ''),
-            ),
-            {
-                only: ['report', 'dateRange'],
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            },
-        );
+        setFilters(merged);
+
+        if (typeof window !== 'undefined') {
+            const nextUrl = buildReportsUrl(
+                new URL(reportsIndex.url(ledger.id), window.location.origin).toString(),
+                merged,
+            );
+            const parsedUrl = new URL(nextUrl);
+
+            window.history.replaceState(
+                window.history.state,
+                '',
+                `${parsedUrl.pathname}${parsedUrl.search}`,
+            );
+        }
     };
 
     const today = new Date();
@@ -1690,7 +1782,12 @@ export default function ReportsIndex() {
     const handleExport = () => {
         setIsExporting(true);
         const link = document.createElement('a');
-        link.href = `/ledgers/${ledger.id}/reports/export-pdf?date_from=${dateRange.date_from}&date_to=${dateRange.date_to}`;
+        link.href = exportReportPdf.url(ledger.id, {
+            query: {
+                date_from: filters.date_from,
+                date_to: filters.date_to,
+            },
+        });
         link.click();
         setTimeout(() => {
             setIsExporting(false);
@@ -1718,7 +1815,7 @@ export default function ReportsIndex() {
                     <ReportDateRangePicker
                         from={filters.date_from}
                         to={filters.date_to}
-                        preset={dateRange.preset ?? filters.preset}
+                        preset={filters.preset}
                         presets={presetItems}
                         compareEnabled={compareEnabled}
                         compareFrom={filters.compare_start ?? undefined}
@@ -1740,34 +1837,52 @@ export default function ReportsIndex() {
                     </Button>
                 </div>
 
-                {/* Content */}
-                <Deferred
-                    data="report"
-                    fallback={
-                        <div className="space-y-6">
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {[1, 2, 3].map((i) => (
-                                    <Card key={i}>
-                                        <CardContent className="pt-6">
-                                            <Skeleton className="mb-2 h-3 w-24 rounded" />
-                                            <Skeleton className="h-8 w-32 rounded" />
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Monthly trend</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <Skeleton className="h-[250px] w-full rounded" />
-                                </CardContent>
-                            </Card>
+                {reportLoaderState.processing && !hasLoadedReport ? (
+                    <div className="space-y-6">
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {[1, 2, 3].map((i) => (
+                                <Card key={i}>
+                                    <CardContent className="pt-6">
+                                        <Skeleton className="mb-2 h-3 w-24 rounded" />
+                                        <Skeleton className="h-8 w-32 rounded" />
+                                    </CardContent>
+                                </Card>
+                            ))}
                         </div>
-                    }
-                >
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Monthly trend</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Skeleton className="h-[250px] w-full rounded" />
+                            </CardContent>
+                        </Card>
+                    </div>
+                ) : reportError && !report ? (
+                    <Card>
+                        <CardContent className="flex flex-col gap-3 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {reportError}
+                            </p>
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadReport(filters)}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
                     <>
-                        {/* Period comparison */}
+                        {reportLoaderState.processing && hasLoadedReport ? (
+                            <p className="text-xs text-muted-foreground">
+                                Refreshing report...
+                            </p>
+                        ) : null}
+
                         {compareEnabled && comparison && (
                             <ComparisonSection comparison={comparison} />
                         )}
@@ -1783,9 +1898,7 @@ export default function ReportsIndex() {
                             </Card>
                         )}
 
-                        {/* Two-column layout on large screens */}
                         <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
-                            {/* Monthly trend */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Monthly trend</CardTitle>
@@ -1795,7 +1908,6 @@ export default function ReportsIndex() {
                                 </CardContent>
                             </Card>
 
-                            {/* Category breakdown */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Expense by category</CardTitle>
@@ -1808,7 +1920,6 @@ export default function ReportsIndex() {
                             </Card>
                         </div>
 
-                        {/* Payee breakdown */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Expense by payee</CardTitle>
@@ -1818,9 +1929,7 @@ export default function ReportsIndex() {
                             </CardContent>
                         </Card>
 
-                        {/* Income breakdown */}
                         <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
-                            {/* Income by category */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Income by category</CardTitle>
@@ -1832,7 +1941,6 @@ export default function ReportsIndex() {
                                 </CardContent>
                             </Card>
 
-                            {/* Income by payee */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Income by payee</CardTitle>
@@ -1846,7 +1954,6 @@ export default function ReportsIndex() {
                             </Card>
                         </div>
 
-                        {/* Spending heatmap */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Spending heatmap</CardTitle>
@@ -1856,7 +1963,7 @@ export default function ReportsIndex() {
                             </CardContent>
                         </Card>
                     </>
-                </Deferred>
+                )}
             </div>
         </AppLayout>
     );

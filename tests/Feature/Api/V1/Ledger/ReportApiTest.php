@@ -30,7 +30,7 @@ test('report api spending index requires sanctum authentication', function () {
         ->assertUnauthorized();
 });
 
-test('token authenticated premium client can get spending report json', function () {
+test('report api keeps expense totals absolute while signed contract normalization is deferred', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
@@ -154,7 +154,7 @@ test('token authenticated premium client can get budget performance report json'
     }
 });
 
-test('token authenticated premium client can get cash flow report json with optional date filters', function () {
+test('cash flow report api keeps expense buckets absolute while signed contract normalization is deferred', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 
     try {

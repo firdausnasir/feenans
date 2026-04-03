@@ -1,7 +1,8 @@
-import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/react';
 import { ExternalLink, Pencil, PiggyBank, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { index as budgetsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/BudgetController';
 import {
     destroy as destroyBudget,
     store as storeBudget,
@@ -53,6 +54,8 @@ type FormState = {
     end_date: string;
     rollover: boolean;
 };
+
+type ApiEnvelope<T> = { data: T };
 
 function getCycleBounds(
     referenceDate: Date,
@@ -185,17 +188,32 @@ function BudgetsLoadingSkeleton() {
     );
 }
 
+function BudgetsErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load budgets.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function BudgetsIndex() {
     const {
         currentLedger,
-        budgets: budgetStats,
         categories,
     } = usePage<{
         categories: Category[];
-        budgets?: BudgetStat[];
     }>().props;
     const ledger = currentLedger!;
-    const budgets = budgetStats ?? [];
+    const budgetsLoaderState = useHttp<Record<string, never>, ApiEnvelope<BudgetStat[]>>({});
     const { privacyMode } = usePrivacyMode();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -210,6 +228,56 @@ export default function BudgetsIndex() {
         makeEmptyForm(ledger.cycle_start_day),
     );
     const [errors, setErrors] = useState<Record<string, string[]>>({});
+    const [budgetsError, setBudgetsError] = useState<string | null>(null);
+    const [hasLoadedBudgets, setHasLoadedBudgets] = useState(false);
+
+    const budgets = budgetsLoaderState.response?.data ?? [];
+
+    async function loadBudgets(): Promise<boolean> {
+        let cancelled = false;
+
+        budgetsLoaderState.cancel();
+        setBudgetsError(null);
+
+        try {
+            await budgetsLoaderState.get(budgetsLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setBudgetsError('Failed to load budgets.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasLoadedBudgets(true);
+            }
+        }
+    }
+
+    async function refreshBudgetsAfterMutation(successMessage: string): Promise<void> {
+        const refreshed = await loadBudgets();
+
+        toast[refreshed ? 'success' : 'error'](
+            refreshed
+                ? successMessage
+                : `${successMessage}, but failed to refresh budgets.`,
+        );
+    }
+
+    useEffect(() => {
+        void loadBudgets();
+
+        return () => {
+            budgetsLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
 
     const handleCreate = () => {
         setForm(makeEmptyForm(ledger.cycle_start_day));
@@ -265,9 +333,9 @@ export default function BudgetsIndex() {
                 payload,
                 {
                     preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success('Budget updated');
+                    onSuccess: async () => {
                         closeDialog();
+                        await refreshBudgetsAfterMutation('Budget updated');
                     },
                     onError: (inertiaErrors) => {
                         const validationErrors =
@@ -290,9 +358,9 @@ export default function BudgetsIndex() {
 
         router.post(storeBudget.url(ledger.id), payload, {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Budget created');
+            onSuccess: async () => {
                 closeDialog();
+                await refreshBudgetsAfterMutation('Budget created');
             },
             onError: (inertiaErrors) => {
                 const validationErrors = mapInertiaErrorsArray(inertiaErrors);
@@ -317,8 +385,8 @@ export default function BudgetsIndex() {
             destroyBudget.url({ ledger: ledger.id, budget: budget.id }),
             {
                 preserveScroll: true,
-                onSuccess: () => {
-                    toast.success('Budget deleted');
+                onSuccess: async () => {
+                    await refreshBudgetsAfterMutation('Budget deleted');
                 },
                 onError: () => {
                     toast.error('Failed to delete budget');
@@ -342,9 +410,18 @@ export default function BudgetsIndex() {
                     </Button>
                 </div>
 
-                <Deferred data="budgets" fallback={<BudgetsLoadingSkeleton />}>
-                    {budgets.length === 0 ? (
-                        <EmptyState
+                {budgetsLoaderState.processing && hasLoadedBudgets ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing budgets...
+                    </p>
+                ) : null}
+
+                {budgetsLoaderState.processing && !hasLoadedBudgets ? (
+                    <BudgetsLoadingSkeleton />
+                ) : budgetsError && budgets.length === 0 ? (
+                    <BudgetsErrorState onRetry={() => void loadBudgets()} />
+                ) : budgets.length === 0 ? (
+                    <EmptyState
                             icon={<PiggyBank className="size-6" />}
                             title="No budgets yet"
                             description="Set monthly spending limits for your categories and track how you're doing."
@@ -352,8 +429,8 @@ export default function BudgetsIndex() {
                                 label: 'Create your first budget',
                                 onClick: handleCreate,
                             }}
-                        />
-                    ) : (
+                    />
+                ) : (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {budgets.map((budget) => (
                                 <Card key={budget.id}>
@@ -499,8 +576,7 @@ export default function BudgetsIndex() {
                                 </Card>
                             ))}
                         </div>
-                    )}
-                </Deferred>
+                )}
 
                 {/* Create / Edit Dialog */}
                 <Dialog

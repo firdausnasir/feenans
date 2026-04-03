@@ -49,15 +49,9 @@ test('category index renders the inertia shell for api-driven category data', fu
         ->component('ledgers/categories/index')
         ->where('currentLedger.id', $ledger->id)
         ->missing('categories')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
-                ->where('name', 'Food')
-                ->has('children', 1)
-                ->where('children.0.name', 'Restaurants')
-                ->etc()
-            )
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('category can be created through web routes', function () {
@@ -103,28 +97,7 @@ test('category web create uses correct redirect and flash under shared actions',
         ->assertSessionHas('success', 'Category created.');
 });
 
-test('category index supports partial reloads for categories', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    Category::factory()->for($ledger)->create(['name' => 'Subscriptions']);
-
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.categories.index', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->reloadOnly('categories', fn (Assert $reload) => $reload
-            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
-                ->where('name', 'Subscriptions')
-                ->etc()
-            )
-            ->missing('currentLedger')
-        )
-    );
-});
-
-test('category deferred hierarchy output preserves key payload fields for the react page', function () {
+test('category index keeps only shell props for api-backed reads', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
 
@@ -152,31 +125,11 @@ test('category deferred hierarchy output preserves key payload fields for the re
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/categories/index')
+        ->where('currentLedger.id', $ledger->id)
         ->missing('categories')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
-                ->where('id', $parent->id)
-                ->where('ledger_id', $ledger->id)
-                ->where('parent_id', null)
-                ->where('name', 'Housing')
-                ->where('transaction_type', 'expense')
-                ->where('color', '#334155')
-                ->where('icon', 'home')
-                ->where('position', 1)
-                ->where('transactions_count', 0)
-                ->has('children', 1, fn (Assert $childPage) => $childPage
-                    ->where('parent_id', $parent->id)
-                    ->where('name', 'Rent')
-                    ->where('transaction_type', 'expense')
-                    ->where('color', '#64748b')
-                    ->where('icon', 'building')
-                    ->where('transactions_count', 0)
-                    ->etc()
-                )
-                ->etc()
-            )
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('category update updates the category', function () {

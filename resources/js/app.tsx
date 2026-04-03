@@ -1,7 +1,6 @@
 import { createInertiaApp } from '@inertiajs/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PrivacyModeProvider } from '@/contexts/privacy-mode-context';
-import '../css/app.css';
 import { initializeTheme } from '@/hooks/use-appearance';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';

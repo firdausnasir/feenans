@@ -46,13 +46,6 @@ test('accounts index renders successfully', function () {
             ->missing('accounts')
             ->missing('accountTypes')
             ->missing('netWorth')
-            ->loadDeferredProps(['default', 'accounts'], fn (Assert $reload) => $reload
-                ->has('accounts', 1)
-                ->where('accounts.0.group', 'included')
-                ->has('accounts.0.accounts', 2)
-                ->has('accountTypes')
-                ->has('netWorth')
-            )
         );
 });
 

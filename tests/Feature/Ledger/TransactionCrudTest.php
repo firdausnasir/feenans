@@ -171,7 +171,7 @@ test('users can create a transfer via HTTP', function () {
         ->and($incoming->account_id)->toBe($toAccount->id);
 });
 
-test('transaction index filters by account', function () {
+test('transaction index preserves account filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -199,17 +199,12 @@ test('transaction index filters by account', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.account_ids', [(string) $accountA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Account A transaction')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by search term', function () {
+test('transaction index preserves search term in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -236,17 +231,12 @@ test('transaction index filters by search term', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.search', 'coffee')
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Morning coffee')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by transaction type', function () {
+test('transaction index preserves transaction type filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -275,17 +265,12 @@ test('transaction index filters by transaction type', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.transaction_types', ['income'])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.transaction_type', 'income')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index normalizes transfer filters from the page query shape', function () {
+test('transaction index normalizes transfer filter in shell props from the page query shape', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -314,26 +299,12 @@ test('transaction index normalizes transfer filters from the page query shape', 
             ->component('ledgers/transactions/index')
             ->where('filters.transaction_types', ['transfer'])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactionsProp) => $transactionsProp
-                    ->has('data', 2)
-                    ->where('data.0.transaction_type', 'transfer')
-                    ->where('data.1.transaction_type', 'transfer')
-                    ->where('data', fn ($transactions) => $transactions
-                        ->pluck('id')
-                        ->sort()
-                        ->values()
-                        ->all() === collect([$incomingTransfer->id, $outgoingTransfer->id])
-                        ->sort()
-                        ->values()
-                        ->all())
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by category', function () {
+test('transaction index preserves category filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -360,17 +331,12 @@ test('transaction index filters by category', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.category_ids', [(string) $catA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.category.id', $catA->id)
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by payee', function () {
+test('transaction index preserves payee filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -397,14 +363,9 @@ test('transaction index filters by payee', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.payee_ids', [(string) $payeeA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.payee.id', $payeeA->id)
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('transaction store is forbidden for another users ledger', function () {

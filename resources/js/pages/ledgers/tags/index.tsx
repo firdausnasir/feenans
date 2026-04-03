@@ -1,7 +1,8 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import { Hash, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { index as tagsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/TagController';
 import {
     destroy as destroyTag,
     store as storeTag,
@@ -37,6 +38,7 @@ import { index as tagsIndex } from '@/routes/ledgers/tags';
 import type { BreadcrumbItem, Tag } from '@/types';
 
 type TagWithCount = Tag & { transactions_count: number };
+type ApiEnvelope<T> = { data: T };
 
 type FormState = {
     name: string;
@@ -77,13 +79,31 @@ function TagsLoadingSkeleton() {
     );
 }
 
+function TagsErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load tags.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function TagsIndex() {
-    const { currentLedger, tags: deferredTags } = usePage<{
+    const { currentLedger } = usePage<{
         currentLedger: { id: number; name: string };
-        tags?: TagWithCount[];
     }>().props;
     const ledger = currentLedger!;
-    const tags = deferredTags ?? [];
+    const tagsLoaderState = useHttp<Record<string, never>, ApiEnvelope<TagWithCount[]>>(
+        {},
+    );
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -95,6 +115,56 @@ export default function TagsIndex() {
     const [form, setForm] = useState<FormState>(emptyForm());
     const [deleteTag, setDeleteTag] = useState<TagWithCount | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [tagsError, setTagsError] = useState<string | null>(null);
+    const [hasLoadedTags, setHasLoadedTags] = useState(false);
+
+    const tags = tagsLoaderState.response?.data ?? [];
+
+    async function loadTags(): Promise<boolean> {
+        let cancelled = false;
+
+        tagsLoaderState.cancel();
+        setTagsError(null);
+
+        try {
+            await tagsLoaderState.get(tagsLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setTagsError('Failed to load tags.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasLoadedTags(true);
+            }
+        }
+    }
+
+    async function refreshTagsAfterMutation(successMessage: string): Promise<void> {
+        const refreshed = await loadTags();
+
+        toast[refreshed ? 'success' : 'error'](
+            refreshed
+                ? successMessage
+                : `${successMessage}, but failed to refresh tags.`,
+        );
+    }
+
+    useEffect(() => {
+        void loadTags();
+
+        return () => {
+            tagsLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
 
     function handleCreate() {
         setForm(emptyForm());
@@ -117,13 +187,12 @@ export default function TagsIndex() {
                     updateTag.url({ ledger: ledger.id, tag: editTag.id }),
                     { name: form.name, color: form.color || null },
                     {
-                        only: ['tags', 'flash'],
                         preserveState: true,
                         preserveScroll: true,
-                        onSuccess: () => {
+                        onSuccess: async () => {
                             setShowDialog(false);
                             setEditTag(null);
-                            toast.success('Tag updated');
+                            await refreshTagsAfterMutation('Tag updated');
                         },
                         onError: (errors) => {
                             const mapped = mapInertiaErrorsArray(errors);
@@ -139,12 +208,11 @@ export default function TagsIndex() {
                     storeTag.url(ledger.id),
                     { name: form.name, color: form.color || null },
                     {
-                        only: ['tags', 'flash'],
                         preserveState: true,
                         preserveScroll: true,
-                        onSuccess: () => {
+                        onSuccess: async () => {
                             setShowDialog(false);
-                            toast.success('Tag created');
+                            await refreshTagsAfterMutation('Tag created');
                         },
                         onError: (errors) => {
                             const mapped = mapInertiaErrorsArray(errors);
@@ -173,12 +241,11 @@ export default function TagsIndex() {
             router.delete(
                 destroyTag.url({ ledger: ledger.id, tag: deleteTag.id }),
                 {
-                    only: ['tags', 'flash'],
                     preserveState: true,
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: async () => {
                         setDeleteTag(null);
-                        toast.success('Tag deleted');
+                        await refreshTagsAfterMutation('Tag deleted');
                     },
                     onError: () => {
                         toast.error('Failed to delete tag');
@@ -202,8 +269,17 @@ export default function TagsIndex() {
                     </Button>
                 </div>
 
-                <Deferred data="tags" fallback={<TagsLoadingSkeleton />}>
-                    {tags.length === 0 ? (
+                {tagsLoaderState.processing && hasLoadedTags ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing tags...
+                    </p>
+                ) : null}
+
+                {tagsLoaderState.processing && !hasLoadedTags ? (
+                    <TagsLoadingSkeleton />
+                ) : tagsError && tags.length === 0 ? (
+                    <TagsErrorState onRetry={() => void loadTags()} />
+                ) : tags.length === 0 ? (
                         <EmptyState
                             icon={<Hash className="size-6" />}
                             title="No tags yet"
@@ -213,133 +289,123 @@ export default function TagsIndex() {
                                 onClick: handleCreate,
                             }}
                         />
-                    ) : (
-                        <Card>
-                            <CardContent className="p-0">
-                                <div className="divide-y sm:hidden">
-                                    {tags.map((tag) => (
-                                        <div
-                                            key={tag.id}
-                                            className="flex items-center gap-3 px-4 py-3"
-                                        >
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <TagPill tag={tag} />
-                                                    {tag.color && (
-                                                        <span
-                                                            className="size-3 shrink-0 rounded-full"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    tag.color,
-                                                            }}
-                                                        />
-                                                    )}
-                                                </div>
-                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                    {tag.transactions_count}{' '}
-                                                    transaction
-                                                    {tag.transactions_count !==
-                                                    1
-                                                        ? 's'
-                                                        : ''}
-                                                </p>
+                ) : (
+                    <Card>
+                        <CardContent className="p-0">
+                            <div className="divide-y sm:hidden">
+                                {tags.map((tag) => (
+                                    <div
+                                        key={tag.id}
+                                        className="flex items-center gap-3 px-4 py-3"
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <TagPill tag={tag} />
+                                                {tag.color && (
+                                                    <span
+                                                        className="size-3 shrink-0 rounded-full"
+                                                        style={{
+                                                            backgroundColor:
+                                                                tag.color,
+                                                        }}
+                                                    />
+                                                )}
                                             </div>
-                                            <div className="flex shrink-0 items-center gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7"
-                                                    onClick={() =>
-                                                        handleEdit(tag)
-                                                    }
-                                                >
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 text-destructive"
-                                                    onClick={() =>
-                                                        setDeleteTag(tag)
-                                                    }
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {tag.transactions_count}{' '}
+                                                transaction
+                                                {tag.transactions_count !== 1
+                                                    ? 's'
+                                                    : ''}
+                                            </p>
                                         </div>
-                                    ))}
-                                </div>
-                                <Table className="hidden sm:table">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Tag</TableHead>
-                                            <TableHead>Color</TableHead>
-                                            <TableHead className="text-right">
-                                                Transactions
-                                            </TableHead>
-                                            <TableHead className="sr-only">
-                                                Actions
-                                            </TableHead>
+                                        <div className="flex shrink-0 items-center gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                onClick={() => handleEdit(tag)}
+                                            >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-destructive"
+                                                onClick={() => setDeleteTag(tag)}
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Table className="hidden sm:table">
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Tag</TableHead>
+                                        <TableHead>Color</TableHead>
+                                        <TableHead className="text-right">
+                                            Transactions
+                                        </TableHead>
+                                        <TableHead className="sr-only">
+                                            Actions
+                                        </TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {tags.map((tag) => (
+                                        <TableRow key={tag.id}>
+                                            <TableCell>
+                                                <TagPill tag={tag} />
+                                            </TableCell>
+                                            <TableCell>
+                                                {tag.color ? (
+                                                    <span
+                                                        className="inline-block size-4 rounded-full border"
+                                                        style={{
+                                                            backgroundColor:
+                                                                tag.color,
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        None
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right text-muted-foreground">
+                                                {tag.transactions_count}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-auto px-2 py-0.5"
+                                                        onClick={() => handleEdit(tag)}
+                                                    >
+                                                        <Pencil className="size-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-auto px-2 py-0.5 text-destructive hover:text-destructive"
+                                                        onClick={() =>
+                                                            setDeleteTag(tag)
+                                                        }
+                                                    >
+                                                        <Trash2 className="size-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
                                         </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {tags.map((tag) => (
-                                            <TableRow key={tag.id}>
-                                                <TableCell>
-                                                    <TagPill tag={tag} />
-                                                </TableCell>
-                                                <TableCell>
-                                                    {tag.color ? (
-                                                        <span
-                                                            className="inline-block size-4 rounded-full border"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    tag.color,
-                                                            }}
-                                                        />
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">
-                                                            None
-                                                        </span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-right text-muted-foreground">
-                                                    {tag.transactions_count}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-auto px-2 py-0.5"
-                                                            onClick={() =>
-                                                                handleEdit(tag)
-                                                            }
-                                                        >
-                                                            <Pencil className="size-3.5" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-auto px-2 py-0.5 text-destructive hover:text-destructive"
-                                                            onClick={() =>
-                                                                setDeleteTag(
-                                                                    tag,
-                                                                )
-                                                            }
-                                                        >
-                                                            <Trash2 className="size-3.5" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-                    )}
-                </Deferred>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             {/* Create / Edit Dialog */}

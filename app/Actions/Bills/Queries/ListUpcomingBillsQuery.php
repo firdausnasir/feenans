@@ -18,13 +18,11 @@ class ListUpcomingBillsQuery
      */
     public function __invoke(Ledger $ledger, int $days = 3): array
     {
-        $today = CarbonImmutable::today();
-
         $upcoming = $ledger->bills()
             ->with('payee')
             ->active()
-            ->where('next_due_date', '>', $today)
-            ->where('next_due_date', '<=', $today->addDays($days))
+            ->where('next_due_date', '>', CarbonImmutable::today())
+            ->where('next_due_date', '<=', CarbonImmutable::today()->addDays($days))
             ->orderBy('next_due_date')
             ->get();
 

@@ -16,6 +16,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Inertia\Testing\AssertableInertia as Assert;
 
 function billPageRequest(User $user, Ledger $ledger): Request
 {
@@ -248,6 +249,8 @@ test('bill index renders successfully', function () {
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
     $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['name' => 'Housing']);
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Landlord']);
 
     Bill::factory()->for($ledger)->for($account)->create(['name' => 'Rent']);
     Bill::factory()->for($ledger)->for($account)->create(['name' => 'Internet']);
@@ -257,9 +260,27 @@ test('bill index renders successfully', function () {
         ->get(route('ledgers.bills.index', $ledger));
 
     $response->assertSuccessful();
-    $response->assertInertia(fn ($page) => $page
+    $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/bills/index')
+        ->where('currentLedger.id', $ledger->id)
+        ->has('accounts', 1, fn (Assert $accountPage) => $accountPage
+            ->where('id', $account->id)
+            ->etc()
+        )
+        ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
+            ->where('id', $category->id)
+            ->where('name', 'Housing')
+            ->etc()
+        )
+        ->has('payees', 1, fn (Assert $payeePage) => $payeePage
+            ->where('id', $payee->id)
+            ->where('name', 'Landlord')
+            ->etc()
+        )
+        ->missing('bills')
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('bill page data classes require access to the current ledger', function (string $dataClass) {

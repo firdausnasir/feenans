@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Actions\Budgets\Queries\GetBudgetPageQuery;
 use App\Actions\Budgets\UseCases\DeleteBudgetAction;
 use App\Actions\Budgets\UseCases\StoreBudgetAction;
 use App\Actions\Budgets\UseCases\UpdateBudgetAction;
@@ -21,15 +20,11 @@ class BudgetController extends Controller
     public function index(
         Ledger $ledger,
         ListCategoriesQuery $listCategories,
-        GetBudgetPageQuery $getBudgetPage,
     ): Response {
         $this->authorize('view', $ledger);
 
         return Inertia::render('ledgers/budgets/index', [
             'categories' => $listCategories($ledger)->map->toArray()->values()->all(),
-            'budgets' => Inertia::defer(function () use ($ledger, $getBudgetPage) {
-                return $getBudgetPage($ledger)->toInertiaProps()['budgets'];
-            }),
         ]);
     }
 

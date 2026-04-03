@@ -54,21 +54,6 @@ test('import page renders for authenticated user', function () {
         ->missing('accounts')
         ->missing('savedMappings')
         ->missing('importHistory')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('accounts', 1, fn (Assert $accountPage) => $accountPage
-                ->where('name', $account->name)
-                ->etc()
-            )
-            ->has('savedMappings', 1, fn (Assert $mappingPage) => $mappingPage
-                ->where('name', 'My Mapping')
-                ->etc()
-            )
-            ->has('importHistory', 1, fn (Assert $historyPage) => $historyPage
-                ->where('filename', 'statement.csv')
-                ->where('row_count', 12)
-                ->etc()
-            )
-        )
     );
 });
 

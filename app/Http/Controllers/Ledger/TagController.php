@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Actions\Tags\Queries\GetTagPageQuery;
 use App\Actions\Tags\UseCases\DeleteTagAction;
 use App\Actions\Tags\UseCases\StoreTagAction;
 use App\Actions\Tags\UseCases\UpdateTagAction;
@@ -18,15 +17,11 @@ use Inertia\Response;
 
 class TagController extends Controller
 {
-    public function index(Request $request, Ledger $ledger, GetTagPageQuery $getTagPage): Response
+    public function index(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/tags/index', [
-            'tags' => Inertia::defer(function () use ($ledger, $getTagPage) {
-                return $getTagPage($ledger)->toInertiaProps()['tags'];
-            }),
-        ]);
+        return Inertia::render('ledgers/tags/index');
     }
 
     public function store(Ledger $ledger, StoreTagData $data, StoreTagAction $storeTag): RedirectResponse

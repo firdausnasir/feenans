@@ -1,7 +1,8 @@
-import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/react';
 import { ExternalLink, Pencil, Search, Trash2, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/PayeeController';
 import {
     destroy as destroyPayee,
     store as storePayee,
@@ -31,11 +32,33 @@ import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { BreadcrumbItem, Payee } from '@/types';
 
 type PayeeWithCount = Payee & { transactions_count: number };
+type ApiEnvelope<T> = { data: T };
 
 type PayeesPageProps = {
     search: string;
-    payees?: PayeeWithCount[];
 };
+
+function buildPayeesQuery(search: string): Record<string, string> {
+    if (!search) {
+        return {};
+    }
+
+    return { search };
+}
+
+function updatePayeesUrl(ledgerId: number, search: string): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const url = new URL(payeesIndex.url(ledgerId), window.location.origin);
+
+    for (const [key, value] of Object.entries(buildPayeesQuery(search))) {
+        url.searchParams.set(key, value);
+    }
+
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+}
 
 function PayeesLoadingSkeleton() {
     return (
@@ -56,20 +79,35 @@ function PayeesLoadingSkeleton() {
     );
 }
 
+function PayeesErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load payees.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function PayeesContent({
+    ledgerId,
+    payees,
     onEdit,
     onDelete,
 }: {
+    ledgerId: number;
+    payees: PayeeWithCount[];
     onEdit: (payee: PayeeWithCount) => void;
     onDelete: (payee: PayeeWithCount) => void;
 }) {
-    const { currentLedger, payees } = usePage<
-        PayeesPageProps & { currentLedger: { id: number } }
-    >().props;
-    const ledgerId = currentLedger!.id;
-    const payeesList = payees ?? [];
-
-    if (payeesList.length === 0) {
+    if (payees.length === 0) {
         return (
             <EmptyState
                 icon={<Users className="size-6" />}
@@ -81,7 +119,7 @@ function PayeesContent({
 
     return (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {payeesList.map((payee) => (
+            {payees.map((payee) => (
                 <div
                     key={payee.id}
                     className="group flex rounded-lg border border-border bg-card"
@@ -157,10 +195,14 @@ export default function PayeesIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
     const { search: committedSearch } = usePage<PayeesPageProps>().props;
+    const payeesLoaderState = useHttp<Record<string, never>, ApiEnvelope<PayeeWithCount[]>>({});
 
     const [localSearch, setLocalSearch] = useState(committedSearch);
     const [showAddForm, setShowAddForm] = useState(false);
     const [newPayeeName, setNewPayeeName] = useState('');
+    const [payeesError, setPayeesError] = useState<string | null>(null);
+    const [hasLoadedPayees, setHasLoadedPayees] = useState(false);
+    const latestRequestRef = useRef(0);
 
     // Edit state
     const [editingPayee, setEditingPayee] = useState<PayeeWithCount | null>(
@@ -179,14 +221,70 @@ export default function PayeesIndex() {
         { title: 'Payees', href: payeesIndex.url(ledger.id) },
     ];
 
+    const payees = payeesLoaderState.response?.data ?? [];
+
+    async function loadPayees(search: string): Promise<boolean> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+
+        payeesLoaderState.cancel();
+        setPayeesError(null);
+        updatePayeesUrl(ledger.id, search);
+
+        try {
+            await payeesLoaderState.get(
+                payeesLoader.url(
+                    { ledger: ledger.id },
+                    { query: buildPayeesQuery(search) },
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            return true;
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setPayeesError('Failed to load payees.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedPayees(true);
+            }
+        }
+    }
+
+    async function refreshPayeesAfterMutation(successMessage: string): Promise<void> {
+        const refreshed = await loadPayees(localSearch);
+
+        toast[refreshed ? 'success' : 'error'](
+            refreshed
+                ? successMessage
+                : `${successMessage}, but failed to refresh payees.`,
+        );
+    }
+
+    useEffect(() => {
+        setLocalSearch(committedSearch);
+        setPayeesError(null);
+        setHasLoadedPayees(false);
+        void loadPayees(committedSearch);
+
+        return () => {
+            payeesLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [committedSearch, ledger.id]);
+
     function handleSearch(value: string) {
         setLocalSearch(value);
-        router.get(payeesIndex.url(ledger.id), value ? { search: value } : {}, {
-            only: ['payees', 'search'],
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-        });
+        void loadPayees(value);
     }
 
     function handleAddPayee() {
@@ -201,10 +299,10 @@ export default function PayeesIndex() {
             { name: trimmed },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setNewPayeeName('');
                     setShowAddForm(false);
-                    toast.success('Payee added');
+                    await refreshPayeesAfterMutation('Payee added');
                 },
                 onError: (errors) => {
                     toast.error(
@@ -240,9 +338,9 @@ export default function PayeesIndex() {
             { name: trimmed },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setEditingPayee(null);
-                    toast.success('Payee updated');
+                    await refreshPayeesAfterMutation('Payee updated');
                 },
                 onError: (errors) => {
                     toast.error(
@@ -266,14 +364,16 @@ export default function PayeesIndex() {
             destroyPayee({ ledger: ledger.id, payee: payeeToDelete.id }),
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setPayeeToDelete(null);
-                    setIsDeleting(false);
-                    toast.success('Payee deleted');
+                    await refreshPayeesAfterMutation('Payee deleted');
                 },
                 onError: () => {
                     setIsDeleting(false);
                     toast.error('Failed to delete payee');
+                },
+                onFinish: () => {
+                    setIsDeleting(false);
                 },
             },
         );
@@ -346,13 +446,24 @@ export default function PayeesIndex() {
                     </div>
                 )}
 
-                {/* Payees list */}
-                <Deferred data="payees" fallback={<PayeesLoadingSkeleton />}>
+                {payeesLoaderState.processing && hasLoadedPayees ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing payees...
+                    </p>
+                ) : null}
+
+                {payeesLoaderState.processing && !hasLoadedPayees ? (
+                    <PayeesLoadingSkeleton />
+                ) : payeesError && payees.length === 0 ? (
+                    <PayeesErrorState onRetry={() => void loadPayees(localSearch)} />
+                ) : (
                     <PayeesContent
+                        ledgerId={ledger.id}
+                        payees={payees}
                         onEdit={handleStartEdit}
                         onDelete={setPayeeToDelete}
                     />
-                </Deferred>
+                )}
             </div>
 
             {/* Edit dialog */}

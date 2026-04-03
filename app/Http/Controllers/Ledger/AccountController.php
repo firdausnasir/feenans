@@ -3,18 +3,15 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Actions\Accounts\Queries\ExportAccountTransactionsQuery;
-use App\Actions\Accounts\Queries\GetAccountPageQuery;
 use App\Actions\Accounts\UseCases\AdjustAccountBalanceAction;
 use App\Actions\Accounts\UseCases\DeleteAccountAction;
 use App\Actions\Accounts\UseCases\ReorderAccountsAction;
 use App\Actions\Accounts\UseCases\StoreAccountAction;
 use App\Actions\Accounts\UseCases\UpdateAccountAction;
 use App\Data\Accounts\Input\AdjustAccountBalanceData;
-use App\Data\Accounts\Input\GetAccountPageData;
 use App\Data\Accounts\Input\ReorderAccountsData;
 use App\Data\Accounts\Input\StoreAccountData;
 use App\Data\Accounts\Input\UpdateAccountData;
-use App\Data\Accounts\Output\Web\AccountPageData;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Ledger;
@@ -28,22 +25,10 @@ class AccountController extends Controller
 {
     public function index(
         Ledger $ledger,
-        GetAccountPageData $input,
-        GetAccountPageQuery $getAccountPage,
     ): Response {
-        $resolved = null;
-        $resolve = function () use ($input, $getAccountPage, &$resolved): AccountPageData {
-            return $resolved ??= $getAccountPage($input->ledger);
-        };
+        $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/accounts/index', [
-            'accounts' => Inertia::defer(
-                fn () => $resolve()->groups->map(fn ($g) => $g->toArray())->values()->all(),
-                'accounts',
-            ),
-            'accountTypes' => Inertia::defer(fn () => $resolve()->accountTypes, 'accounts'),
-            'netWorth' => Inertia::defer(fn () => $resolve()->netWorth()->toArray(), 'accounts'),
-        ]);
+        return Inertia::render('ledgers/accounts/index');
     }
 
     public function store(Ledger $ledger, StoreAccountData $data, StoreAccountAction $storeAccount): RedirectResponse

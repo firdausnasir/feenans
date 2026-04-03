@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia as Assert;
+use Laravel\Sanctum\Sanctum;
 
 test('bill index renders successfully', function () {
     $user = User::factory()->create();
@@ -29,7 +30,7 @@ test('bill index renders successfully', function () {
     );
 });
 
-test('bill index deferred bills include account data as a plain array', function () {
+test('bill api index includes account and to_account data as a plain array', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
@@ -43,23 +44,16 @@ test('bill index deferred bills include account data as a plain array', function
         'to_account_id' => $destinationAccount->id,
     ]);
 
-    $response = $this
-        ->actingAs($user)
-        ->get(route('ledgers.bills.index', $ledger));
+    Sanctum::actingAs($user, ['*']);
 
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->component('ledgers/bills/index')
-        ->missing('bills')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('bills', 1, fn (Assert $bill) => $bill
-                ->where('name', 'Allowance Transfer')
-                ->where('account.name', 'Main Checking')
-                ->where('to_account.name', 'Savings')
-                ->etc()
-            )
-        )
-    );
+    $response = $this
+        ->getJson(route('api.v1.ledgers.bills.index', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Allowance Transfer')
+        ->assertJsonPath('data.0.account.name', 'Main Checking')
+        ->assertJsonPath('data.0.to_account.name', 'Savings');
 });
 
 test('bill index account options only include visible accounts', function () {
@@ -80,7 +74,7 @@ test('bill index account options only include visible accounts', function () {
         );
 });
 
-test('bill index deferred bills include latest five bill linked transactions with account data and missed cycles', function () {
+test('bill api index includes latest five bill linked transactions with account data and missed cycles', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
@@ -91,7 +85,7 @@ test('bill index deferred bills include latest five bill linked transactions wit
         'amount' => 80.00,
         'recurrence_type' => RecurrenceType::Monthly,
         'recurrence_interval' => 1,
-        'next_due_date' => CarbonImmutable::today()->subDay()->toDateString(),
+        'next_due_date' => CarbonImmutable::today()->subDay(),
         'is_active' => true,
     ]);
 
@@ -117,25 +111,19 @@ test('bill index deferred bills include latest five bill linked transactions wit
             'transaction_date' => CarbonImmutable::today()->toDateString(),
         ]);
 
-    $this->actingAs($user)
-        ->get(route('ledgers.bills.index', $ledger))
-        ->assertSuccessful()
-        ->assertInertia(fn (Assert $page) => $page
-            ->missing('bills')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('bills', 1, fn (Assert $billData) => $billData
-                    ->where('name', 'Gym Membership')
-                    ->where('missed_cycles', 1)
-                    ->has('transactions', 5, fn (Assert $transaction) => $transaction
-                        ->where('account.name', 'Main Checking')
-                        ->etc()
-                    )
-                    ->where('transactions.0.transaction_date', CarbonImmutable::today()->subDay()->toDateString())
-                    ->where('transactions.4.transaction_date', CarbonImmutable::today()->subDays(5)->toDateString())
-                    ->etc()
-                )
-            )
-        );
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this
+        ->getJson(route('api.v1.ledgers.bills.index', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Gym Membership')
+        ->assertJsonPath('data.0.missed_cycles', 1)
+        ->assertJsonCount(5, 'data.0.transactions')
+        ->assertJsonPath('data.0.transactions.0.account.name', 'Main Checking')
+        ->assertJsonPath('data.0.transactions.0.transaction_date', CarbonImmutable::today()->subDay()->toDateString())
+        ->assertJsonPath('data.0.transactions.4.transaction_date', CarbonImmutable::today()->subDays(5)->toDateString());
 });
 
 test('bill pay sets bill_id on the created transaction', function () {

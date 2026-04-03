@@ -173,3 +173,100 @@ test('import api mapping destroy deletes mapping and returns json', function () 
 
     expect(ImportMapping::query()->whereKey($mapping->id)->exists())->toBeFalse();
 });
+
+test('import api accounts loader returns visible account options', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'initial_balance' => 1000,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.accounts', $ledger))
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Checking')
+        ->assertJsonPath('data.0.ledger_id', $ledger->id);
+});
+
+test('import api accounts loader is forbidden for another users ledger', function () {
+    $owner = User::factory()->create();
+    $other = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    Sanctum::actingAs($other, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.accounts', $ledger))
+        ->assertForbidden();
+});
+
+test('import api saved mappings loader returns mapping data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $ledger->importMappings()->create([
+        'name' => 'Maybank Format',
+        'mapping' => [
+            'date' => 'Transaction Date',
+            'amount' => 'Debit',
+        ],
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.saved-mappings', $ledger))
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Maybank Format')
+        ->assertJsonPath('data.0.mapping.date', 'Transaction Date');
+});
+
+test('import api saved mappings loader is forbidden for another users ledger', function () {
+    $owner = User::factory()->create();
+    $other = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    Sanctum::actingAs($other, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.saved-mappings', $ledger))
+        ->assertForbidden();
+});
+
+test('import api history loader returns latest import records', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $ledger->importRecords()->create([
+        'filename' => 'statement.csv',
+        'row_count' => 12,
+        'imported_count' => 10,
+        'skipped_count' => 2,
+        'mapping_used' => ['date' => 'Date', 'amount' => 'Amount'],
+        'imported_at' => now(),
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.history', $ledger))
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.filename', 'statement.csv')
+        ->assertJsonPath('data.0.row_count', 12)
+        ->assertJsonPath('data.0.imported_count', 10)
+        ->assertJsonPath('data.0.skipped_count', 2);
+});
+
+test('import api history loader is forbidden for another users ledger', function () {
+    $owner = User::factory()->create();
+    $other = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    Sanctum::actingAs($other, ['*']);
+
+    $this->getJson(importApiRoute('api.v1.ledgers.import.history', $ledger))
+        ->assertForbidden();
+});

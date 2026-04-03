@@ -1,4 +1,4 @@
-import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/react';
 import {
     ChevronDown,
     ChevronRight,
@@ -11,7 +11,9 @@ import {
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as billsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/BillController';
 import {
+    destroy as destroyRoute,
     store as storeRoute,
     update as updateRoute,
 } from '@/actions/App/Http/Controllers/Ledger/BillController';
@@ -82,8 +84,9 @@ type BillsPageProps = {
     accounts: Account[];
     categories: Category[];
     payees: Payee[];
-    bills?: Bill[];
 };
+
+type ApiEnvelope<T> = { data: T };
 
 const COLUMN_COUNT = 7;
 
@@ -197,6 +200,7 @@ function BillFormModal({
     accounts,
     categories,
     payees,
+    onSuccess,
 }: {
     bill: Bill | null;
     open: boolean;
@@ -205,6 +209,7 @@ function BillFormModal({
     accounts: Account[];
     categories: Category[];
     payees: Payee[];
+    onSuccess?: (isEdit: boolean) => Promise<void> | void;
 }) {
     const isEdit = bill !== null;
     const previousResetKey = useRef<string | null>(null);
@@ -300,8 +305,9 @@ function BillFormModal({
 
         router[method](url, formPayload, {
             preserveScroll: true,
-            onSuccess: () => {
+            onSuccess: async () => {
                 onOpenChange(false);
+                await onSuccess?.(isEdit);
             },
             onError: (errs) => {
                 setErrors(mapInertiaErrors<FormErrors>(errs));
@@ -866,6 +872,23 @@ function BillsLoadingSkeleton() {
     );
 }
 
+function BillsErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load recurring transactions.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 function BillCard({
     bill,
     ledgerId,
@@ -1275,23 +1298,21 @@ function BillRow({
 }
 
 function BillsContent({
+    ledgerId,
+    bills,
     onPay,
     onDelete,
     onEdit,
     onCreateNew,
 }: {
+    ledgerId: number;
+    bills: Bill[];
     onPay: (bill: Bill) => void;
     onDelete: (bill: Bill) => void;
     onEdit: (bill: Bill) => void;
     onCreateNew: () => void;
 }) {
-    const { currentLedger, bills } = usePage<
-        BillsPageProps & { currentLedger: { id: number } }
-    >().props;
-    const ledgerId = currentLedger!.id;
-    const billsList = bills ?? [];
-
-    if (billsList.length === 0) {
+    if (bills.length === 0) {
         return (
             <EmptyState
                 icon={<Receipt className="size-6" />}
@@ -1309,7 +1330,7 @@ function BillsContent({
         <>
             {/* Mobile cards */}
             <div className="space-y-3 sm:hidden">
-                {billsList.map((bill) => (
+                {bills.map((bill) => (
                     <BillCard
                         key={bill.id}
                         bill={bill}
@@ -1348,7 +1369,7 @@ function BillsContent({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {billsList.map((bill) => (
+                            {bills.map((bill) => (
                                 <BillRow
                                     key={bill.id}
                                     bill={bill}
@@ -1371,11 +1392,14 @@ export default function BillsIndex() {
         BillsPageProps & { currentLedger: { id: number; name: string } }
     >().props;
     const ledger = currentLedger!;
+    const billsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Bill[]>>({});
 
     const [billToDelete, setBillToDelete] = useState<Bill | null>(null);
     const [billToPay, setBillToPay] = useState<Bill | null>(null);
     const [formBill, setFormBill] = useState<Bill | 'create' | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [billsError, setBillsError] = useState<string | null>(null);
+    const [hasLoadedBills, setHasLoadedBills] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -1384,6 +1408,63 @@ export default function BillsIndex() {
             href: billsIndex.url(ledger.id),
         },
     ];
+
+    const bills = billsLoaderState.response?.data ?? [];
+
+    async function loadBills(): Promise<boolean> {
+        let cancelled = false;
+
+        billsLoaderState.cancel();
+        setBillsError(null);
+
+        try {
+            await billsLoaderState.get(billsLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setBillsError('Failed to load recurring transactions.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasLoadedBills(true);
+            }
+        }
+    }
+
+    async function refreshBillsAfterMutation(
+        successMessage?: string,
+        staleDataMessage = 'Failed to refresh recurring transactions.',
+    ): Promise<void> {
+        const refreshed = await loadBills();
+
+        if (!successMessage) {
+            if (!refreshed) {
+                toast.error(staleDataMessage);
+            }
+
+            return;
+        }
+
+        toast[refreshed ? 'success' : 'error'](
+            refreshed ? successMessage : staleDataMessage,
+        );
+    }
+
+    useEffect(() => {
+        void loadBills();
+
+        return () => {
+            billsLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
 
     function handleEdit(bill: Bill) {
         setFormBill(bill);
@@ -1395,15 +1476,19 @@ export default function BillsIndex() {
         }
 
         setDeleting(true);
-        router.delete(`/ledgers/${ledger.id}/bills/${billToDelete.id}`, {
+        router.delete(destroyRoute.url({ ledger: ledger.id, bill: billToDelete.id }), {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Recurring transaction deleted');
+            onSuccess: async () => {
                 setBillToDelete(null);
-                setDeleting(false);
+                await refreshBillsAfterMutation(
+                    'Recurring transaction deleted',
+                    'Recurring transaction deleted, but failed to refresh recurring transactions.',
+                );
             },
             onError: () => {
                 toast.error('Failed to delete recurring transaction');
+            },
+            onFinish: () => {
                 setDeleting(false);
             },
         });
@@ -1423,14 +1508,26 @@ export default function BillsIndex() {
                     </Button>
                 </div>
 
-                <Deferred data="bills" fallback={<BillsLoadingSkeleton />}>
+                {billsLoaderState.processing && hasLoadedBills ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing recurring transactions...
+                    </p>
+                ) : null}
+
+                {billsLoaderState.processing && !hasLoadedBills ? (
+                    <BillsLoadingSkeleton />
+                ) : billsError && bills.length === 0 ? (
+                    <BillsErrorState onRetry={() => void loadBills()} />
+                ) : (
                     <BillsContent
+                        ledgerId={ledger.id}
+                        bills={bills}
                         onPay={setBillToPay}
                         onDelete={setBillToDelete}
                         onEdit={handleEdit}
                         onCreateNew={() => setFormBill('create')}
                     />
-                </Deferred>
+                )}
             </div>
 
             <PayBillDialog
@@ -1438,6 +1535,12 @@ export default function BillsIndex() {
                 ledgerId={ledger.id}
                 accounts={accounts}
                 onClose={() => setBillToPay(null)}
+                onSuccess={() =>
+                    void refreshBillsAfterMutation(
+                        undefined,
+                        'Payment recorded, but failed to refresh recurring transactions.',
+                    )
+                }
             />
 
             <BillFormModal
@@ -1453,6 +1556,16 @@ export default function BillsIndex() {
                 accounts={accounts}
                 categories={categories}
                 payees={payees}
+                onSuccess={(isEdit) =>
+                    refreshBillsAfterMutation(
+                        isEdit
+                            ? 'Recurring transaction updated'
+                            : 'Recurring transaction created',
+                        isEdit
+                            ? 'Recurring transaction updated, but failed to refresh recurring transactions.'
+                            : 'Recurring transaction created, but failed to refresh recurring transactions.',
+                    )
+                }
             />
 
             {/* Delete confirmation dialog */}

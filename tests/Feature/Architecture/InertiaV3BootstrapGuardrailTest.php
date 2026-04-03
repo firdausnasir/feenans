@@ -28,6 +28,7 @@ test('vite config registers the inertia vite plugin while preserving the dedicat
 
     expect($config)
         ->toContain("import inertia from '@inertiajs/vite';")
+        ->toContain("input: ['resources/css/app.css', 'resources/js/app.tsx']")
         ->toContain('inertia({')
         ->toContain("entry: 'resources/js/ssr.tsx'")
         ->toContain("ssr: 'resources/js/ssr.tsx'");
@@ -58,14 +59,21 @@ test('inertia config uses the v3 pages structure', function () {
         ->not->toContain("'page_extensions' => [");
 });
 
-test('root inertia blade view uses a single app entry instead of page specific vite entries', function () {
+test('root inertia blade view loads the shared css and js app entries instead of page specific vite entries', function () {
     $view = File::get(resource_path('views/app.blade.php'));
 
     expect($view)
         ->toContain('@viteReactRefresh')
-        ->toContain("@vite('resources/js/app.tsx')")
+        ->toContain("@vite(['resources/css/app.css', 'resources/js/app.tsx'])")
+        ->not->toContain("@vite('resources/js/app.tsx')")
         ->not->toContain('resources/js/pages/')
         ->not->toContain('$page[\'component\']');
+});
+
+test('root js bootstrap does not own the app css entry', function () {
+    $bootstrap = File::get(resource_path('js/app.tsx'));
+
+    expect($bootstrap)->not->toContain("import '../css/app.css';");
 });
 
 test('route model bindings run before inertia shared props middleware', function () {
