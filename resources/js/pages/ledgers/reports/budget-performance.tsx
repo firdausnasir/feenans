@@ -9,12 +9,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
+import type { BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
     index as reportsIndex,
     budgetPerformance as budgetPerformanceRoute,
 } from '@/routes/ledgers/reports';
-import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

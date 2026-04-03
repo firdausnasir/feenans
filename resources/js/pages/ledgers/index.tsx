@@ -1,8 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { PlusCircle } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
-import { create, index, dashboard } from '@/routes/ledgers';
 import type { BreadcrumbItem } from '@/types';
+import { create, index, dashboard } from '@/routes/ledgers';
 
 type Ledger = {
     id: number;

@@ -18,14 +18,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
-import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import {
-    destroy as destroyRoute,
-    edit as transactionEdit,
-    index as transactionsIndex,
-    update as updateRoute,
-} from '@/routes/ledgers/transactions';
-import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 import type {
     Account,
     BreadcrumbItem,
@@ -36,6 +28,14 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import {
+    destroy as destroyRoute,
+    edit as transactionEdit,
+    index as transactionsIndex,
+    update as updateRoute,
+} from '@/routes/ledgers/transactions';
+import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
 
 type EditFormData = {
     transaction_type: 'expense' | 'income' | 'transfer';
