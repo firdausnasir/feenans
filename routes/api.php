@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
     Route::get('overview', AdminOverviewController::class)->name('admin.overview');
     Route::get('users', [AdminUserController::class, 'index'])->name('admin.users.index');
+    Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
     Route::get('memberships', [AdminMembershipController::class, 'index'])->name('admin.memberships.index');
     Route::patch('users/{user}/membership', [AdminMembershipController::class, 'update'])->name('admin.memberships.update');
     Route::get('feedbacks', [AdminFeedbackController::class, 'index'])->name('admin.feedbacks.index');

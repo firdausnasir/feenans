@@ -10,6 +10,11 @@ use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
@@ -167,7 +172,8 @@ test('admin can search the user list', function () {
 
     $response->assertOk()
         ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.email', 'alice@example.com');
+        ->assertJsonPath('data.0.email', 'alice@example.com')
+        ->assertJsonPath('data.0.is_admin', false);
 });
 
 test('admin can list memberships with filters', function () {
@@ -241,4 +247,218 @@ test('new registrations create a default free active membership', function () {
         ->not->toBeNull()
         ->tier->toBe('free')
         ->status->toBe('active');
+});
+
+test('non-admin users cannot delete users from the admin api', function () {
+    $user = User::factory()->create();
+    $targetUser = User::factory()->create();
+
+    $this->actingAs($user)
+        ->deleteJson(route('admin.users.destroy', $targetUser))
+        ->assertForbidden();
+});
+
+test('admin can delete a non-admin user and related auth artifacts', function () {
+    Storage::fake('local');
+
+    $admin = User::factory()->create(['is_admin' => true]);
+    $user = User::factory()->create([
+        'email' => 'delete-me@example.com',
+        'password' => Hash::make('password'),
+    ]);
+
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = $ledger->categories()->first() ?? Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create();
+
+    $attachmentPath = "attachments/{$ledger->id}/admin-delete-test.pdf";
+
+    Storage::disk('local')->put($attachmentPath, 'fake');
+
+    $attachment = $transaction->attachments()->create([
+        'filename' => 'admin-delete-test.pdf',
+        'path' => $attachmentPath,
+        'mime_type' => 'application/pdf',
+        'size' => 4,
+    ]);
+
+    DB::table('sessions')->insert([
+        'id' => (string) Str::uuid(),
+        'user_id' => $user->id,
+        'ip_address' => '127.0.0.1',
+        'user_agent' => 'Pest',
+        'payload' => 'payload',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    $token = $user->createToken('Admin delete test');
+
+    Notification::send($user, new class extends Illuminate\Notifications\Notification
+    {
+        public function via(object $notifiable): array
+        {
+            return ['database'];
+        }
+
+        public function toArray(object $notifiable): array
+        {
+            return ['message' => 'Delete me'];
+        }
+    });
+
+    DB::table('password_reset_tokens')->insert([
+        'email' => $user->email,
+        'token' => 'reset-token',
+        'created_at' => now(),
+    ]);
+
+    Storage::disk('local')->assertExists($attachment->path);
+
+    $this->actingAs($admin)
+        ->deleteJson(route('admin.users.destroy', $user))
+        ->assertNoContent();
+
+    $this->assertModelMissing($user);
+    $this->assertDatabaseMissing('ledgers', ['id' => $ledger->id]);
+    $this->assertDatabaseMissing('sessions', ['user_id' => $user->id]);
+    $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->accessToken->id]);
+    $this->assertDatabaseMissing('notifications', [
+        'notifiable_type' => User::class,
+        'notifiable_id' => $user->id,
+    ]);
+    $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
+    $this->assertDatabaseMissing('attachments', ['id' => $attachment->id]);
+    Storage::disk('local')->assertMissing($attachment->path);
+});
+
+test('admin delete only removes attachment files after the transaction commits', function () {
+    Storage::fake('local');
+
+    $admin = User::factory()->create(['is_admin' => true]);
+    $user = User::factory()->create();
+
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = $ledger->categories()->first() ?? Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create();
+
+    $attachmentPath = "attachments/{$ledger->id}/admin-delete-rollback-test.pdf";
+
+    Storage::disk('local')->put($attachmentPath, 'fake');
+
+    $attachment = $transaction->attachments()->create([
+        'filename' => 'admin-delete-rollback-test.pdf',
+        'path' => $attachmentPath,
+        'mime_type' => 'application/pdf',
+        'size' => 4,
+    ]);
+
+    User::deleted(function (User $deletedUser) use ($user): void {
+        if ($deletedUser->isNot($user)) {
+            return;
+        }
+
+        throw new RuntimeException('Force rollback after user deletion.');
+    });
+
+    Storage::disk('local')->assertExists($attachment->path);
+
+    $this->withoutExceptionHandling();
+
+    expect(fn () => $this->actingAs($admin)->deleteJson(route('admin.users.destroy', $user)))
+        ->toThrow(RuntimeException::class, 'Force rollback after user deletion.');
+
+    $this->assertModelExists($user->fresh());
+    $this->assertDatabaseHas('attachments', ['id' => $attachment->id]);
+    Storage::disk('local')->assertExists($attachment->path);
+});
+
+test('admin delete logs a warning when attachment cleanup fails after commit', function () {
+    $disk = Storage::fake('local');
+    Log::spy();
+
+    $admin = User::factory()->create(['is_admin' => true]);
+    $user = User::factory()->create();
+
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = $ledger->categories()->first() ?? Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create();
+
+    $attachmentPath = "attachments/{$ledger->id}/admin-delete-log-test.pdf";
+
+    $disk->put($attachmentPath, 'fake');
+
+    $attachment = $transaction->attachments()->create([
+        'filename' => 'admin-delete-log-test.pdf',
+        'path' => $attachmentPath,
+        'mime_type' => 'application/pdf',
+        'size' => 4,
+    ]);
+
+    Storage::shouldReceive('disk')
+        ->once()
+        ->with('local')
+        ->andReturn(new class
+        {
+            /**
+             * @param  array<int, string>  $paths
+             */
+            public function delete(array $paths): bool
+            {
+                throw new RuntimeException('Simulated attachment cleanup failure.');
+            }
+        });
+
+    $this->actingAs($admin)
+        ->deleteJson(route('admin.users.destroy', $user))
+        ->assertNoContent();
+
+    $this->assertModelMissing($user);
+    $this->assertDatabaseMissing('attachments', ['id' => $attachment->id]);
+    $disk->assertExists($attachment->path);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(function (string $message, array $context) use ($attachment, $attachmentPath, $user): bool {
+            return $message === 'Attachment cleanup failed after commit.'
+                && $context['user_id'] === $user->id
+                && $context['paths'] === [$attachmentPath]
+                && $context['attachment_ids'] === [$attachment->id]
+                && $context['exception'] instanceof RuntimeException
+                && $context['exception']->getMessage() === 'Simulated attachment cleanup failure.';
+        });
+});
+
+test('admin cannot delete another admin user', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $targetAdmin = User::factory()->create(['is_admin' => true]);
+
+    $this->actingAs($admin)
+        ->deleteJson(route('admin.users.destroy', $targetAdmin))
+        ->assertForbidden();
+
+    $this->assertModelExists($targetAdmin);
 });
