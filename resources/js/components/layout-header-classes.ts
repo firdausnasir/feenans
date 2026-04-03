@@ -7,4 +7,4 @@ export const welcomeHeaderClassName =
 // Prevents SidebarInset from expanding the flex row beyond the viewport on medium screens.
 // Without min-w-0, a flex item's min-width defaults to auto (its content width), which
 // causes 256px sidebar + wide-content = page-level horizontal overflow at ~768px.
-export const sidebarInsetClassName = 'min-w-0 overflow-x-hidden';
+export const sidebarInsetClassName = 'min-w-0';

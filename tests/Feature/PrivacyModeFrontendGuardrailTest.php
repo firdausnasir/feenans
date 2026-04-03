@@ -117,10 +117,11 @@ test('sidebar layout keeps the sticky header outside the overflow clipping conta
     $contents = frontendFile('layouts/app/app-sidebar-layout.tsx');
 
     expect($contents)
-        ->toContain('<AppContent variant="sidebar">')
+        ->toContain('<AppContent variant="sidebar" className={sidebarInsetClassName}>')
         ->toContain('<AppSidebarHeader breadcrumbs={breadcrumbs} />')
         ->toContain('className="min-w-0 overflow-x-hidden"')
-        ->not->toContain('<AppContent variant="sidebar" className="overflow-x-hidden">');
+        ->not->toContain('variant="sidebar" className="overflow-x-hidden"')
+        ->not->toContain('variant="sidebar" className={sidebarInsetClassName + \' overflow-x-hidden\'}');
 });
 
 test('accounts desktop table matches the transactions table text size baseline', function () {

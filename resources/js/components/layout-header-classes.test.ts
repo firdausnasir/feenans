@@ -21,5 +21,5 @@ test('welcome header does not use sticky positioning', () => {
 
 test('sidebar inset prevents page-level horizontal overflow', () => {
     assert.match(sidebarInsetClassName, /\bmin-w-0\b/);
-    assert.match(sidebarInsetClassName, /\boverflow-x-hidden\b/);
+    assert.doesNotMatch(sidebarInsetClassName, /\boverflow-x-hidden\b/);
 });
