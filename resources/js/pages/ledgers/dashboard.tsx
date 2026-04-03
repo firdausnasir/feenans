@@ -54,14 +54,6 @@ import {
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
-import type {
-    Account,
-    AccountType,
-    Bill,
-    BreadcrumbItem,
-    BudgetStat,
-    Transaction,
-} from '@/types';
 import { dashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
@@ -70,6 +62,14 @@ import {
     edit as transactionEdit,
     index as transactionsIndex,
 } from '@/routes/ledgers/transactions';
+import type {
+    Account,
+    AccountType,
+    Bill,
+    BreadcrumbItem,
+    BudgetStat,
+    Transaction,
+} from '@/types';
 
 type Summary = {
     income: number;

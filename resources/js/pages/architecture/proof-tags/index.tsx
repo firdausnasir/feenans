@@ -1,7 +1,7 @@
 import { Head, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
+import type { BreadcrumbItem } from '@/types';
 
 type ProofPageProps = {
     currentLedger: {

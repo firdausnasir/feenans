@@ -1,6 +1,7 @@
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
+import { index as activityIndex } from '@/actions/App/Http/Controllers/Ledger/ActivityLogController';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -15,10 +16,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { MASKED_AMOUNT } from '@/lib/format';
-import type { BreadcrumbItem, Pagination } from '@/types';
-import { index as activityIndex } from '@/actions/App/Http/Controllers/Ledger/ActivityLogController';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as ledgerActivityIndex } from '@/routes/ledgers/activity';
+import type { BreadcrumbItem, Pagination } from '@/types';
 
 type ActivityItem = {
     id: number;

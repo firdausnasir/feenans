@@ -1,7 +1,7 @@
 import { router } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
-import type { Attachment, Transaction } from '@/types';
 import attachmentRoutes from '@/routes/ledgers/transactions/attachments';
+import type { Attachment, Transaction } from '@/types';
 
 export function useAttachments(
     ledgerId: number,

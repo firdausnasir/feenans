@@ -3,6 +3,7 @@ import { Bug, Lightbulb, MessageSquare, Send } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { store } from '@/actions/App/Http/Controllers/FeedbackController';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -20,7 +21,6 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { store } from '@/actions/App/Http/Controllers/FeedbackController';
 
 const feedbackTypes = [
     {

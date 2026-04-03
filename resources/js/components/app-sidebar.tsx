@@ -31,7 +31,6 @@ import {
     SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
-import type { NavGroup } from '@/types';
 import { dashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as billsIndex } from '@/routes/ledgers/bills';
@@ -43,6 +42,7 @@ import { index as reportsIndex } from '@/routes/ledgers/reports';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
 import { index as tagsIndex } from '@/routes/ledgers/tags';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
+import type { NavGroup } from '@/types';
 
 export function AppSidebar() {
     const { currentLedger, isAdminArea } = usePage().props;
