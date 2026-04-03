@@ -1,6 +1,9 @@
 <?php
 
+use Illuminate\Foundation\Http\Kernel;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\File;
+use Inertia\Middleware;
 
 test('composer json pins inertia laravel to v3', function () {
     $composer = json_decode(File::get(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
@@ -18,6 +21,16 @@ test('package json includes the inertia vite package', function () {
     $package = json_decode(File::get(base_path('package.json')), true, flags: JSON_THROW_ON_ERROR);
 
     expect($package['dependencies'])->toHaveKey('@inertiajs/vite');
+});
+
+test('vite config registers the inertia vite plugin while preserving the dedicated ssr entry', function () {
+    $config = File::get(base_path('vite.config.ts'));
+
+    expect($config)
+        ->toContain("import inertia from '@inertiajs/vite';")
+        ->toContain('inertia({')
+        ->toContain("entry: 'resources/js/ssr.tsx'")
+        ->toContain("ssr: 'resources/js/ssr.tsx'");
 });
 
 test('composer dev flow does not require a separate inertia ssr daemon', function () {
@@ -43,4 +56,21 @@ test('inertia config uses the v3 pages structure', function () {
         ->toContain("'ensure_pages_exist' => true")
         ->not->toContain("'page_paths' => [")
         ->not->toContain("'page_extensions' => [");
+});
+
+test('root inertia blade view uses a single app entry instead of page specific vite entries', function () {
+    $view = File::get(resource_path('views/app.blade.php'));
+
+    expect($view)
+        ->toContain('@viteReactRefresh')
+        ->toContain("@vite('resources/js/app.tsx')")
+        ->not->toContain('resources/js/pages/')
+        ->not->toContain('$page[\'component\']');
+});
+
+test('route model bindings run before inertia shared props middleware', function () {
+    $middleware = app()->make(Kernel::class)->getMiddlewarePriority();
+
+    expect(array_search(SubstituteBindings::class, $middleware, true))
+        ->toBeLessThan(array_search(Middleware::class, $middleware, true));
 });
