@@ -1,10 +1,12 @@
 <?php
 
 use App\Models\Account;
+use App\Models\AccountType;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Laravel\Sanctum\Sanctum;
 
 test('token authenticated client can list category hierarchy for a ledger', function () {
@@ -50,6 +52,48 @@ test('token authenticated client can list category hierarchy for a ledger', func
         ->assertJsonPath('data.0.children.0.color', '#16a34a')
         ->assertJsonPath('data.0.children.0.icon', 'fork-knife')
         ->assertJsonPath('data.0.children.0.transactions_count', 0);
+});
+
+test('category api dashboard top loader scopes category spending to the selected cycle offset', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create(['cycle_start_day' => 1]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $currentCategory = Category::factory()->for($ledger)->create([
+        'name' => 'Current',
+        'transaction_type' => 'expense',
+    ]);
+    $previousCategory = Category::factory()->for($ledger)->create([
+        'name' => 'Previous',
+        'transaction_type' => 'expense',
+    ]);
+
+    $now = CarbonImmutable::now();
+    ['start' => $currentStart] = $ledger->cycleBounds($now);
+    ['start' => $previousStart] = $ledger->cycleBounds($now->subMonthNoOverflow());
+
+    Transaction::factory()->for($ledger)->for($account)->for($currentCategory)->expense()->create([
+        'amount' => '-50.00',
+        'transaction_date' => $currentStart->addDay()->toDateString(),
+    ]);
+
+    Transaction::factory()->for($ledger)->for($account)->for($previousCategory)->expense()->create([
+        'amount' => '-35.00',
+        'transaction_date' => $previousStart->addDay()->toDateString(),
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.categories.dashboard-top', [
+        'ledger' => $ledger,
+        'offset' => -1,
+    ]));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Previous')
+        ->assertJsonPath('data.0.total', 35.0)
+        ->assertJsonPath('data.0.percentage', 100.0);
 });
 
 test('category api create returns validation errors as json', function () {
@@ -472,7 +516,7 @@ test('category api reorder updates positions', function () {
         ],
     ]);
 
-    $response->assertSuccessful();
+    $response->assertNoContent();
 
     expect($categoryA->fresh()->position)->toBe(2)
         ->and($categoryB->fresh()->position)->toBe(1);

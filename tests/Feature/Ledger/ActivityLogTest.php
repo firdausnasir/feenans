@@ -257,7 +257,7 @@ test('activity page renders successfully', function () {
     $this->withoutVite();
     $this->actingAs($this->user);
 
-    $response = $this->get(route('ledgers.activity.index', $this->ledger))
+    $this->get(route('ledgers.activity.index', $this->ledger))
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/activity/index')
@@ -266,16 +266,9 @@ test('activity page renders successfully', function () {
             ->where('filters.page', 1)
             ->missing('activity')
         );
-
-    $response->assertInertia(fn (Assert $page) => $page
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('activity.data')
-            ->where('activity.current_page', 1)
-        )
-    );
 });
 
-test('activity page supports partial reload filters', function () {
+test('activity page keeps filter shell props without returning activity data', function () {
     $this->actingAs($this->user);
 
     ActivityLog::query()->create([
@@ -299,20 +292,7 @@ test('activity page supports partial reload filters', function () {
         ->component('ledgers/activity/index')
         ->where('filters.subject_type', 'Budget')
         ->where('filters.action', 'created')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('activity.data', 1, fn (Assert $entry) => $entry
-                ->where('subject_type', 'Budget')
-                ->where('action', 'created')
-                ->etc()
-            )
-        )
-    );
-
-    $response->assertInertia(fn (Assert $page) => $page
-        ->reloadOnly('activity', fn (Assert $reload) => $reload
-            ->has('activity.data', 1)
-            ->missing('filters')
-        )
+        ->missing('activity')
     );
 });
 

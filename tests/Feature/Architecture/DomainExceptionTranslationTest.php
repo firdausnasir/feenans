@@ -2,14 +2,25 @@
 
 use App\Actions\Bills\UseCases\PayBillAction;
 use App\Actions\Imports\UseCases\ExecuteImportAction;
+use App\Actions\Reports\Queries\GetBudgetPerformanceReportDataQuery;
+use App\Actions\Reports\Queries\GetCashFlowReportDataQuery;
 use App\Actions\Reports\Queries\GetFinancialHealthReportDataQuery;
+use App\Actions\Reports\Queries\GetSpendingReportDataQuery;
+use App\Actions\Transactions\Queries\ListTransactionsQuery;
 use App\Actions\Transactions\Queries\SelectAllTransactionIdsQuery;
 use App\Actions\Transactions\UseCases\StoreTransactionAction;
 use App\Data\Bills\Input\PayBillData;
 use App\Data\Imports\Input\StoreImportData;
+use App\Data\Reports\Input\BudgetPerformanceFiltersData;
+use App\Data\Reports\Input\GetCashFlowPageData;
 use App\Data\Reports\Input\GetFinancialHealthPageData;
+use App\Data\Reports\Input\ReportFiltersData;
+use App\Data\Reports\Output\Web\BudgetPerformanceReportData;
+use App\Data\Reports\Output\Web\CashFlowReportData;
 use App\Data\Reports\Output\Web\FinancialHealthReportData;
+use App\Data\Reports\Output\Web\SpendingReportData;
 use App\Data\Transactions\Input\StoreTransactionData;
+use App\Data\Transactions\Output\Web\TransactionFiltersData;
 use App\Exceptions\Domain\DomainNotAllowed;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Account;
@@ -21,6 +32,7 @@ use App\Models\User;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
@@ -457,4 +469,125 @@ test('non-json web mutation fallback uses the safe message', function () {
 
     expect($session->get('error'))->toBe('Safe client message');
     expect($session->get('error'))->not->toBe('Unsafe internal detail');
+});
+
+test('transaction api index read maps a domain exception to structured json 4xx', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    expect(class_exists(ListTransactionsQuery::class))->toBeTrue();
+    expect(app('router')->has('api.v1.ledgers.transactions.index'))->toBeTrue();
+
+    app()->bind(ListTransactionsQuery::class, fn () => new class extends ListTransactionsQuery
+    {
+        public function __construct() {}
+
+        public function __invoke(Ledger $ledger, TransactionFiltersData $filters, int $page, int $perPage): Paginator
+        {
+            throw new class('Unsafe transaction read detail', 'Transactions are not available right now.') extends DomainNotAllowed {};
+        }
+    });
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.transactions.index', $ledger))
+        ->assertForbidden()
+        ->assertJson([
+            'message' => 'Transactions are not available right now.',
+            'code' => 'domain_not_allowed',
+            'type' => 'domain_not_allowed',
+        ]);
+});
+
+test('spending report api read maps a domain exception to structured json 4xx', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    expect(class_exists(GetSpendingReportDataQuery::class))->toBeTrue();
+    expect(class_exists(ReportFiltersData::class))->toBeTrue();
+    expect(class_exists(SpendingReportData::class))->toBeTrue();
+    expect(app('router')->has('api.v1.ledgers.reports.index'))->toBeTrue();
+
+    app()->bind(GetSpendingReportDataQuery::class, fn () => new class extends GetSpendingReportDataQuery
+    {
+        public function __construct() {}
+
+        public function __invoke(Ledger $ledger, ReportFiltersData $input): SpendingReportData
+        {
+            throw new class('Unsafe report detail', 'Spending report is not available right now.') extends DomainNotAllowed {};
+        }
+    });
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.reports.index', $ledger))
+        ->assertForbidden()
+        ->assertJson([
+            'message' => 'Spending report is not available right now.',
+            'code' => 'domain_not_allowed',
+            'type' => 'domain_not_allowed',
+        ]);
+});
+
+test('budget performance api read maps a domain exception to structured json 4xx', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    expect(class_exists(GetBudgetPerformanceReportDataQuery::class))->toBeTrue();
+    expect(class_exists(BudgetPerformanceFiltersData::class))->toBeTrue();
+    expect(class_exists(BudgetPerformanceReportData::class))->toBeTrue();
+    expect(app('router')->has('api.v1.ledgers.reports.budget-performance'))->toBeTrue();
+
+    app()->bind(GetBudgetPerformanceReportDataQuery::class, fn () => new class extends GetBudgetPerformanceReportDataQuery
+    {
+        public function __construct() {}
+
+        public function __invoke(Ledger $ledger, BudgetPerformanceFiltersData $input): BudgetPerformanceReportData
+        {
+            throw new class('Unsafe report detail', 'Budget performance report is not available right now.') extends DomainNotAllowed {};
+        }
+    });
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.reports.budget-performance', $ledger))
+        ->assertForbidden()
+        ->assertJson([
+            'message' => 'Budget performance report is not available right now.',
+            'code' => 'domain_not_allowed',
+            'type' => 'domain_not_allowed',
+        ]);
+});
+
+test('cash flow api read maps a domain exception to structured json 4xx', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    expect(class_exists(GetCashFlowReportDataQuery::class))->toBeTrue();
+    expect(class_exists(GetCashFlowPageData::class))->toBeTrue();
+    expect(class_exists(CashFlowReportData::class))->toBeTrue();
+    expect(app('router')->has('api.v1.ledgers.reports.cash-flow'))->toBeTrue();
+
+    app()->bind(GetCashFlowReportDataQuery::class, fn () => new class extends GetCashFlowReportDataQuery
+    {
+        public function __construct() {}
+
+        public function __invoke(Ledger $ledger, GetCashFlowPageData $input): CashFlowReportData
+        {
+            throw new class('Unsafe report detail', 'Cash flow report is not available right now.') extends DomainNotAllowed {};
+        }
+    });
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.reports.cash-flow', $ledger))
+        ->assertForbidden()
+        ->assertJson([
+            'message' => 'Cash flow report is not available right now.',
+            'code' => 'domain_not_allowed',
+            'type' => 'domain_not_allowed',
+        ]);
 });

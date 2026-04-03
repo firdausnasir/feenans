@@ -46,7 +46,6 @@ class TransactionController extends Controller
             'categories' => fn () => $resolve()->categories,
             'payees' => fn () => $resolve()->payees,
             'tags' => fn () => $resolve()->tags,
-            'transactions' => Inertia::scroll(fn () => $resolve()->transactions())->defer(),
         ]);
     }
 

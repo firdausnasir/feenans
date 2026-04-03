@@ -1,5 +1,6 @@
-import { Deferred, Head, usePage } from '@inertiajs/react';
+import { Head, useHttp, usePage } from '@inertiajs/react';
 import { BarChart3, Calendar } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Bar,
     CartesianGrid,
@@ -11,6 +12,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { cashFlow as cashFlowLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/ReportController';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +31,7 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount, formatDate } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
+    exportPdf as exportReportPdf,
     index as reportsIndex,
     cashFlow as cashFlowRoute,
 } from '@/routes/ledgers/reports';
@@ -165,7 +168,6 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                                     : 'text-red-500'
                             }`}
                         >
-                            {bill.transaction_type === 'expense' ? '-' : '+'}
                             {formatAbsAmount(bill.amount, privacyMode)}
                         </span>
                     </div>
@@ -200,9 +202,6 @@ function UpcomingBillsSection({ bills }: { bills: UpcomingBill[] }) {
                                         : 'text-red-500'
                                 }`}
                             >
-                                {bill.transaction_type === 'expense'
-                                    ? '-'
-                                    : '+'}
                                 {formatAbsAmount(bill.amount, privacyMode)}
                             </TableCell>
                         </TableRow>
@@ -251,11 +250,14 @@ function CashFlowSkeleton() {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function CashFlowPage() {
-    const { currentLedger, cashFlow } = usePage<{
-        cashFlow?: CashFlowReport;
-    }>().props;
+    const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
     const { privacyMode } = usePrivacyMode();
+    const cashFlowLoaderState = useHttp<Record<string, never>, { data: CashFlowReport }>({});
+    const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
+    const [cashFlowError, setCashFlowError] = useState<string | null>(null);
+    const [hasLoadedCashFlow, setHasLoadedCashFlow] = useState(false);
+    const latestRequestRef = useRef(0);
 
     const dailyCashFlow = cashFlow?.daily_cash_flow ?? [];
     const upcomingBills = cashFlow?.upcoming_bills ?? [];
@@ -270,6 +272,49 @@ export default function CashFlowPage() {
         { title: 'Reports', href: reportsIndex.url(ledger.id) },
         { title: 'Cash Flow', href: cashFlowRoute.url(ledger.id) },
     ];
+
+    async function loadCashFlow(): Promise<void> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+        cashFlowLoaderState.cancel();
+        setCashFlowError(null);
+
+        try {
+            const response = await cashFlowLoaderState.get(
+                cashFlowLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setCashFlow(response.data);
+            }
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setCashFlowError('Failed to load cash flow report.');
+            }
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedCashFlow(true);
+            }
+        }
+    }
+
+    useEffect(() => {
+        void loadCashFlow();
+
+        return () => {
+            cashFlowLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
+
+    const showInitialLoading = cashFlowLoaderState.processing && !hasLoadedCashFlow;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -289,79 +334,99 @@ export default function CashFlowPage() {
                         className="w-full sm:ml-auto sm:w-auto"
                         asChild
                     >
-                        <a href={`/ledgers/${ledger.id}/reports/export-pdf`}>
+                        <a href={exportReportPdf.url(ledger.id)}>
                             Export PDF
                         </a>
                     </Button>
                 </div>
 
-                <Deferred data="cashFlow" fallback={<CashFlowSkeleton />}>
-                    {/* Summary cards */}
-                    <div className="grid gap-4 sm:grid-cols-3">
-                        <Card>
-                            <CardContent className="pt-6">
-                                <p className="text-xs font-medium text-muted-foreground uppercase">
-                                    Total inflow
-                                </p>
-                                <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
-                                    {formatAbsAmount(totalIncome, privacyMode)}
-                                </p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-6">
-                                <p className="text-xs font-medium text-muted-foreground uppercase">
-                                    Total outflow
-                                </p>
-                                <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
-                                    {formatAbsAmount(totalExpense, privacyMode)}
-                                </p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-6">
-                                <p className="text-xs font-medium text-muted-foreground uppercase">
-                                    Net cash flow
-                                </p>
-                                <p
-                                    className={`mt-2 text-2xl font-semibold tabular-nums ${
-                                        netFlow >= 0
-                                            ? 'text-foreground'
-                                            : 'text-red-500'
-                                    }`}
+                {showInitialLoading ? (
+                    <CashFlowSkeleton />
+                ) : cashFlowError && !cashFlow ? (
+                    <Card>
+                        <CardContent className="flex flex-col gap-3 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {cashFlowError}
+                            </p>
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadCashFlow()}
                                 >
-                                    {netFlow < 0 ? '-' : '+'}
-                                    {formatAbsAmount(
-                                        Math.abs(netFlow),
-                                        privacyMode,
-                                    )}
-                                </p>
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <>
+                        {cashFlowLoaderState.processing && hasLoadedCashFlow ? (
+                            <p className="text-xs text-muted-foreground">
+                                Refreshing cash flow report...
+                            </p>
+                        ) : null}
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Total inflow
+                                    </p>
+                                    <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+                                        {formatAbsAmount(totalIncome, privacyMode)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Total outflow
+                                    </p>
+                                    <p className="mt-2 text-2xl font-semibold text-red-500 tabular-nums">
+                                        {formatAbsAmount(totalExpense, privacyMode)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                                        Net cash flow
+                                    </p>
+                                    <p
+                                        className={`mt-2 text-2xl font-semibold tabular-nums ${
+                                            netFlow >= 0
+                                                ? 'text-foreground'
+                                                : 'text-red-500'
+                                        }`}
+                                    >
+                                        {formatAbsAmount(netFlow, privacyMode)}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Daily cash flow</CardTitle>
+                            </CardHeader>
+                            <CardContent className="min-w-0 overflow-hidden">
+                                <DailyCashFlowChart data={dailyCashFlow} />
                             </CardContent>
                         </Card>
-                    </div>
 
-                    {/* Daily cash flow chart */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Daily cash flow</CardTitle>
-                        </CardHeader>
-                        <CardContent className="min-w-0 overflow-hidden">
-                            <DailyCashFlowChart data={dailyCashFlow} />
-                        </CardContent>
-                    </Card>
-
-                    {/* Upcoming bills */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>
-                                Upcoming recurring transactions
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <UpcomingBillsSection bills={upcomingBills} />
-                        </CardContent>
-                    </Card>
-                </Deferred>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>
+                                    Upcoming recurring transactions
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <UpcomingBillsSection bills={upcomingBills} />
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
             </div>
         </AppLayout>
     );

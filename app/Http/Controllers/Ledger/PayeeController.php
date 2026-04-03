@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Actions\Payees\Queries\GetPayeePageQuery;
 use App\Actions\Payees\UseCases\DeletePayeeAction;
 use App\Actions\Payees\UseCases\StorePayeeAction;
 use App\Actions\Payees\UseCases\UpdatePayeeAction;
@@ -18,7 +17,7 @@ use Inertia\Response;
 
 class PayeeController extends Controller
 {
-    public function index(Request $request, Ledger $ledger, GetPayeePageQuery $getPayeePage): Response
+    public function index(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
@@ -26,9 +25,6 @@ class PayeeController extends Controller
 
         return Inertia::render('ledgers/payees/index', [
             'search' => $search,
-            'payees' => Inertia::defer(function () use ($ledger, $search, $getPayeePage) {
-                return $getPayeePage($ledger, $search)->toInertiaProps()['payees'];
-            }),
         ]);
     }
 

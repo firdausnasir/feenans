@@ -39,17 +39,10 @@ test('budget index page renders successfully', function () {
             ->missing('budgets')
         );
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('budgets', 1, fn (Assert $budgetPage) => $budgetPage
-                ->where('category_name', 'Food')
-                ->etc()
-            )
-        )
-    );
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('budget index keeps categories immediate and hierarchical while budgets stay deferred', function () {
+test('budget index keeps categories immediate and hierarchical while budgets move to api reads', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
@@ -90,15 +83,7 @@ test('budget index keeps categories immediate and hierarchical while budgets sta
             ->missing('budgets')
         );
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('budgets', 1, fn (Assert $budgetPage) => $budgetPage
-                ->where('category_id', $child->id)
-                ->where('category_name', 'Dining Out')
-                ->etc()
-            )
-        )
-    );
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('budget can be created through web routes', function () {

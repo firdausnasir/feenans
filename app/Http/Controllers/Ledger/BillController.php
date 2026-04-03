@@ -38,7 +38,6 @@ class BillController extends Controller
             'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
             'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
             'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
-            'bills' => Inertia::defer(fn () => $resolve()->bills(), 'bills'),
         ]);
     }
 

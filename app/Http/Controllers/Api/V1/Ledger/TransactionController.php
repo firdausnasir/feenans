@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Ledger;
 
+use App\Actions\Dashboard\Queries\GetDashboardPageQuery;
 use App\Actions\Transactions\Queries\ListTransactionsQuery;
 use App\Actions\Transactions\Queries\NormalizeTransactionFiltersQuery;
 use App\Actions\Transactions\Queries\SelectAllTransactionIdsQuery;
@@ -21,6 +22,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class TransactionController extends Controller
 {
@@ -42,6 +44,47 @@ class TransactionController extends Controller
                 'next_page_url' => $transactions->nextPageUrl(),
                 'prev_page_url' => $transactions->previousPageUrl(),
             ],
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function dashboardSummary(
+        Ledger $ledger,
+        Request $request,
+        GetDashboardPageQuery $getDashboardPage,
+    ): JsonResponse {
+        $this->authorize('view', $ledger);
+
+        $offset = $request->integer('offset', 0);
+
+        return response()->json([
+            'data' => [
+                'cycle' => $getDashboardPage->cycle($ledger, $offset),
+                'summary' => $getDashboardPage->summary($ledger, $offset),
+            ],
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function dashboardDailyTrend(
+        Ledger $ledger,
+        Request $request,
+        GetDashboardPageQuery $getDashboardPage,
+    ): JsonResponse {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $getDashboardPage->dailyTrend($ledger, $request->integer('offset', 0)),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function dashboardRecent(
+        Ledger $ledger,
+        Request $request,
+        GetDashboardPageQuery $getDashboardPage,
+    ): JsonResponse {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $getDashboardPage->recentTransactions($ledger, $request->integer('offset', 0)),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
@@ -79,7 +122,7 @@ class TransactionController extends Controller
     ): JsonResponse {
         $bulkUpdateTransactions($data);
 
-        return response()->json();
+        return response()->json(status: 204);
     }
 
     public function bulkDestroy(
@@ -89,7 +132,7 @@ class TransactionController extends Controller
     ): JsonResponse {
         $bulkDestroyTransactions($data);
 
-        return response()->json();
+        return response()->json(status: 204);
     }
 
     public function selectAll(
@@ -98,7 +141,9 @@ class TransactionController extends Controller
         SelectAllTransactionIdsQuery $selectAllTransactionIds,
     ): JsonResponse {
         return response()->json([
-            'ids' => $selectAllTransactionIds($ledger, $data->toFilterInput()),
-        ]);
+            'data' => [
+                'ids' => $selectAllTransactionIds($ledger, $data->toFilterInput()),
+            ],
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 }

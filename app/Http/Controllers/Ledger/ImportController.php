@@ -11,7 +11,6 @@ use App\Data\Imports\Input\GetImportPageData;
 use App\Data\Imports\Input\ParseImportData;
 use App\Data\Imports\Input\StoreImportData;
 use App\Data\Imports\Input\StoreImportMappingData;
-use App\Data\Imports\Output\Web\ImportPageData;
 use App\Http\Controllers\Controller;
 use App\Models\ImportMapping;
 use App\Models\Ledger;
@@ -26,16 +25,10 @@ class ImportController extends Controller
         GetImportPageData $input,
         GetImportPageQuery $getImportPage,
     ): Response {
-        $resolved = null;
-        $resolve = function () use ($input, $getImportPage, &$resolved): ImportPageData {
-            return $resolved ??= $getImportPage($input->ledger, $input);
-        };
+        $page = $getImportPage($input->ledger, $input);
 
         return Inertia::render('ledgers/import/index', [
-            'parseResult' => fn () => $resolve()->parseResult?->toArray(),
-            'accounts' => Inertia::defer(fn () => $resolve()->accounts()),
-            'savedMappings' => Inertia::defer(fn () => $resolve()->savedMappings()),
-            'importHistory' => Inertia::defer(fn () => $resolve()->importHistory()),
+            'parseResult' => fn () => $page->parseResult?->toArray(),
         ]);
     }
 

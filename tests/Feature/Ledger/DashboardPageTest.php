@@ -146,23 +146,11 @@ test('accounts grouped by type with correct balances', function () {
         );
 });
 
-test('deferred props are available via follow-up request', function () {
-    $now = CarbonImmutable::now();
-    ['start' => $start] = $this->ledger->cycleBounds($now);
+test('dashboard page no longer exposes module props as deferred props', function () {
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
 
-    Transaction::factory()
-        ->for($this->ledger)
-        ->for($this->account)
-        ->for($this->category)
-        ->count(5)
-        ->create([
-            'transaction_type' => 'expense',
-            'amount' => '-20.00',
-            'transaction_date' => $start->addDay()->toDateString(),
-        ]);
-
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    $response
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
             ->missing('recentTransactions')
@@ -171,36 +159,36 @@ test('deferred props are available via follow-up request', function () {
             ->missing('uncategorizedCount')
             ->missing('upcomingBills')
             ->missing('topBudgets')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('recentTransactions', 5)
-                ->has('uncategorizedCount')
-                ->has('dailyTrend')
-                ->has('topCategories')
-                ->has('upcomingBills')
-                ->has('topBudgets')
-            )
         );
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->toBeEmpty();
 });
 
-test('upcoming bills are returned in deferred props', function () {
+test('dashboard shell does not expose upcoming bills props', function () {
     Bill::factory()->for($this->ledger)->for($this->account)->create([
         'next_due_date' => CarbonImmutable::today()->addDays(3)->toDateString(),
         'is_active' => true,
     ]);
 
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
+
+    $response
         ->assertSuccessful()
-        ->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('upcomingBills.upcoming', 1)
-                ->has('upcomingBills.due', 0)
-                ->has('upcomingBills.missed', 0)
-            )
-        );
+        ->assertInertia(fn (Assert $page) => $page->missing('upcomingBills'));
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->not->toContain('upcomingBills');
 });
 
-test('dashboard upcoming bills are loaded through ListUpcomingBillsQuery', function () {
+test('dashboard shell does not load upcoming bills through ListUpcomingBillsQuery', function () {
     Bill::factory()->for($this->ledger)->for($this->account)->create([
         'name' => 'Water Bill',
         'amount' => 25.00,
@@ -233,14 +221,9 @@ test('dashboard upcoming bills are loaded through ListUpcomingBillsQuery', funct
 
     $this->actingAs($this->user)
         ->get(route('ledgers.dashboard', $this->ledger))
-        ->assertSuccessful()
-        ->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('upcomingBills.upcoming', 1)
-            )
-        );
+        ->assertSuccessful();
 
-    expect($called)->toBeTrue('GetDashboardPageQuery must load upcoming bills through ListUpcomingBillsQuery');
+    expect($called)->toBeFalse('Dashboard shell must not load upcoming bills through ListUpcomingBillsQuery');
 });
 
 test('cycle navigation scopes summary to the selected cycle', function () {
@@ -317,7 +300,7 @@ test('dashboard is forbidden for non-owner', function () {
         ->assertForbidden();
 });
 
-test('top budgets are returned sorted by percentage', function () {
+test('dashboard shell does not expose top budgets props', function () {
     $catA = Category::factory()->for($this->ledger)->create(['name' => 'Food']);
     $catB = Category::factory()->for($this->ledger)->create(['name' => 'Transport']);
 
@@ -352,19 +335,21 @@ test('top budgets are returned sorted by percentage', function () {
         'transaction_date' => $start->addDay()->toDateString(),
     ]);
 
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
+
+    $response
         ->assertSuccessful()
-        ->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('topBudgets', 2)
-                ->where('topBudgets.0.category_name', 'Transport')
-                ->where('topBudgets.1.category_name', 'Food')
-            )
-        );
+        ->assertInertia(fn (Assert $page) => $page->missing('topBudgets'));
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->not->toContain('topBudgets');
 });
 
-test('GetDashboardPageQuery returns all dashboard page sections', function () {
+test('GetDashboardPageQuery still builds dashboard module section callbacks', function () {
     $data = app(GetDashboardPageQuery::class)($this->ledger, 0);
 
     expect($data)->toBeInstanceOf(DashboardPageData::class)
@@ -383,7 +368,7 @@ test('GetDashboardPageQuery returns all dashboard page sections', function () {
         ->and($data->topBudgets)->toBeCallable();
 });
 
-test('deferred dashboard sections are not computed on initial page visit', function () {
+test('dashboard shell does not trigger upcoming bill or budget queries', function () {
     $this->mock(ListUpcomingBillsQuery::class)
         ->shouldNotReceive('__invoke');
 

@@ -8,6 +8,7 @@ use App\Actions\Bills\UseCases\PayBillAction;
 use App\Actions\Bills\UseCases\StoreBillAction;
 use App\Actions\Bills\UseCases\ToggleBillAction;
 use App\Actions\Bills\UseCases\UpdateBillAction;
+use App\Actions\Dashboard\Queries\GetDashboardPageQuery;
 use App\Data\Bills\Input\PayBillData;
 use App\Data\Bills\Input\StoreBillData;
 use App\Data\Bills\Input\UpdateBillData;
@@ -25,6 +26,15 @@ class BillController extends Controller
 
         return response()->json([
             'data' => $listBills($ledger)->map->toArray()->values()->all(),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function dashboardUpcoming(Ledger $ledger, GetDashboardPageQuery $getDashboardPage): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $getDashboardPage->upcomingBills($ledger),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 

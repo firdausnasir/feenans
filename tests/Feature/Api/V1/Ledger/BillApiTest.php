@@ -6,6 +6,7 @@ use App\Models\Bill;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
@@ -27,6 +28,55 @@ test('token authenticated premium client can list bills for a ledger', function 
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.name', 'Main Bill')
         ->assertJsonPath('data.0.ledger_id', $ledger->id);
+});
+
+test('bill api dashboard upcoming loader groups missed due and upcoming bills', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Missed bill',
+        'next_due_date' => CarbonImmutable::today()->subDay(),
+        'is_active' => true,
+    ]);
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Due bill',
+        'next_due_date' => CarbonImmutable::today(),
+        'is_active' => true,
+    ]);
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Upcoming bill',
+        'next_due_date' => CarbonImmutable::today()->addDays(2),
+        'is_active' => true,
+    ]);
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Inactive bill',
+        'next_due_date' => CarbonImmutable::today()->addDay(),
+        'is_active' => false,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.bills.dashboard-upcoming', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data.missed')
+        ->assertJsonCount(1, 'data.due')
+        ->assertJsonCount(1, 'data.upcoming')
+        ->assertJsonPath('data.missed.0.name', 'Missed bill')
+        ->assertJsonPath('data.due.0.name', 'Due bill')
+        ->assertJsonPath('data.upcoming.0.name', 'Upcoming bill');
+
+    $returnedNames = collect(['missed', 'due', 'upcoming'])
+        ->flatMap(fn (string $group) => collect($response->json("data.{$group}"))->pluck('name'));
+
+    expect($returnedNames)->not->toContain('Inactive bill');
 });
 
 test('bill api create returns validation errors as json', function () {

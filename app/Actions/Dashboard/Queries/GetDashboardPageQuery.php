@@ -32,14 +32,99 @@ class GetDashboardPageQuery
         return new DashboardPageData(
             cycle: $cycle,
             summary: $this->buildSummary($ledger, $dateFrom, $dateTo, $prevFrom, $prevTo),
-            accounts: ($this->listByType)($ledger),
-            dailyTrend: fn () => $this->buildDailyTrend($ledger, $dateFrom, $dateTo),
-            topCategories: fn () => $this->buildTopCategories($ledger, $dateFrom, $dateTo),
-            recentTransactions: fn () => $this->buildRecentTransactions($ledger, $dateFrom, $dateTo),
-            uncategorizedCount: fn () => $this->buildUncategorizedCount($ledger, $dateFrom, $dateTo),
-            upcomingBills: fn () => $this->buildUpcomingBills($ledger),
-            topBudgets: fn () => $this->buildTopBudgets($ledger),
+            accounts: $this->accounts($ledger),
+            dailyTrend: fn () => $this->dailyTrend($ledger, $offset),
+            topCategories: fn () => $this->topCategories($ledger, $offset),
+            recentTransactions: fn () => $this->recentTransactions($ledger, $offset),
+            uncategorizedCount: fn () => $this->uncategorizedCount($ledger, $offset),
+            upcomingBills: fn () => $this->upcomingBills($ledger),
+            topBudgets: fn () => $this->topBudgets($ledger),
         );
+    }
+
+    /**
+     * @return array{cycle_start: string, cycle_end: string, prev_cycle_start: string, prev_cycle_end: string, offset: int}
+     */
+    public function cycle(Ledger $ledger, int $offset = 0): array
+    {
+        return $this->computeCycle($ledger, $offset);
+    }
+
+    /**
+     * @return array{income: float, expense: float, net: float, prev_income: float, prev_expense: float}
+     */
+    public function summary(Ledger $ledger, int $offset = 0): array
+    {
+        $cycle = $this->computeCycle($ledger, $offset);
+
+        return $this->buildSummary(
+            $ledger,
+            $cycle['cycle_start'],
+            $cycle['cycle_end'],
+            $cycle['prev_cycle_start'],
+            $cycle['prev_cycle_end'],
+        );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function accounts(Ledger $ledger): array
+    {
+        return ($this->listByType)($ledger);
+    }
+
+    /**
+     * @return array<int, array{date: string, expense: float, income: float}>
+     */
+    public function dailyTrend(Ledger $ledger, int $offset = 0): array
+    {
+        $cycle = $this->computeCycle($ledger, $offset);
+
+        return $this->buildDailyTrend($ledger, $cycle['cycle_start'], $cycle['cycle_end']);
+    }
+
+    /**
+     * @return array<int, array{id: int|null, name: string, color: string|null, total: float, percentage: float}>
+     */
+    public function topCategories(Ledger $ledger, int $offset = 0): array
+    {
+        $cycle = $this->computeCycle($ledger, $offset);
+
+        return $this->buildTopCategories($ledger, $cycle['cycle_start'], $cycle['cycle_end']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function recentTransactions(Ledger $ledger, int $offset = 0): array
+    {
+        $cycle = $this->computeCycle($ledger, $offset);
+
+        return $this->buildRecentTransactions($ledger, $cycle['cycle_start'], $cycle['cycle_end']);
+    }
+
+    public function uncategorizedCount(Ledger $ledger, int $offset = 0): int
+    {
+        $cycle = $this->computeCycle($ledger, $offset);
+
+        return $this->buildUncategorizedCount($ledger, $cycle['cycle_start'], $cycle['cycle_end']);
+    }
+
+    /**
+     * @return array{upcoming: array<int, array<string, mixed>>, due: array<int, array<string, mixed>>, missed: array<int, array<string, mixed>>}
+     */
+    public function upcomingBills(Ledger $ledger): array
+    {
+        return $this->buildUpcomingBills($ledger);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function topBudgets(Ledger $ledger): array
+    {
+        return $this->buildTopBudgets($ledger);
     }
 
     /**

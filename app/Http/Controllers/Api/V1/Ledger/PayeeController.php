@@ -12,15 +12,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Ledger;
 use App\Models\Payee;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PayeeController extends Controller
 {
-    public function index(Ledger $ledger, ListPayeesQuery $listPayees): JsonResponse
+    public function index(Request $request, Ledger $ledger, ListPayeesQuery $listPayees): JsonResponse
     {
         $this->authorize('view', $ledger);
 
+        $search = $request->string('search')->toString();
+
         return response()->json([
-            'data' => $listPayees($ledger)->map->toArray()->values()->all(),
+            'data' => $listPayees($ledger, $search)->map->toArray()->values()->all(),
         ]);
     }
 

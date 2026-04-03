@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Actions\Categories\Queries\GetCategoryPageQuery;
 use App\Actions\Categories\UseCases\DeleteCategoryAction;
 use App\Actions\Categories\UseCases\ReorderCategoriesAction;
 use App\Actions\Categories\UseCases\StoreCategoryAction;
@@ -21,15 +20,11 @@ use Inertia\Response;
 
 class CategoryController extends Controller
 {
-    public function index(Request $request, Ledger $ledger, GetCategoryPageQuery $getCategoryPage): Response
+    public function index(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/categories/index', [
-            'categories' => Inertia::defer(function () use ($ledger, $getCategoryPage) {
-                return $getCategoryPage($ledger)->toInertiaProps()['categories'];
-            }),
-        ]);
+        return Inertia::render('ledgers/categories/index');
     }
 
     public function store(Ledger $ledger, StoreCategoryData $data, StoreCategoryAction $storeCategory): RedirectResponse

@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Architecture\ProofTagController as ApiProofTagController;
 use App\Http\Controllers\Api\V1\Auth\ApiTokenController;
 use App\Http\Controllers\Api\V1\Ledger\AccountController as ApiAccountController;
+use App\Http\Controllers\Api\V1\Ledger\ActivityLogController as ApiActivityLogController;
 use App\Http\Controllers\Api\V1\Ledger\BillController as ApiBillController;
 use App\Http\Controllers\Api\V1\Ledger\BudgetController as ApiBudgetController;
 use App\Http\Controllers\Api\V1\Ledger\CategoryController as ApiCategoryController;
@@ -45,6 +46,14 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
 
     Route::get('ledgers/{ledger}/accounts', [ApiAccountController::class, 'index'])
         ->name('ledgers.accounts.index');
+    Route::get('ledgers/{ledger}/accounts/grouped', [ApiAccountController::class, 'grouped'])
+        ->name('ledgers.accounts.grouped');
+    Route::get('ledgers/{ledger}/accounts/types', [ApiAccountController::class, 'types'])
+        ->name('ledgers.accounts.types');
+    Route::get('ledgers/{ledger}/accounts/net-worth', [ApiAccountController::class, 'netWorth'])
+        ->name('ledgers.accounts.net-worth');
+    Route::get('ledgers/{ledger}/activity', [ApiActivityLogController::class, 'index'])
+        ->name('ledgers.activity.index');
     Route::post('ledgers/{ledger}/accounts', [ApiAccountController::class, 'store'])
         ->name('ledgers.accounts.store');
     Route::patch('ledgers/{ledger}/accounts/{account}', [ApiAccountController::class, 'update'])
@@ -67,6 +76,10 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
 
     Route::get('ledgers/{ledger}/categories', [ApiCategoryController::class, 'index'])
         ->name('ledgers.categories.index');
+    Route::get('ledgers/{ledger}/categories/dashboard-top', [ApiCategoryController::class, 'dashboardTop'])
+        ->name('ledgers.categories.dashboard-top');
+    Route::get('ledgers/{ledger}/categories/dashboard-uncategorized-count', [ApiCategoryController::class, 'dashboardUncategorizedCount'])
+        ->name('ledgers.categories.dashboard-uncategorized-count');
     Route::post('ledgers/{ledger}/categories', [ApiCategoryController::class, 'store'])
         ->name('ledgers.categories.store');
     Route::patch('ledgers/{ledger}/categories/{category}', [ApiCategoryController::class, 'update'])
@@ -85,6 +98,12 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
     Route::delete('ledgers/{ledger}/payees/{payee}', [ApiPayeeController::class, 'destroy'])
         ->name('ledgers.payees.destroy');
 
+    Route::get('ledgers/{ledger}/import/accounts', [ApiImportController::class, 'accounts'])
+        ->name('ledgers.import.accounts');
+    Route::get('ledgers/{ledger}/import/saved-mappings', [ApiImportController::class, 'savedMappings'])
+        ->name('ledgers.import.saved-mappings');
+    Route::get('ledgers/{ledger}/import/history', [ApiImportController::class, 'history'])
+        ->name('ledgers.import.history');
     Route::post('ledgers/{ledger}/import/parse', [ApiImportController::class, 'parse'])
         ->name('ledgers.import.parse');
     Route::post('ledgers/{ledger}/import/execute', [ApiImportController::class, 'execute'])
@@ -96,6 +115,12 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
 
     Route::get('ledgers/{ledger}/transactions', [ApiTransactionController::class, 'index'])
         ->name('ledgers.transactions.index');
+    Route::get('ledgers/{ledger}/transactions/dashboard-summary', [ApiTransactionController::class, 'dashboardSummary'])
+        ->name('ledgers.transactions.dashboard-summary');
+    Route::get('ledgers/{ledger}/transactions/dashboard-daily-trend', [ApiTransactionController::class, 'dashboardDailyTrend'])
+        ->name('ledgers.transactions.dashboard-daily-trend');
+    Route::get('ledgers/{ledger}/transactions/dashboard-recent', [ApiTransactionController::class, 'dashboardRecent'])
+        ->name('ledgers.transactions.dashboard-recent');
     Route::post('ledgers/{ledger}/transactions', [ApiTransactionController::class, 'store'])
         ->name('ledgers.transactions.store');
     Route::post('ledgers/{ledger}/transactions/bulk-update', [ApiTransactionController::class, 'bulkUpdate'])
@@ -118,6 +143,8 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
     Route::middleware('premium')->group(function () {
         Route::get('ledgers/{ledger}/bills', [ApiBillController::class, 'index'])
             ->name('ledgers.bills.index');
+        Route::get('ledgers/{ledger}/bills/dashboard-upcoming', [ApiBillController::class, 'dashboardUpcoming'])
+            ->name('ledgers.bills.dashboard-upcoming');
         Route::post('ledgers/{ledger}/bills', [ApiBillController::class, 'store'])
             ->name('ledgers.bills.store');
         Route::patch('ledgers/{ledger}/bills/{bill}', [ApiBillController::class, 'update'])
@@ -131,6 +158,8 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
 
         Route::get('ledgers/{ledger}/budgets', [ApiBudgetController::class, 'index'])
             ->name('ledgers.budgets.index');
+        Route::get('ledgers/{ledger}/budgets/dashboard-top', [ApiBudgetController::class, 'dashboardTop'])
+            ->name('ledgers.budgets.dashboard-top');
         Route::post('ledgers/{ledger}/budgets', [ApiBudgetController::class, 'store'])
             ->name('ledgers.budgets.store');
         Route::patch('ledgers/{ledger}/budgets/{budget}', [ApiBudgetController::class, 'update'])

@@ -65,11 +65,9 @@ test('payee index page renders successfully', function () {
         ->component('ledgers/payees/index')
         ->where('search', '')
         ->missing('payees')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('payees', 1)
-            ->where('payees.0.name', 'Alpha Payee')
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('payee index renders the inertia shell for shared-core payee data', function () {
@@ -87,35 +85,12 @@ test('payee index renders the inertia shell for shared-core payee data', functio
             ->component('ledgers/payees/index')
             ->where('currentLedger.id', $ledger->id)
             ->missing('payees')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('payees', 1, fn (Assert $payeePage) => $payeePage
-                    ->where('name', 'shell-payee')
-                    ->where('is_sample', true)
-                    ->etc()
-                )
-            )
+            ->where('search', '')
         );
-});
 
-test('payee index supports partial reloads for payees', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    Payee::factory()->for($ledger)->create(['name' => 'groceries']);
-
-    $response = $this->actingAs($user)
-        ->get(route('ledgers.payees.index', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->where('currentLedger.id', $ledger->id)
-        ->reloadOnly('payees', fn (Assert $reload) => $reload
-            ->has('payees', 1, fn (Assert $payeePage) => $payeePage
-                ->where('name', 'groceries')
-                ->etc()
-            )
-            ->missing('currentLedger')
-        )
-    );
+    $this->actingAs($user)
+        ->get(route('ledgers.payees.index', $ledger))
+        ->assertViewMissing('page.deferredProps');
 });
 
 test('payee update updates payee name', function () {
@@ -291,9 +266,7 @@ test('payee index page renders with search parameter', function () {
         ->component('ledgers/payees/index')
         ->where('search', 'Coffee')
         ->missing('payees')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('payees', 1)
-            ->where('payees.0.name', 'Coffee Shop')
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });

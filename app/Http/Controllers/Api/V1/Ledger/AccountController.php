@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Ledger;
 
+use App\Actions\Accounts\Queries\GetNetWorthQuery;
 use App\Actions\Accounts\Queries\ListAccountsByTotalsQuery;
 use App\Actions\Accounts\UseCases\AdjustAccountBalanceAction;
 use App\Actions\Accounts\UseCases\DeleteAccountAction;
@@ -29,21 +30,57 @@ class AccountController extends Controller
 
         return response()->json([
             'data' => $accounts->map->toArray()->values()->all(),
-        ]);
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function grouped(Ledger $ledger, ListAccountsByTotalsQuery $listAccounts): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $listAccounts($ledger)
+                ->map(fn ($group) => $group->toArray())
+                ->values()
+                ->all(),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function types(Ledger $ledger): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $ledger->accountTypes()
+                ->orderBy('position')
+                ->get()
+                ->map
+                ->toArray()
+                ->values()
+                ->all(),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function netWorth(Ledger $ledger, GetNetWorthQuery $getNetWorth): JsonResponse
+    {
+        $this->authorize('view', $ledger);
+
+        return response()->json([
+            'data' => $getNetWorth($ledger)->toArray(),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function store(Ledger $ledger, StoreAccountData $data, StoreAccountAction $storeAccount): JsonResponse
     {
         return response()->json([
             'data' => $storeAccount($data)->toArray(),
-        ], 201);
+        ], 201, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function update(Ledger $ledger, Account $account, UpdateAccountData $data, UpdateAccountAction $updateAccount): JsonResponse
     {
         return response()->json([
             'data' => $updateAccount($data)->toArray(),
-        ]);
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function destroy(Ledger $ledger, Account $account, DeleteAccountAction $deleteAccount): JsonResponse
@@ -52,20 +89,20 @@ class AccountController extends Controller
 
         return response()->json([
             'data' => $deleteAccount($account)->toArray(),
-        ]);
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function reorder(Ledger $ledger, ReorderAccountsData $data, ReorderAccountsAction $reorderAccounts): JsonResponse
     {
         $reorderAccounts($data);
 
-        return response()->json();
+        return response()->json(status: 204);
     }
 
     public function adjustBalance(Ledger $ledger, Account $account, AdjustAccountBalanceData $data, AdjustAccountBalanceAction $adjustBalance): JsonResponse
     {
         $adjustBalance($data);
 
-        return response()->json();
+        return response()->json(status: 204);
     }
 }

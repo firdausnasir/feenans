@@ -1,5 +1,8 @@
 <?php
 
+use App\Actions\Reports\Queries\GetBudgetPerformancePageQuery;
+use App\Actions\Reports\Queries\GetCashFlowPageQuery;
+use App\Actions\Reports\Queries\GetFinancialHealthPageQuery;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -61,18 +64,7 @@ test('report page preserves cycle-aware date range and deferred spending payload
             ->missing('report')
         );
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->where('report.date_range.date_from', '2026-03-05')
-                ->where('report.date_range.date_to', '2026-04-04')
-                ->where('report.date_range.preset', 'this_month')
-                ->where('report.summary.total_income', fn (mixed $value): bool => (float) $value === 200.0)
-                ->where('report.summary.total_expense', fn (mixed $value): bool => (float) $value === 50.0)
-                ->where('report.summary.net', fn (mixed $value): bool => (float) $value === 150.0)
-                ->where('report.summary.transaction_count', 2)
-                ->has('report.monthly_trends', 1)
-            )
-        );
+        $response->assertViewMissing('page.deferredProps');
     } finally {
         CarbonImmutable::setTestNow();
     }
@@ -92,7 +84,7 @@ test('financial health report page renders successfully', function () {
     );
 });
 
-test('financial health report returns deferred snapshot and history payload', function () {
+test('financial health report renders without deferred health payload', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 
     try {
@@ -129,19 +121,7 @@ test('financial health report returns deferred snapshot and history payload', fu
             ->missing('health')
         );
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('health.net_worth_history', 12)
-                ->where('health.net_worth_history.11.month', '2026-03')
-                ->where('health.net_worth_history.11.net_worth', fn (mixed $value): bool => (float) $value === 850.0)
-                ->has('health.savings_rate_history', 12)
-                ->where('health.savings_rate_history.11.rate', fn (mixed $value): bool => (float) $value === 75.0)
-                ->where('health.current_snapshot.assets', fn (mixed $value): bool => (float) $value === 1150.0)
-                ->where('health.current_snapshot.liabilities', fn (mixed $value): bool => (float) $value === 300.0)
-                ->where('health.current_snapshot.net_worth', fn (mixed $value): bool => (float) $value === 850.0)
-                ->where('health.current_snapshot.debt_to_asset_ratio', fn (mixed $value): bool => (float) $value === 0.26)
-            )
-        );
+        $response->assertViewMissing('page.deferredProps');
     } finally {
         CarbonImmutable::setTestNow();
     }
@@ -161,7 +141,7 @@ test('budget performance report page renders successfully', function () {
     );
 });
 
-test('budget performance report returns mapped budget stats payload', function () {
+test('budget performance report renders without deferred performance payload', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 
     $user = User::factory()->create();
@@ -196,21 +176,7 @@ test('budget performance report returns mapped budget stats payload', function (
         ->missing('performance')
     );
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->where('performance.period_label', 'Mar 01 – Mar 31, 2026')
-            ->has('performance.budget_stats', 1, fn (Assert $budgetStat) => $budgetStat
-                ->where('category_name', 'Groceries')
-                ->where('amount', fn (mixed $value): bool => (float) $value === 200.0)
-                ->where('spent', fn (mixed $value): bool => (float) $value === 150.0)
-                ->where('remaining', fn (mixed $value): bool => (float) $value === 50.0)
-                ->where('percentage', fn (mixed $value): bool => (float) $value === 75.0)
-                ->where('period', 'monthly')
-                ->where('status', 'warning')
-                ->etc()
-            )
-        )
-    );
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('cash flow report page renders successfully', function () {
@@ -227,7 +193,7 @@ test('cash flow report page renders successfully', function () {
     );
 });
 
-test('cash flow report returns deferred daily flow and upcoming bills payload', function () {
+test('cash flow report renders without deferred cash flow payload', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 
     try {
@@ -273,17 +239,7 @@ test('cash flow report returns deferred daily flow and upcoming bills payload', 
             ->missing('cashFlow')
         );
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->where('cashFlow.period_label', 'Mar 01 – Mar 31, 2026')
-                ->has('cashFlow.daily_cash_flow', 31)
-                ->where('cashFlow.daily_cash_flow.1.income', fn (mixed $value): bool => (float) $value === 300.0)
-                ->where('cashFlow.daily_cash_flow.3.expense', fn (mixed $value): bool => (float) $value === 100.0)
-                ->has('cashFlow.upcoming_bills', 1)
-                ->where('cashFlow.upcoming_bills.0.name', 'Rent')
-                ->where('cashFlow.upcoming_bills.0.account_name', 'Main Account')
-            )
-        );
+        $response->assertViewMissing('page.deferredProps');
     } finally {
         CarbonImmutable::setTestNow();
     }
@@ -298,4 +254,55 @@ test('another user cannot view reports', function () {
     $this->actingAs($other)
         ->get(route('ledgers.reports.index', $ledger))
         ->assertForbidden();
+});
+
+test('financial health report page does not execute page bootstrap queries on initial page visit', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->mock(GetFinancialHealthPageQuery::class)
+        ->shouldNotReceive('__invoke');
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.financial-health', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/reports/financial-health')
+            ->missing('health')
+        );
+});
+
+test('budget performance report page does not execute page bootstrap queries on initial page visit', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->mock(GetBudgetPerformancePageQuery::class)
+        ->shouldNotReceive('__invoke');
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.budget-performance', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/reports/budget-performance')
+            ->missing('performance')
+        );
+});
+
+test('cash flow report page does not execute page bootstrap queries on initial page visit', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $this->mock(GetCashFlowPageQuery::class)
+        ->shouldNotReceive('__invoke');
+
+    $this->actingAs($user)
+        ->get(route('ledgers.reports.cash-flow', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/reports/cash-flow')
+            ->missing('cashFlow')
+        );
 });

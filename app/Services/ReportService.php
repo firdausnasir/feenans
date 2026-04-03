@@ -6,6 +6,10 @@ use App\Enums\TransactionType;
 use App\Models\Ledger;
 use Carbon\CarbonImmutable;
 
+/**
+ * Report aggregates intentionally keep expense-side values absolute for current consumers.
+ * Signed-number API normalization is deferred until the report clients can migrate together.
+ */
 class ReportService
 {
     /**

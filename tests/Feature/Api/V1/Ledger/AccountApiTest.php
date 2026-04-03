@@ -3,7 +3,9 @@
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
+use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
@@ -26,6 +28,97 @@ test('token authenticated client can list accounts for a ledger', function () {
         ->assertJsonPath('data.0.ledger_id', $ledger->id);
 });
 
+test('token authenticated client can load grouped account page data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create(['name' => 'Checking']);
+
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'include_in_totals' => true,
+        'initial_balance' => 1000,
+    ]);
+
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Rainy Day',
+        'include_in_totals' => false,
+        'initial_balance' => 5000,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.accounts.grouped', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.group', 'included')
+        ->assertJsonPath('data.0.label', 'Included in totals')
+        ->assertJsonPath('data.0.accounts.0.name', 'Checking')
+        ->assertJsonPath('data.0.total_balance', '1000.00')
+        ->assertJsonPath('data.1.group', 'excluded')
+        ->assertJsonPath('data.1.label', 'Savings')
+        ->assertJsonPath('data.1.accounts.0.name', 'Rainy Day')
+        ->assertJsonPath('data.1.total_balance', '5000.00');
+});
+
+test('token authenticated client can load account types for the accounts page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $checking = AccountType::factory()->for($ledger)->create([
+        'name' => 'Checking',
+        'position' => 1,
+    ]);
+
+    $creditCard = AccountType::factory()->for($ledger)->credit()->create([
+        'name' => 'Credit Card',
+        'position' => 2,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.accounts.types', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.id', $checking->id)
+        ->assertJsonPath('data.0.name', 'Checking')
+        ->assertJsonPath('data.0.is_credit', false)
+        ->assertJsonPath('data.1.id', $creditCard->id)
+        ->assertJsonPath('data.1.name', 'Credit Card')
+        ->assertJsonPath('data.1.is_credit', true);
+});
+
+test('token authenticated client can load net worth for the accounts page', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $assetType = AccountType::factory()->for($ledger)->create(['name' => 'Checking']);
+    $creditType = AccountType::factory()->for($ledger)->credit()->create(['name' => 'Credit Card']);
+
+    Account::factory()->for($ledger)->for($assetType)->create([
+        'initial_balance' => 1000,
+    ]);
+
+    Account::factory()->for($ledger)->for($creditType)->create([
+        'initial_balance' => -250,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson(route('api.v1.ledgers.accounts.net-worth', $ledger));
+
+    $response->assertSuccessful()
+        ->assertJsonPath('data.assets', 1000.0)
+        ->assertJsonPath('data.liabilities', -250.0)
+        ->assertJsonPath('data.net', 750.0)
+        ->assertJsonCount(6, 'data.trend');
+
+    expect($response->getContent())
+        ->toContain('"assets":1000.0')
+        ->toContain('"liabilities":-250.0')
+        ->toContain('"net":750.0');
+});
+
 test('account api list is forbidden for another user', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
@@ -34,6 +127,23 @@ test('account api list is forbidden for another user', function () {
     Sanctum::actingAs($other, ['*']);
 
     $this->getJson(route('api.v1.ledgers.accounts.index', $ledger))
+        ->assertForbidden();
+});
+
+test('account page loaders are forbidden for another user', function () {
+    $owner = User::factory()->create();
+    $other = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+
+    Sanctum::actingAs($other, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.accounts.grouped', $ledger))
+        ->assertForbidden();
+
+    $this->getJson(route('api.v1.ledgers.accounts.types', $ledger))
+        ->assertForbidden();
+
+    $this->getJson(route('api.v1.ledgers.accounts.net-worth', $ledger))
         ->assertForbidden();
 });
 
@@ -185,7 +295,7 @@ test('account api reorder updates account positions', function () {
             ['id' => $first->id, 'position' => 2],
             ['id' => $second->id, 'position' => 1],
         ],
-    ])->assertSuccessful();
+    ])->assertNoContent();
 
     expect($first->fresh()->position)->toBe(2)
         ->and($second->fresh()->position)->toBe(1);
@@ -218,7 +328,7 @@ test('account api adjust balance creates a transaction', function () {
     $this->postJson(route('api.v1.ledgers.accounts.adjust-balance', [$ledger, $account]), [
         'amount' => 250.00,
         'description' => 'Manual top-up',
-    ])->assertSuccessful();
+    ])->assertNoContent();
 
     expect($ledger->transactions()->where('account_id', $account->id)->count())->toBe(1);
 });
@@ -236,4 +346,102 @@ test('account api adjust balance rejects zero amount', function () {
     ])
         ->assertUnprocessable()
         ->assertJsonPath('errors.amount.0', 'The adjustment amount cannot be zero.');
+});
+
+test('grouped account loader preserves account balances without N plus 1 queries', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $type = AccountType::factory()->for($ledger)->create();
+
+    $checking = Account::factory()->for($ledger)->for($type)->create([
+        'name' => 'Checking',
+        'include_in_totals' => true,
+        'initial_balance' => '1000.00',
+    ]);
+
+    $savings = Account::factory()->for($ledger)->for($type)->create([
+        'name' => 'Savings',
+        'include_in_totals' => false,
+        'initial_balance' => '500.00',
+    ]);
+
+    Transaction::factory()->for($ledger)->for($checking)->create([
+        'amount' => '250.00',
+        'category_id' => null,
+        'payee_id' => null,
+    ]);
+
+    Transaction::factory()->for($ledger)->for($savings)->create([
+        'amount' => '-75.00',
+        'category_id' => null,
+        'payee_id' => null,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $this->getJson(route('api.v1.ledgers.accounts.grouped', $ledger))
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.accounts.0.current_balance', '1250.00')
+        ->assertJsonPath('data.0.total_balance', '1250.00')
+        ->assertJsonPath('data.1.accounts.0.current_balance', '425.00')
+        ->assertJsonPath('data.1.total_balance', '425.00');
+
+    $balanceQueries = collect(DB::getQueryLog())
+        ->filter(function (array $query): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'sum(')
+                && str_contains($sql, 'from "transactions"');
+        });
+
+    DB::disableQueryLog();
+
+    expect($balanceQueries)->toHaveCount(1);
+});
+
+test('grouped account loader omits empty groups and carries account type data', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $type = AccountType::factory()->for($ledger)->create(['name' => 'Savings']);
+
+    Account::factory()->for($ledger)->for($type)->create([
+        'include_in_totals' => true,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.accounts.grouped', $ledger))
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.group', 'included')
+        ->assertJsonPath('data.0.accounts.0.account_type.name', 'Savings');
+});
+
+test('grouped account loader excludes computed statement fields from credit card accounts', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->credit()->create();
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'initial_balance' => 0,
+        'statement_day' => 15,
+        'payment_due_day' => 25,
+    ]);
+
+    Sanctum::actingAs($user, ['*']);
+
+    $this->getJson(route('api.v1.ledgers.accounts.grouped', $ledger))
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.accounts.0.statement_day', 15)
+        ->assertJsonPath('data.0.accounts.0.payment_due_day', 25)
+        ->assertJsonMissingPath('data.0.accounts.0.statement_balance')
+        ->assertJsonMissingPath('data.0.accounts.0.current_spending')
+        ->assertJsonMissingPath('data.0.accounts.0.outstanding')
+        ->assertJsonMissingPath('data.0.accounts.0.payment_due_date')
+        ->assertJsonMissingPath('data.0.accounts.0.statement_start')
+        ->assertJsonMissingPath('data.0.accounts.0.statement_end');
 });
