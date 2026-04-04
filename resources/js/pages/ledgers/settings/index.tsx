@@ -1,13 +1,19 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import { Download } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { types as accountTypesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/AccountController';
+import {
+    show as showLedgerLoader,
+    hasSampleData as hasSampleDataLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/LedgerController';
 import SampleDataController from '@/actions/App/Http/Controllers/Ledger/SampleDataController';
 import SettingsController from '@/actions/App/Http/Controllers/Ledger/SettingsController';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { ColorPicker } from '@/components/color-picker';
 import { CurrencySelect } from '@/components/currency-select';
 import { Badge } from '@/components/ui/badge';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -20,6 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { mapInertiaErrorsArray } from '@/lib/utils';
@@ -31,6 +38,16 @@ import { index as settingsIndex } from '@/routes/ledgers/settings';
 import type { AccountType, BreadcrumbItem } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type LedgerSettings = {
+    id: number;
+    name: string;
+    currency_code: string;
+    cycle_start_day: number;
+    uses_seeded_categories: boolean;
+};
+
+type ApiEnvelope<T> = { data: T };
 
 type AccountTypeEditState = {
     accountTypeId: number;
@@ -62,26 +79,66 @@ function colorDot(color: string | null) {
     );
 }
 
+// ─── Loading Skeletons ────────────────────────────────────────────────────────
+
+function SettingsLoadingSkeleton() {
+    return (
+        <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+            <section className="space-y-4">
+                <Skeleton className="h-5 w-16" />
+                <Separator />
+                <div className="grid max-w-md gap-4">
+                    <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-10 w-full" />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-10 w-full" />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-10 w-24" />
+                    </div>
+                    <Skeleton className="h-10 w-16" />
+                </div>
+            </section>
+            <section className="space-y-4">
+                <Skeleton className="h-5 w-28" />
+                <Separator />
+                <div className="max-w-lg space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 px-3 py-2">
+                            <Skeleton className="h-3 w-3 rounded-full" />
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-5 w-14" />
+                        </div>
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SettingsIndex() {
-    const {
-        currentLedger,
-        ledger: ledgerSettings,
-        accountTypes,
-        hasSampleData,
-    } = usePage<{
-        ledger: {
-            id: number;
-            name: string;
-            currency_code: string;
-            cycle_start_day: number;
-            uses_seeded_categories: boolean;
-        };
-        accountTypes: AccountType[];
-        hasSampleData: boolean;
+    const { currentLedger } = usePage<{
+        currentLedger: { id: number; name: string; currency_code: string; cycle_start_day: number } | null;
     }>().props;
     const ledger = currentLedger!;
+
+    // API loaders
+    const ledgerLoaderState = useHttp<Record<string, never>, ApiEnvelope<LedgerSettings>>({});
+    const accountTypesLoaderState = useHttp<Record<string, never>, ApiEnvelope<AccountType[]>>({});
+    const sampleDataLoaderState = useHttp<Record<string, never>, ApiEnvelope<boolean>>({});
+
+    const [hasLoaded, setHasLoaded] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    const ledgerSettings = ledgerLoaderState.response?.data ?? null;
+    const accountTypes = accountTypesLoaderState.response?.data ?? [];
+    const hasSampleData = sampleDataLoaderState.response?.data ?? false;
 
     // General settings state
     const [ledgerName, setLedgerName] = useState<string | null>(null);
@@ -115,10 +172,104 @@ export default function SettingsIndex() {
     // Sample data state
     const [isRemovingSampleData, setIsRemovingSampleData] = useState(false);
 
+    // ── Data loading ──────────────────────────────────────────────────────────
+
+    async function loadAllData(): Promise<boolean> {
+        if (!ledger) {
+            return false;
+        }
+
+        let cancelled = false;
+
+        ledgerLoaderState.cancel();
+        accountTypesLoaderState.cancel();
+        sampleDataLoaderState.cancel();
+        setLoadError(null);
+
+        try {
+            await Promise.allSettled([
+                ledgerLoaderState.get(showLedgerLoader.url(ledger.id), {
+                    onCancel: () => {
+ cancelled = true; 
+},
+                }),
+                accountTypesLoaderState.get(accountTypesLoader.url(ledger.id), {
+                    onCancel: () => {
+ cancelled = true; 
+},
+                }),
+                sampleDataLoaderState.get(hasSampleDataLoader.url(ledger.id), {
+                    onCancel: () => {
+ cancelled = true; 
+},
+                }),
+            ]);
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setLoadError('Failed to load settings.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasLoaded(true);
+            }
+        }
+    }
+
+    async function reloadAccountTypes(): Promise<void> {
+        if (!ledger) {
+return;
+}
+
+        try {
+            await accountTypesLoaderState.get(accountTypesLoader.url(ledger.id));
+        } catch {
+            // Silently fail — stale data is acceptable after mutations
+        }
+    }
+
+    async function reloadSampleData(): Promise<void> {
+        if (!ledger) {
+return;
+}
+
+        try {
+            await sampleDataLoaderState.get(hasSampleDataLoader.url(ledger.id));
+        } catch {
+            // Silently fail
+        }
+    }
+
+    async function reloadLedgerSettings(): Promise<void> {
+        if (!ledger) {
+return;
+}
+
+        try {
+            await ledgerLoaderState.get(showLedgerLoader.url(ledger.id));
+        } catch {
+            // Silently fail
+        }
+    }
+
+    useEffect(() => {
+        void loadAllData();
+
+        return () => {
+            ledgerLoaderState.cancel();
+            accountTypesLoaderState.cancel();
+            sampleDataLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger?.id]);
+
     // Derived values: use local overrides or fall back to API data
-    const effectiveName = ledgerName ?? ledgerSettings.name;
-    const effectiveCycleDay = cycleStartDay ?? ledgerSettings.cycle_start_day;
-    const effectiveCurrency = currencyCode ?? ledgerSettings.currency_code;
+    const effectiveName = ledgerName ?? ledgerSettings?.name ?? ledger.name;
+    const effectiveCycleDay = cycleStartDay ?? ledgerSettings?.cycle_start_day ?? ledger.cycle_start_day;
+    const effectiveCurrency = currencyCode ?? ledgerSettings?.currency_code ?? ledger.currency_code;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -150,6 +301,7 @@ export default function SettingsIndex() {
                     setLedgerName(null);
                     setCycleStartDay(null);
                     setCurrencyCode(null);
+                    void reloadLedgerSettings();
                 },
                 onError: (errors) => {
                     const msg =
@@ -228,6 +380,7 @@ export default function SettingsIndex() {
                 },
                 onFinish: () => {
                     isReorderingRef.current = false;
+                    void reloadAccountTypes();
                 },
             },
         );
@@ -270,6 +423,7 @@ export default function SettingsIndex() {
                 onSuccess: () => {
                     setEditState(null);
                     toast.success('Account type updated.');
+                    void reloadAccountTypes();
                 },
                 onError: (errors) => {
                     const msg =
@@ -310,6 +464,7 @@ export default function SettingsIndex() {
                     });
                     setShowAddForm(false);
                     toast.success('Account type added.');
+                    void reloadAccountTypes();
                 },
                 onError: (errors) => {
                     const msg =
@@ -345,6 +500,7 @@ export default function SettingsIndex() {
                 onSuccess: () => {
                     setDeleteTarget(null);
                     toast.success('Account type deleted.');
+                    void reloadAccountTypes();
                 },
                 onError: (errors) => {
                     const mapped = mapInertiaErrorsArray(errors);
@@ -369,6 +525,7 @@ export default function SettingsIndex() {
             preserveScroll: true,
             onSuccess: () => {
                 toast.success('Sample data removed.');
+                void reloadSampleData();
             },
             onError: () => {
                 toast.error('Failed to remove sample data.');
@@ -402,6 +559,29 @@ export default function SettingsIndex() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} workspace settings`} />
 
+            <BoneSkeleton
+                name="settings-page"
+                loading={!hasLoaded}
+                fallback={<SettingsLoadingSkeleton />}
+            >
+                {loadError ? (
+                    <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+                        <div className="rounded-lg border border-border p-4">
+                            <p className="text-sm text-muted-foreground">
+                                {loadError}
+                            </p>
+                            <div className="mt-3">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadAllData()}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
             <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
                 {/* ── General ────────────────────────────────────────────── */}
                 <section className="space-y-4">
@@ -432,7 +612,7 @@ export default function SettingsIndex() {
                                 onValueChange={setCurrencyCode}
                             />
                             {effectiveCurrency !==
-                                ledgerSettings.currency_code && (
+                                (ledgerSettings?.currency_code ?? ledger.currency_code) && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400">
                                     Changing the currency code does not convert
                                     existing transaction amounts.
@@ -830,6 +1010,8 @@ export default function SettingsIndex() {
                     </div>
                 </section>
             </div>
+                )}
+            </BoneSkeleton>
 
             {/* ── Delete account type dialog ───────────────────────────────── */}
             <Dialog

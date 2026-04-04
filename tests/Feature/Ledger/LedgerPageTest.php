@@ -4,7 +4,7 @@ use App\Models\Ledger;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('ledger index page returns ledger listing props', function () {
+test('ledger index page renders shell without data props', function () {
     $user = User::factory()->create();
     Ledger::factory()->for($user)->create([
         'name' => 'Personal',
@@ -16,9 +16,7 @@ test('ledger index page returns ledger listing props', function () {
 
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/index')
-        ->has('ledgers', 1)
-        ->where('ledgers.0.name', 'Personal')
-        ->etc()
+        ->missing('ledgers')
     );
 });
 

@@ -17,6 +17,8 @@ use App\Http\Controllers\Api\V1\Ledger\ReportController as ApiReportController;
 use App\Http\Controllers\Api\V1\Ledger\TagController as ApiTagController;
 use App\Http\Controllers\Api\V1\Ledger\TransactionAttachmentController as ApiTransactionAttachmentController;
 use App\Http\Controllers\Api\V1\Ledger\TransactionController as ApiTransactionController;
+use App\Http\Controllers\Api\V1\LedgerController as ApiLedgerController;
+use App\Http\Controllers\Api\V1\Settings\SecuritySettingsController as ApiSecuritySettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
@@ -35,6 +37,9 @@ Route::middleware(['auth', 'verified'])->prefix('v1')->as('api.v1.')->scopeBindi
         ->name('architecture.proof-tags.store');
     Route::post('auth/tokens', [ApiTokenController::class, 'store'])
         ->name('auth.tokens.store');
+
+    Route::get('settings/security', ApiSecuritySettingsController::class)
+        ->name('settings.security');
 });
 
 Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->scopeBindings()->group(function () {
@@ -43,6 +48,13 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
     Route::delete('auth/tokens/{token}', [ApiTokenController::class, 'destroy'])
         ->whereNumber('token')
         ->name('auth.tokens.destroy');
+
+    Route::get('ledgers', [ApiLedgerController::class, 'index'])
+        ->name('ledgers.index');
+    Route::get('ledgers/{ledger}', [ApiLedgerController::class, 'show'])
+        ->name('ledgers.show');
+    Route::get('ledgers/{ledger}/has-sample-data', [ApiLedgerController::class, 'hasSampleData'])
+        ->name('ledgers.has-sample-data');
 
     Route::get('ledgers/{ledger}/accounts', [ApiAccountController::class, 'index'])
         ->name('ledgers.accounts.index');
@@ -129,6 +141,8 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
         ->name('ledgers.transactions.bulk-destroy');
     Route::post('ledgers/{ledger}/transactions/select-all', [ApiTransactionController::class, 'selectAll'])
         ->name('ledgers.transactions.select-all');
+    Route::get('ledgers/{ledger}/transactions/{transaction}', [ApiTransactionController::class, 'show'])
+        ->name('ledgers.transactions.show');
     Route::patch('ledgers/{ledger}/transactions/{transaction}', [ApiTransactionController::class, 'update'])
         ->name('ledgers.transactions.update');
     Route::delete('ledgers/{ledger}/transactions/{transaction}', [ApiTransactionController::class, 'destroy'])
@@ -147,6 +161,8 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
             ->name('ledgers.bills.dashboard-upcoming');
         Route::post('ledgers/{ledger}/bills', [ApiBillController::class, 'store'])
             ->name('ledgers.bills.store');
+        Route::get('ledgers/{ledger}/bills/{bill}', [ApiBillController::class, 'show'])
+            ->name('ledgers.bills.show');
         Route::patch('ledgers/{ledger}/bills/{bill}', [ApiBillController::class, 'update'])
             ->name('ledgers.bills.update');
         Route::delete('ledgers/{ledger}/bills/{bill}', [ApiBillController::class, 'destroy'])
