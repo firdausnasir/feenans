@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Facades\Password;
@@ -27,41 +28,15 @@ class SecurityController extends Controller implements HasMiddleware
     }
 
     /**
-     * Show the user's security settings page.
+     * Render the security settings shell.
+     *
+     * Security config flags (canManageTwoFactor, twoFactorEnabled, etc.) are
+     * loaded client-side via the API. Only session-dependent data that cannot
+     * survive a separate HTTP request is passed as an Inertia prop.
      */
-    public function edit(TwoFactorAuthenticationRequest $request): Response
+    public function edit(Request $request): Response
     {
-        $props = [
-            'canManageTwoFactor' => Features::canManageTwoFactorAuthentication(),
-        ];
-
-        if (Features::canManageTwoFactorAuthentication()) {
-            $request->ensureStateIsValid();
-
-            $props['twoFactorEnabled'] = $request->user()->hasEnabledTwoFactorAuthentication();
-            $props['requiresConfirmation'] = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
-            $props['twoFactorQrCodeSvg'] = Inertia::optional(function () use ($request): ?string {
-                if ($request->user()->two_factor_secret === null) {
-                    return null;
-                }
-
-                return $request->user()->twoFactorQrCodeSvg();
-            });
-            $props['twoFactorSecretKey'] = Inertia::optional(function () use ($request): ?string {
-                if ($request->user()->two_factor_secret === null) {
-                    return null;
-                }
-
-                return decrypt($request->user()->two_factor_secret);
-            });
-            $props['twoFactorRecoveryCodes'] = Inertia::optional(function () use ($request): array {
-                if ($request->user()->two_factor_secret === null || $request->user()->two_factor_recovery_codes === null) {
-                    return [];
-                }
-
-                return $request->user()->recoveryCodes();
-            });
-        }
+        $props = [];
 
         if (Features::enabled(Features::resetPasswords())) {
             $props['passwordReset'] = [
