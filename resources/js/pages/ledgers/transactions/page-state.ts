@@ -148,6 +148,19 @@ export function shouldApplyTransactionsResponse({
     return !cancelled && latestRequestId === requestId;
 }
 
+export function resolveTransactionsResponse<T>(
+    requestResponse: T | null | undefined,
+    currentResponse: T | null,
+): T | null {
+    return requestResponse ?? currentResponse;
+}
+
+export function isLastTransactionsPage<
+    T extends { meta: { next_page_url: string | null } },
+>(response: T | null): boolean {
+    return response?.meta.next_page_url === null;
+}
+
 export function canAppendTransactionsPage({
     nextPageUrl,
     processing,

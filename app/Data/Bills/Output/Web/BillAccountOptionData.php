@@ -12,6 +12,7 @@ class BillAccountOptionData extends BaseOutputData
         public int $ledger_id,
         public string $name,
         public ?string $color,
+        public bool $include_in_totals,
     ) {}
 
     public static function fromModel(Account $account): self
@@ -21,6 +22,7 @@ class BillAccountOptionData extends BaseOutputData
             ledger_id: $account->ledger_id,
             name: $account->name,
             color: $account->color,
+            include_in_totals: (bool) $account->include_in_totals,
         );
     }
 }

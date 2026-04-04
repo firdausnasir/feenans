@@ -12,7 +12,7 @@ if (typeof window !== 'undefined') {
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
     pages: './pages',
-    strictMode: true,
+    strictMode: false,
     withApp: (app) => (
         <TooltipProvider delayDuration={0}>
             <PrivacyModeProvider>{app}</PrivacyModeProvider>

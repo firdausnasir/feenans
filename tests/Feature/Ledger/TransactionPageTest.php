@@ -115,7 +115,15 @@ test('transaction edit page bootstraps transaction form data through inertia pro
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
-    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'position' => 1,
+    ]);
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+        'include_in_totals' => false,
+        'position' => 2,
+    ]);
     $category = Category::factory()->for($ledger)->create();
     $payee = Payee::factory()->for($ledger)->create();
     $tag = Tag::factory()->for($ledger)->create();
@@ -162,7 +170,11 @@ test('transaction edit page bootstraps transaction form data through inertia pro
             ->has('splits', 1)
             ->has('tags', 1)
         )
-        ->has('accounts', 1)
+        ->has('accounts', 2)
+        ->where('accounts.0.name', 'Checking')
+        ->where('accounts.0.include_in_totals', true)
+        ->where('accounts.1.name', 'Savings')
+        ->where('accounts.1.include_in_totals', false)
         ->has('categories', 1)
         ->has('payees', 1)
         ->has('tags', 1)

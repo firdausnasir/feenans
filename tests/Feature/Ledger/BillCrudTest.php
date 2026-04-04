@@ -232,6 +232,17 @@ test('bill create page renders', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'position' => 1,
+    ]);
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+        'include_in_totals' => false,
+        'position' => 2,
+    ]);
 
     $response = $this
         ->actingAs($user)
@@ -240,6 +251,11 @@ test('bill create page renders', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/create')
+        ->has('accounts', 2)
+        ->where('accounts.0.name', 'Checking')
+        ->where('accounts.0.include_in_totals', true)
+        ->where('accounts.1.name', 'Savings')
+        ->where('accounts.1.include_in_totals', false)
     );
 });
 

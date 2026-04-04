@@ -136,13 +136,13 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * @return array<int, array{id: int, ledger_id: int, name: string, current_balance: string, color: ?string}>
+     * @return array<int, array{id: int, ledger_id: int, name: string, current_balance: string, color: ?string, include_in_totals: bool}>
      */
     private function transactionModalAccounts(Ledger $ledger): array
     {
         return $ledger->accounts()
             ->visible()
-            ->select(['id', 'ledger_id', 'name', 'initial_balance', 'color'])
+            ->select(['id', 'ledger_id', 'name', 'initial_balance', 'color', 'include_in_totals'])
             ->withCurrentBalance()
             ->orderBy('position')
             ->orderBy('name')
@@ -153,6 +153,7 @@ class HandleInertiaRequests extends Middleware
                 'name' => $account->name,
                 'current_balance' => $account->current_balance,
                 'color' => $account->color,
+                'include_in_totals' => (bool) $account->include_in_totals,
             ])
             ->all();
     }

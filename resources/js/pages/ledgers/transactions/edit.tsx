@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
+import { buildAccountSelectOptions } from '@/lib/account-select-options';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
@@ -142,6 +143,11 @@ function TransactionEditForm({
         notes: transaction.notes ?? '',
         tag_ids: (transaction.tags ?? []).map((tag) => tag.id),
     });
+    const accountOptions = buildAccountSelectOptions(accounts);
+    const destinationAccountOptions = buildAccountSelectOptions(
+        accounts,
+        form.account_id,
+    );
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
     const [uploadingAttachments, setUploadingAttachments] = useState(false);
     const [isSplitTransaction, setIsSplitTransaction] = useState(
@@ -443,11 +449,7 @@ function TransactionEditForm({
                                 <div className="grid gap-2">
                                     <Label>Account</Label>
                                     <SearchableSelect
-                                        options={accounts.map((account) => ({
-                                            value: String(account.id),
-                                            label: account.name,
-                                            color: account.color ?? '#6B7280',
-                                        }))}
+                                        options={accountOptions}
                                         value={form.account_id}
                                         onValueChange={(value) =>
                                             setForm((current) => ({
@@ -464,19 +466,7 @@ function TransactionEditForm({
                                     <div className="grid gap-2">
                                         <Label>To Account</Label>
                                         <SearchableSelect
-                                            options={accounts
-                                                .filter(
-                                                    (account) =>
-                                                        String(account.id) !==
-                                                        form.account_id,
-                                                )
-                                                .map((account) => ({
-                                                    value: String(account.id),
-                                                    label: account.name,
-                                                    color:
-                                                        account.color ??
-                                                        '#6B7280',
-                                                }))}
+                                            options={destinationAccountOptions}
                                             value={form.to_account_id || null}
                                             onValueChange={(value) =>
                                                 setForm((current) => ({

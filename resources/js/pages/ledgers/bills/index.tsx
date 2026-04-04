@@ -67,6 +67,7 @@ import {
 } from '@/components/ui/tooltip';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
+import { buildAccountSelectOptions } from '@/lib/account-select-options';
 import {
     buildCategoryOptions,
     describeRecurrence,
@@ -220,6 +221,13 @@ function BillFormModal({
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
     const [newPayeeName, setNewPayeeName] = useState('');
+    const accountOptions = buildAccountSelectOptions(accounts);
+    const resolveDefaultToAccountId = (sourceAccountId: string): string =>
+        buildAccountSelectOptions(accounts, sourceAccountId)[0]?.value ?? '';
+    const destinationAccountOptions = buildAccountSelectOptions(
+        accounts,
+        data.account_id,
+    );
 
     // Keep local draft data through validation redirects, but reset when the
     // modal is reopened or pointed at a different recurring transaction.
@@ -381,16 +389,15 @@ function BillFormModal({
                                         !data.to_account_id &&
                                         accounts.length > 1
                                     ) {
-                                        const fallbackAccount = accounts.find(
-                                            (account) =>
-                                                String(account.id) !==
+                                        const fallbackAccountId =
+                                            resolveDefaultToAccountId(
                                                 data.account_id,
-                                        );
+                                            );
 
-                                        if (fallbackAccount) {
+                                        if (fallbackAccountId) {
                                             setData(
                                                 'to_account_id',
-                                                String(fallbackAccount.id),
+                                                fallbackAccountId,
                                             );
                                         }
                                     }
@@ -432,11 +439,7 @@ function BillFormModal({
                     <div className="grid gap-2">
                         <Label>Account</Label>
                         <SearchableSelect
-                            options={accounts.map((account) => ({
-                                value: String(account.id),
-                                label: account.name,
-                                color: account.color,
-                            }))}
+                            options={accountOptions}
                             value={data.account_id || null}
                             onValueChange={(value) =>
                                 setData('account_id', value ?? '')
@@ -451,17 +454,7 @@ function BillFormModal({
                         <div className="grid gap-2">
                             <Label>Destination account</Label>
                             <SearchableSelect
-                                options={accounts
-                                    .filter(
-                                        (account) =>
-                                            String(account.id) !==
-                                            data.account_id,
-                                    )
-                                    .map((account) => ({
-                                        value: String(account.id),
-                                        label: account.name,
-                                        color: account.color,
-                                    }))}
+                                options={destinationAccountOptions}
                                 value={data.to_account_id || null}
                                 onValueChange={(value) =>
                                     setData('to_account_id', value ?? '')
@@ -773,6 +766,11 @@ function BillFormModal({
 }
 
 function buildInitialData(bill: Bill | null, accounts: Account[]): FormData {
+    const accountOptions = buildAccountSelectOptions(accounts);
+    const defaultAccountId = accountOptions[0]?.value ?? '';
+    const defaultToAccountId =
+        buildAccountSelectOptions(accounts, defaultAccountId)[0]?.value ?? '';
+
     if (bill) {
         return {
             name: bill.name,
@@ -802,8 +800,8 @@ function buildInitialData(bill: Bill | null, accounts: Account[]): FormData {
         name: '',
         transaction_type: 'expense',
         amount: '',
-        account_id: accounts.length > 0 ? String(accounts[0].id) : '',
-        to_account_id: accounts.length > 1 ? String(accounts[1].id) : '',
+        account_id: defaultAccountId,
+        to_account_id: defaultToAccountId,
         category_id: '',
         payee_id: '',
         recurrence_type: 'monthly',

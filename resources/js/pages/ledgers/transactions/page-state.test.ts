@@ -7,7 +7,9 @@ const { EMPTY_FILTERS } = await import(
 const {
     buildTransactionsUrl,
     canAppendTransactionsPage,
+    isLastTransactionsPage,
     mergeTransactionPageData,
+    resolveTransactionsResponse,
     shouldContinueTransactionsReload,
     shouldApplyTransactionsResponse,
     shouldResetTransactionsState,
@@ -150,6 +152,40 @@ test('mergeTransactionPageData deduplicates repeated appended rows by id', () =>
         { id: 22, label: 'still first page' },
         { id: 33, label: 'new second page row' },
     ]);
+});
+
+test('resolveTransactionsResponse prefers the immediate request payload when hook state has not updated yet', () => {
+    const requestResponse = {
+        data: [{ id: 11, label: 'fresh request row' }],
+        meta: { current_page: 1 },
+    };
+    const staleResponse = null;
+
+    assert.deepEqual(
+        resolveTransactionsResponse(requestResponse, staleResponse),
+        requestResponse,
+    );
+});
+
+test('isLastTransactionsPage reads the fresh response metadata for pagination decisions', () => {
+    assert.equal(
+        isLastTransactionsPage({
+            meta: {
+                next_page_url: null,
+            },
+        }),
+        true,
+    );
+
+    assert.equal(
+        isLastTransactionsPage({
+            meta: {
+                next_page_url:
+                    'https://feenans.test/api/v1/ledgers/1/transactions?page=2',
+            },
+        }),
+        false,
+    );
 });
 
 test('shouldContinueTransactionsReload stops a stale reload batch after a newer operation starts', () => {

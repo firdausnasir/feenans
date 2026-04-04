@@ -61,16 +61,28 @@ test('bill index account options only include visible accounts', function () {
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
-    $visibleAccount = Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Visible Account']);
+    $visibleAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Visible Account',
+        'position' => 1,
+    ]);
+    $savingsAccount = Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings Account',
+        'include_in_totals' => false,
+        'position' => 2,
+    ]);
     Account::factory()->for($ledger)->for($accountType)->create(['name' => 'Hidden Account', 'is_hidden' => true]);
 
     $this->actingAs($user)
         ->get(route('ledgers.bills.index', $ledger))
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('accounts', 1)
+            ->has('accounts', 2)
             ->where('accounts.0.id', $visibleAccount->id)
             ->where('accounts.0.name', 'Visible Account')
+            ->where('accounts.0.include_in_totals', true)
+            ->where('accounts.1.id', $savingsAccount->id)
+            ->where('accounts.1.name', 'Savings Account')
+            ->where('accounts.1.include_in_totals', false)
         );
 });
 

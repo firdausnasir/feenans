@@ -30,6 +30,7 @@ test('browser entry uses inertia auto bootstrap for hydration-safe provider wrap
     expect($contents)
         ->toContain('createInertiaApp({')
         ->toContain("pages: './pages',")
+        ->toContain('strictMode: false,')
         ->toContain('withApp: (app) => (')
         ->toContain('<TooltipProvider delayDuration={0}>')
         ->toContain('<PrivacyModeProvider>')

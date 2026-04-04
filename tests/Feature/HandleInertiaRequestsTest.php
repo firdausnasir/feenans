@@ -204,6 +204,7 @@ test('transaction modal data reload shares account balances with a single aggreg
     $savings = Account::factory()->for($ledger)->for($accountType)->create([
         'name' => 'Savings',
         'initial_balance' => '200.00',
+        'include_in_totals' => false,
         'position' => 2,
     ]);
 
@@ -236,8 +237,10 @@ test('transaction modal data reload shares account balances with a single aggreg
             ->has('transactionModalData.accounts', 2)
             ->where('transactionModalData.accounts.0.name', 'Checking')
             ->where('transactionModalData.accounts.0.current_balance', '1250.00')
+            ->where('transactionModalData.accounts.0.include_in_totals', true)
             ->where('transactionModalData.accounts.1.name', 'Savings')
             ->where('transactionModalData.accounts.1.current_balance', '150.00')
+            ->where('transactionModalData.accounts.1.include_in_totals', false)
         )
     );
 

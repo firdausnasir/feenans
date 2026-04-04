@@ -6,6 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import TransactionController from '@/actions/App/Http/Controllers/Ledger/TransactionController';
 import { buildAddTransactionSubmitOptions } from '@/components/add-transaction-modal-options';
+import {
+    resolveTransactionModalLoadError,
+    shouldLoadTransactionModalData,
+    shouldShowTransactionModalLoading
+    
+} from '@/components/add-transaction-modal-state';
+import type {TransactionModalRequestState} from '@/components/add-transaction-modal-state';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
 import { TagPill } from '@/components/tag-pill';
@@ -24,6 +31,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
+import { buildAccountSelectOptions } from '@/lib/account-select-options';
 import { cn } from '@/lib/utils';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import type { Account, Category, Ledger, Payee, Tag } from '@/types';
@@ -58,21 +66,57 @@ type ModalData = {
 
 function useModalData(open: boolean) {
     const { transactionModalData } = usePage().props;
-    const fetchedRef = useRef(false);
+    const [requestState, setRequestState] =
+        useState<TransactionModalRequestState>('idle');
+    const hasData =
+        transactionModalData !== null && transactionModalData !== undefined;
+
+    const requestModalData = useCallback(() => {
+        setRequestState('loading');
+        router.reload({
+            only: ['transactionModalData'],
+            onSuccess: (page) => {
+                const modalData =
+                    (
+                        page.props as {
+                            transactionModalData?: ModalData | null;
+                        }
+                    ).transactionModalData ?? null;
+
+                setRequestState(modalData ? 'idle' : 'error');
+            },
+            onError: () => {
+                setRequestState('error');
+            },
+            onCancel: () => {
+                setRequestState('error');
+            },
+            onHttpException: () => {
+                setRequestState('error');
+            },
+            onNetworkError: () => {
+                setRequestState('error');
+            },
+        });
+    }, []);
 
     useEffect(() => {
-        if (!open || transactionModalData || fetchedRef.current) {
-            return;
+        if (
+            shouldLoadTransactionModalData({
+                open,
+                hasData,
+                requestState,
+            })
+        ) {
+            requestModalData();
         }
+    }, [hasData, open, requestModalData, requestState]);
 
-        fetchedRef.current = true;
-        router.reload({ only: ['transactionModalData'] });
-    }, [open, transactionModalData]);
-
-    const invalidateCache = useCallback(() => {
-        fetchedRef.current = false;
-        router.reload({ only: ['transactionModalData'] });
-    }, []);
+    useEffect(() => {
+        if (!open) {
+            setRequestState('idle');
+        }
+    }, [open]);
 
     const data: ModalData | null = transactionModalData
         ? {
@@ -83,9 +127,24 @@ function useModalData(open: boolean) {
           }
         : null;
 
-    const loading = open && !transactionModalData;
+    const loading = shouldShowTransactionModalLoading({
+        open,
+        hasData,
+        requestState,
+    });
+    const loadError = resolveTransactionModalLoadError({
+        open,
+        hasData,
+        requestState,
+    });
 
-    return { data, loading, invalidateCache };
+    return {
+        data,
+        loading,
+        loadError,
+        invalidateCache: requestModalData,
+        retry: requestModalData,
+    };
 }
 
 export function AddTransactionModal({
@@ -125,27 +184,31 @@ export function AddTransactionModal({
         }
     }
 
-    const { data: modalData, loading, invalidateCache } = useModalData(open);
+    const { data: modalData, loading, loadError, invalidateCache, retry } =
+        useModalData(open);
     const accounts = useMemo(() => modalData?.accounts ?? [], [modalData]);
     const categories = useMemo(() => modalData?.categories ?? [], [modalData]);
     const payees = modalData?.payees ?? [];
     const tags = modalData?.tags ?? [];
+    const accountOptions = useMemo(
+        () => buildAccountSelectOptions(accounts),
+        [accounts],
+    );
 
     const resolveDefaultAccountId = useCallback((): string => {
         if (defaultAccountId) {
             return String(defaultAccountId);
         }
 
-        return accounts.length > 0 ? String(accounts[0].id) : '';
-    }, [defaultAccountId, accounts]);
+        return accountOptions[0]?.value ?? '';
+    }, [accountOptions, defaultAccountId]);
 
     const resolveDefaultToAccountId = useCallback(
         (sourceAccountId: string): string => {
-            const fallback = accounts.find(
-                (account) => String(account.id) !== sourceAccountId,
+            return (
+                buildAccountSelectOptions(accounts, sourceAccountId)[0]?.value ??
+                ''
             );
-
-            return fallback ? String(fallback.id) : '';
         },
         [accounts],
     );
@@ -237,14 +300,19 @@ export function AddTransactionModal({
     const effectiveAccountId = accountId || resolveDefaultAccountId();
     const effectiveToAccountId =
         toAccountId || resolveDefaultToAccountId(effectiveAccountId);
+    const destinationAccountOptions = useMemo(
+        () => buildAccountSelectOptions(accounts, effectiveAccountId),
+        [accounts, effectiveAccountId],
+    );
 
     function handleSourceAccountChange(newAccountId: string | null) {
         const id = newAccountId ?? '';
         setAccountId(id);
 
         if (id === effectiveToAccountId) {
-            const fallback = accounts.find((a) => String(a.id) !== id);
-            setToAccountId(fallback ? String(fallback.id) : '');
+            setToAccountId(
+                buildAccountSelectOptions(accounts, id)[0]?.value ?? '',
+            );
         }
     }
 
@@ -515,6 +583,15 @@ export function AddTransactionModal({
                             Loading...
                         </p>
                     </div>
+                ) : loadError ? (
+                    <div className="flex flex-col items-center gap-4 py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                            {loadError}
+                        </p>
+                        <Button variant="outline" onClick={retry}>
+                            Retry
+                        </Button>
+                    </div>
                 ) : accounts.length === 0 ? (
                     <div className="flex flex-col items-center gap-4 py-8 text-center">
                         <CreditCard className="size-12 text-muted-foreground" />
@@ -631,11 +708,7 @@ export function AddTransactionModal({
                                         value={effectiveAccountId}
                                     />
                                     <SearchableSelect
-                                        options={accounts.map((account) => ({
-                                            value: String(account.id),
-                                            label: account.name,
-                                            color: account.color,
-                                        }))}
+                                        options={accountOptions}
                                         value={effectiveAccountId || null}
                                         onValueChange={
                                             handleSourceAccountChange
@@ -677,17 +750,7 @@ export function AddTransactionModal({
                                         value={effectiveToAccountId}
                                     />
                                     <SearchableSelect
-                                        options={accounts
-                                            .filter(
-                                                (a) =>
-                                                    String(a.id) !==
-                                                    effectiveAccountId,
-                                            )
-                                            .map((account) => ({
-                                                value: String(account.id),
-                                                label: account.name,
-                                                color: account.color,
-                                            }))}
+                                        options={destinationAccountOptions}
                                         value={effectiveToAccountId || null}
                                         onValueChange={(v) =>
                                             setToAccountId(v ?? '')

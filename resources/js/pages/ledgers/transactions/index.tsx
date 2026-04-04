@@ -98,7 +98,9 @@ import { resolveTransferPairTitle } from './mobile-transaction-row-data';
 import {
     buildTransactionsUrl,
     canAppendTransactionsPage,
+    isLastTransactionsPage,
     mergeTransactionPageData,
+    resolveTransactionsResponse,
     shouldContinueTransactionsReload,
     shouldApplyTransactionsResponse,
     shouldResetTransactionsState,
@@ -1571,7 +1573,7 @@ export default function TransactionsIndex() {
         nextFilters: Filters,
         page = 1,
         mode: 'replace' | 'append' = 'replace',
-    ): Promise<boolean> {
+    ): Promise<TransactionListResponse | null> {
         let cancelled = false;
         const requestId = latestRequestRef.current + 1;
 
@@ -1589,7 +1591,7 @@ export default function TransactionsIndex() {
         setTransactionsError(null);
 
         try {
-            await transactionsLoaderState.get(
+            const requestResponse = await transactionsLoaderState.get(
                 transactionsLoader.url(
                     { ledger: ledger.id },
                     {
@@ -1610,7 +1612,10 @@ export default function TransactionsIndex() {
                 },
             );
 
-            const response = transactionsLoaderState.response ?? null;
+            const response = resolveTransactionsResponse(
+                requestResponse,
+                transactionsLoaderState.response ?? null,
+            );
             const shouldApply = shouldApplyTransactionsResponse({
                 cancelled,
                 latestRequestId: latestRequestRef.current,
@@ -1641,7 +1646,7 @@ export default function TransactionsIndex() {
                 }
             }
 
-            return shouldApply && response !== null;
+            return shouldApply ? response : null;
         } catch {
             if (
                 shouldApplyTransactionsResponse({
@@ -1653,7 +1658,7 @@ export default function TransactionsIndex() {
                 setTransactionsError('Failed to load transactions.');
             }
 
-            return false;
+            return null;
         } finally {
             if (mode === 'append') {
                 setAppendLock(false);
@@ -1677,7 +1682,7 @@ export default function TransactionsIndex() {
         const pagesToReload = transactionsMeta?.current_page ?? 1;
 
         for (let page = 1; page <= pagesToReload; page += 1) {
-            const success = await loadTransactions(
+            const response = await loadTransactions(
                 filtersToReload,
                 page,
                 page === 1 ? 'replace' : 'append',
@@ -1687,13 +1692,13 @@ export default function TransactionsIndex() {
                 !shouldContinueTransactionsReload({
                     operationId,
                     latestOperationId: latestOperationRef.current,
-                    wasSuccessful: success,
+                    wasSuccessful: response !== null,
                 })
             ) {
                 return false;
             }
 
-            if (transactionsLoaderState.response?.meta.next_page_url === null) {
+            if (isLastTransactionsPage(response)) {
                 break;
             }
         }

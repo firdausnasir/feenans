@@ -16,8 +16,9 @@ class GetBillAccountOptionsQuery
     {
         return $ledger->accounts()
             ->visible()
+            ->orderBy('position')
             ->orderBy('name')
-            ->get(['id', 'ledger_id', 'name', 'color'])
+            ->get(['id', 'ledger_id', 'name', 'color', 'include_in_totals'])
             ->map(fn (Account $account) => BillAccountOptionData::fromModel($account));
     }
 }
