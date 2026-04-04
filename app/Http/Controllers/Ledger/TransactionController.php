@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Ledger;
 
 use App\Actions\Transactions\Queries\ExportTransactionsQuery;
-use App\Actions\Transactions\Queries\GetTransactionEditPageQuery;
 use App\Actions\Transactions\Queries\GetTransactionIndexPageQuery;
 use App\Actions\Transactions\Queries\SelectAllTransactionIdsQuery;
 use App\Actions\Transactions\UseCases\BulkDestroyTransactionsAction;
@@ -62,19 +61,10 @@ class TransactionController extends Controller
     public function edit(
         Ledger $ledger,
         Transaction $transaction,
-        GetTransactionEditPageQuery $getTransactionEditPage,
     ): Response {
         $this->authorize('view', $ledger);
 
-        $page = $getTransactionEditPage($ledger, $transaction);
-
         return Inertia::render('ledgers/transactions/edit', [
-            'ledger' => $ledger,
-            'transaction' => fn () => $page->transaction->toArray(),
-            'accounts' => fn () => $page->accounts,
-            'categories' => fn () => $page->categories,
-            'payees' => fn () => $page->payees,
-            'tags' => fn () => $page->tags,
             'transaction_id' => $transaction->id,
         ]);
     }

@@ -1,6 +1,5 @@
 <?php
 
-use App\Actions\Bills\Queries\GetBillFormPageQuery;
 use App\Actions\Bills\Queries\GetBillIndexPageQuery;
 use App\Data\Bills\Input\GetBillFormPageData;
 use App\Data\Bills\Input\GetBillIndexPageData;
@@ -335,7 +334,7 @@ test('bill index routes data fetching through GetBillIndexPageQuery', function (
     expect($called)->toBeTrue('BillController@index must resolve GetBillIndexPageQuery from the container');
 });
 
-test('bill create and edit route through GetBillFormPageQuery', function () {
+test('bill create and edit render as shell-only pages', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
@@ -343,24 +342,18 @@ test('bill create and edit route through GetBillFormPageQuery', function () {
     $account = Account::factory()->for($ledger)->for($accountType)->create();
     $bill = Bill::factory()->for($ledger)->for($account)->create();
 
-    $called = 0;
-    $real = app()->make(GetBillFormPageQuery::class);
-
-    app()->bind(GetBillFormPageQuery::class, function () use ($real, &$called) {
-        $called++;
-
-        return $real;
-    });
-
     $this->actingAs($user)
         ->get(route('ledgers.bills.create', $ledger))
-        ->assertSuccessful();
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page->component('ledgers/bills/create'));
 
     $this->actingAs($user)
         ->get(route('ledgers.bills.edit', [$ledger, $bill]))
-        ->assertSuccessful();
-
-    expect($called)->toBe(2, 'BillController@create and BillController@edit must resolve GetBillFormPageQuery from the container');
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page
+            ->component('ledgers/bills/edit')
+            ->where('bill_id', $bill->id)
+        );
 });
 
 test('bill store creates a bill via HTTP', function () {

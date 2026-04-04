@@ -161,22 +161,6 @@ test('transaction edit page bootstraps transaction form data through inertia pro
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/transactions/edit')
-        ->has('ledger')
-        ->has('transaction', fn (Assert $transactionProp) => $transactionProp
-            ->etc()
-            ->where('id', $transaction->id)
-            ->where('description', 'Bootstrapped transaction')
-            ->has('attachments', 1)
-            ->has('splits', 1)
-            ->has('tags', 1)
-        )
-        ->has('accounts', 2)
-        ->where('accounts.0.name', 'Checking')
-        ->where('accounts.0.include_in_totals', true)
-        ->where('accounts.1.name', 'Savings')
-        ->where('accounts.1.include_in_totals', false)
-        ->has('categories', 1)
-        ->has('payees', 1)
-        ->has('tags', 1)
+        ->where('transaction_id', $transaction->id)
     );
 });

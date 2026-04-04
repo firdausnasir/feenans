@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Actions\Bills\Queries\GetBillFormPageQuery;
 use App\Actions\Bills\Queries\GetBillIndexPageQuery;
 use App\Actions\Bills\UseCases\DeleteBillAction;
 use App\Actions\Bills\UseCases\PayBillAction;
 use App\Actions\Bills\UseCases\StoreBillAction;
 use App\Actions\Bills\UseCases\ToggleBillAction;
 use App\Actions\Bills\UseCases\UpdateBillAction;
-use App\Data\Bills\Input\GetBillFormPageData;
 use App\Data\Bills\Input\GetBillIndexPageData;
 use App\Data\Bills\Input\PayBillData;
 use App\Data\Bills\Input\StoreBillData;
@@ -43,37 +41,16 @@ class BillController extends Controller
 
     public function create(
         Ledger $ledger,
-        GetBillFormPageData $input,
-        GetBillFormPageQuery $getBillFormPage,
     ): Response {
-        $resolved = null;
-        $resolve = function () use ($input, $getBillFormPage, &$resolved): BillPageData {
-            return $resolved ??= $getBillFormPage($input->ledger);
-        };
-
-        return Inertia::render('ledgers/bills/create', [
-            'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
-            'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
-            'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
-        ]);
+        return Inertia::render('ledgers/bills/create');
     }
 
     public function edit(
         Ledger $ledger,
         Bill $bill,
-        GetBillFormPageData $input,
-        GetBillFormPageQuery $getBillFormPage,
     ): Response {
-        $resolved = null;
-        $resolve = function () use ($input, $getBillFormPage, $bill, &$resolved): BillPageData {
-            return $resolved ??= $getBillFormPage($input->ledger, $bill);
-        };
-
         return Inertia::render('ledgers/bills/edit', [
-            'bill' => fn () => $resolve()->bill?->toArray(),
-            'accounts' => fn () => $resolve()->accounts->map->toArray()->values()->all(),
-            'categories' => fn () => $resolve()->categories->map->toArray()->values()->all(),
-            'payees' => fn () => $resolve()->payees->map->toArray()->values()->all(),
+            'bill_id' => $bill->id,
         ]);
     }
 

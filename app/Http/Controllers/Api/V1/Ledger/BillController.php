@@ -17,6 +17,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\Ledger;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class BillController extends Controller
 {
@@ -35,6 +36,17 @@ class BillController extends Controller
 
         return response()->json([
             'data' => $getDashboardPage->upcomingBills($ledger),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function show(Ledger $ledger, Bill $bill): JsonResponse
+    {
+        Gate::authorize('view', $ledger);
+
+        $bill->load(['account', 'toAccount', 'category', 'payee']);
+
+        return response()->json([
+            'data' => ApiBillData::fromModel($bill)->toArray(),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 

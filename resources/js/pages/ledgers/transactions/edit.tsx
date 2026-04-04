@@ -1,8 +1,14 @@
-import { Head, router, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as accountsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/AccountController';
+import { index as categoriesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/CategoryController';
+import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/PayeeController';
+import { index as tagsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/TagController';
+import { show as showTransaction } from '@/actions/App/Http/Controllers/Api/V1/Ledger/TransactionController';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Badge } from '@/components/ui/badge';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -15,6 +21,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { buildAccountSelectOptions } from '@/lib/account-select-options';
@@ -37,6 +44,8 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+
+type ApiEnvelope<T> = { data: T };
 
 type EditFormData = {
     transaction_type: 'expense' | 'income' | 'transfer';
@@ -979,21 +988,194 @@ function TransactionEditForm({
     );
 }
 
-export default function TransactionEditPage({
-    ledger,
-    transaction,
-    accounts,
-    categories,
-    payees,
-    tags,
-}: {
-    ledger: Ledger;
-    transaction: Transaction;
-    accounts: Account[];
-    categories: Category[];
-    payees: Payee[];
-    tags: Tag[];
-}) {
+function TransactionEditFormSkeleton() {
+    return (
+        <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
+            <div className="flex justify-end">
+                <Skeleton className="h-6 w-24" />
+            </div>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <Skeleton className="h-5 w-40" />
+                            <Skeleton className="h-4 w-64" />
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Skeleton className="h-9 w-full" />
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <Skeleton className="h-9 w-full" />
+                                <Skeleton className="h-9 w-full" />
+                            </div>
+                            <Skeleton className="h-9 w-full" />
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <Skeleton className="h-9 w-full" />
+                                <Skeleton className="h-9 w-full" />
+                            </div>
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-6 w-48" />
+                        </CardContent>
+                    </Card>
+                </div>
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <Skeleton className="h-5 w-28" />
+                            <Skeleton className="h-4 w-48" />
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-3 w-48" />
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <Skeleton className="h-5 w-20" />
+                            <Skeleton className="h-4 w-48" />
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-3">
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-9 w-full" />
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function TransactionEditErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 p-4">
+            <p className="text-sm text-muted-foreground">Failed to load transaction data.</p>
+            <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+            </Button>
+        </div>
+    );
+}
+
+export default function TransactionEditPage() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger! as Ledger;
+    const { transaction_id: transactionId } = usePage<{ transaction_id: number }>().props;
+
+    const txLoader = useHttp<Record<string, never>, ApiEnvelope<Transaction>>({});
+    const accountsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Account[]>>({});
+    const categoriesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Category[]>>({});
+    const payeesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Payee[]>>({});
+    const tagsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Tag[]>>({});
+
+    const [hasResolved, setHasResolved] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const mountRef = useRef(false);
+
+    function loadAll() {
+        let cancelled = false;
+        setLoadError(null);
+
+        txLoader.cancel();
+        accountsLoaderState.cancel();
+        categoriesLoaderState.cancel();
+        payeesLoaderState.cancel();
+        tagsLoaderState.cancel();
+
+        void Promise.allSettled([
+            txLoader.get(showTransaction.url({ ledger: ledger.id, transaction: transactionId }), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            accountsLoaderState.get(accountsLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            categoriesLoaderState.get(categoriesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            payeesLoaderState.get(payeesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            tagsLoaderState.get(tagsLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+        ]).then((results) => {
+            if (cancelled) {
+return;
+}
+
+            const anyFailed = results.some((r) => r.status === 'rejected');
+
+            if (anyFailed) {
+                setLoadError('Failed to load transaction data.');
+            }
+
+            setHasResolved(true);
+        });
+
+        return () => {
+ cancelled = true; 
+};
+    }
+
+    useEffect(() => {
+        if (mountRef.current) {
+return;
+}
+
+        mountRef.current = true;
+        const cleanup = loadAll();
+
+        return () => {
+            cleanup();
+            txLoader.cancel();
+            accountsLoaderState.cancel();
+            categoriesLoaderState.cancel();
+            payeesLoaderState.cancel();
+            tagsLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id, transactionId]);
+
+    const transaction = txLoader.response?.data;
+    const accounts = accountsLoaderState.response?.data ?? [];
+    const categories = categoriesLoaderState.response?.data ?? [];
+    const payees = payeesLoaderState.response?.data ?? [];
+    const tags = tagsLoaderState.response?.data ?? [];
+
+    if (!hasResolved) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title="Edit Transaction" />
+                <BoneSkeleton name="transaction-edit-form" loading fallback={<TransactionEditFormSkeleton />}>
+                    <TransactionEditFormSkeleton />
+                </BoneSkeleton>
+            </AppLayout>
+        );
+    }
+
+    if (loadError || !transaction) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title="Edit Transaction" />
+                <TransactionEditErrorState onRetry={() => {
+                    setHasResolved(false);
+                    mountRef.current = false;
+                    loadAll();
+                }} />
+            </AppLayout>
+        );
+    }
+
     return (
         <TransactionEditForm
             ledger={ledger}

@@ -251,11 +251,6 @@ test('bill create page renders', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn ($page) => $page
         ->component('ledgers/bills/create')
-        ->has('accounts', 2)
-        ->where('accounts.0.name', 'Checking')
-        ->where('accounts.0.include_in_totals', true)
-        ->where('accounts.1.name', 'Savings')
-        ->where('accounts.1.include_in_totals', false)
     );
 });
 

@@ -23,6 +23,7 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class TransactionController extends Controller
 {
@@ -85,6 +86,28 @@ class TransactionController extends Controller
 
         return response()->json([
             'data' => $getDashboardPage->recentTransactions($ledger, $request->integer('offset', 0)),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    public function show(Ledger $ledger, Transaction $transaction): JsonResponse
+    {
+        Gate::authorize('view', $ledger);
+
+        $transaction->load([
+            'account',
+            'category',
+            'payee',
+            'tags',
+            'splits.category',
+            'splits.payee',
+            'attachments.transaction',
+            'transferPair.account',
+            'transferPair.category',
+            'transferPair.payee',
+        ])->loadCount('splits');
+
+        return response()->json([
+            'data' => ApiTransactionData::fromModel($transaction)->toArray(),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
