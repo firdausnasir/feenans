@@ -415,6 +415,121 @@ test('bill store is forbidden for another users ledger', function () {
         ->assertForbidden();
 });
 
+test('bill store saves notify_email as true by default', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Notify Default',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'Notify Default')->first();
+
+    expect($bill?->notify_email)->toBeTrue();
+});
+
+test('bill store can disable notify_email', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'No Notify',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'notify_email' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'No Notify')->first();
+
+    expect($bill?->notify_email)->toBeFalse();
+});
+
+test('bill store can create an inactive bill', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Inactive Bill',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'is_active' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'Inactive Bill')->first();
+
+    expect($bill?->is_active)->toBeFalse();
+});
+
+test('bill update can change notify_email', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $bill = Bill::factory()->for($ledger)->for($account)->create(['notify_email' => true]);
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.edit', [$ledger, $bill]))
+        ->put(route('ledgers.bills.update', [$ledger, $bill]), [
+            'name' => $bill->name,
+            'transaction_type' => 'expense',
+            'amount' => $bill->amount,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'notify_email' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($bill->refresh()->notify_email)->toBeFalse();
+});
+
 test('bill update is forbidden for another users ledger', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();

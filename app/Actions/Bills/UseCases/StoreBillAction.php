@@ -25,6 +25,8 @@ class StoreBillAction
                 'recurrence_day' => $data->recurrence_day,
                 'next_due_date' => $data->next_due_date,
                 'auto_create' => $data->auto_create,
+                'is_active' => $data->is_active,
+                'notify_email' => $data->notify_email,
                 'end_type' => $data->end_type,
                 'end_date' => $data->end_date,
                 'end_after_occurrences' => $data->end_after_occurrences,

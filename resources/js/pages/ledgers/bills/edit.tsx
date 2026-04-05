@@ -9,7 +9,6 @@ import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Led
 import { update as updateRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -31,6 +30,7 @@ import { mapInertiaErrors } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { edit as editRoute, index as billsIndex } from '@/routes/ledgers/bills';
 import type { Account, Bill, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 type ApiEnvelope<T> = { data: T };
 
@@ -50,6 +50,8 @@ type FormData = {
     recurrence_day: string;
     next_due_date: string;
     auto_create: boolean;
+    is_active: boolean;
+    notify_email: boolean;
     end_type: EndType;
     end_date: string;
     end_after_occurrences: string;
@@ -147,6 +149,8 @@ function EditBillForm({
             bill.recurrence_day != null ? String(bill.recurrence_day) : '',
         next_due_date: bill.next_due_date ?? '',
         auto_create: bill.auto_create,
+        is_active: bill.is_active,
+        notify_email: bill.notify_email,
         end_type: (bill.end_type ?? 'never') as EndType,
         end_date: bill.end_date ?? '',
         end_after_occurrences:
@@ -223,6 +227,8 @@ function EditBillForm({
             recurrence_day: data.recurrence_day || null,
             next_due_date: data.next_due_date,
             auto_create: data.auto_create,
+            is_active: data.is_active,
+            notify_email: data.notify_email,
             end_type: data.end_type,
             end_date: data.end_date || null,
             end_after_occurrences: data.end_after_occurrences || null,
@@ -562,6 +568,42 @@ function EditBillForm({
                         <Label htmlFor="auto_create">
                             Auto-create transaction when due
                         </Label>
+                    </div>
+
+                    {/* Active */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="is_active"
+                            checked={data.is_active}
+                            onCheckedChange={(checked) =>
+                                setData('is_active', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="is_active">Active</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Inactive recurring transactions are paused and won&apos;t be tracked or auto-created.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Email notifications */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="notify_email"
+                            checked={data.notify_email}
+                            onCheckedChange={(checked) =>
+                                setData('notify_email', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="notify_email">Email reminders</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Receive email reminders 3 days before the due date, on the due date, and when overdue.
+                            </p>
+                        </div>
                     </div>
 
                     {/* End type */}

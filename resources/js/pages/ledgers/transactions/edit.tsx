@@ -8,7 +8,6 @@ import { index as tagsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledge
 import { show as showTransaction } from '@/actions/App/Http/Controllers/Api/V1/Ledger/TransactionController';
 import { SearchableSelect } from '@/components/searchable-select';
 import { Badge } from '@/components/ui/badge';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -44,6 +43,7 @@ import type {
     Transaction,
     TransactionSplit,
 } from '@/types';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 type ApiEnvelope<T> = { data: T };
 

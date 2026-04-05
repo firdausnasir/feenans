@@ -128,6 +128,7 @@ export type Bill = {
     end_after_occurrences: number | null;
     occurrences_count: number;
     is_active: boolean;
+    notify_email: boolean;
     // relationships (optional, may be loaded)
     account?: Account;
     to_account?: Account | null;

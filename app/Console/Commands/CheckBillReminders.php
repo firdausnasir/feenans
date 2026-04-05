@@ -38,6 +38,7 @@ class CheckBillReminders extends Command
     {
         return Bill::query()
             ->active()
+            ->where('notify_email', true)
             ->whereDate('next_due_date', '>', $today)
             ->whereDate('next_due_date', '<=', $today->addDays(3))
             ->with('ledger.user')
@@ -51,6 +52,7 @@ class CheckBillReminders extends Command
     {
         return Bill::query()
             ->active()
+            ->where('notify_email', true)
             ->whereDate('next_due_date', $today)
             ->with('ledger.user')
             ->get();
@@ -63,6 +65,7 @@ class CheckBillReminders extends Command
     {
         return Bill::query()
             ->active()
+            ->where('notify_email', true)
             ->whereDate('next_due_date', '<', $today)
             ->with('ledger.user')
             ->get();

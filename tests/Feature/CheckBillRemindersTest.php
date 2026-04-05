@@ -186,6 +186,44 @@ test('check-reminders sends separate notifications to different users', function
     expect($user2->notifications()->count())->toBe(1);
 });
 
+test('check-reminders skips bills with notify_email disabled', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::create(2026, 3, 17),
+        'is_active' => true,
+        'notify_email' => false,
+    ]);
+
+    $this->artisan('bills:check-reminders')->assertSuccessful();
+
+    expect($user->notifications()->count())->toBe(0);
+});
+
+test('check-reminders sends notification for bills with notify_email enabled', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::create(2026, 3, 17),
+        'is_active' => true,
+        'notify_email' => true,
+    ]);
+
+    $this->artisan('bills:check-reminders')->assertSuccessful();
+
+    expect($user->notifications()->count())->toBe(1);
+});
+
 test('check-reminders batches summary notification lookups for multiple users', function () {
     CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 3, 15));
 

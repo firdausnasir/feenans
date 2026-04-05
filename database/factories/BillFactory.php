@@ -39,6 +39,7 @@ class BillFactory extends Factory
             'end_after_occurrences' => null,
             'occurrences_count' => 0,
             'is_active' => true,
+            'notify_email' => true,
         ];
     }
 }

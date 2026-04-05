@@ -185,6 +185,7 @@ type FormData = {
     recurrence_day: string;
     next_due_date: string;
     auto_create: boolean;
+    notify_email: boolean;
     end_type: EndType;
     end_date: string;
     end_after_occurrences: string;
@@ -299,6 +300,7 @@ function BillFormModal({
             recurrence_day: data.recurrence_day || null,
             next_due_date: data.next_due_date,
             auto_create: data.auto_create,
+            notify_email: data.notify_email,
             end_type: data.end_type,
             end_date: data.end_date || null,
             end_after_occurrences: data.end_after_occurrences || null,
@@ -669,6 +671,20 @@ function BillFormModal({
                         </Label>
                     </div>
 
+                    {/* Email notifications */}
+                    <div className="flex items-center gap-3">
+                        <Checkbox
+                            id="bill_notify_email"
+                            checked={data.notify_email}
+                            onCheckedChange={(checked) =>
+                                setData('notify_email', checked === true)
+                            }
+                        />
+                        <Label htmlFor="bill_notify_email">
+                            Email reminders
+                        </Label>
+                    </div>
+
                     {/* End type */}
                     <div className="grid gap-2">
                         <Label>End</Label>
@@ -787,6 +803,7 @@ function buildInitialData(bill: Bill | null, accounts: Account[]): FormData {
                 : '',
             next_due_date: bill.next_due_date,
             auto_create: bill.auto_create,
+            notify_email: bill.notify_email,
             end_type: bill.end_type ?? 'never',
             end_date: bill.end_date ?? '',
             end_after_occurrences: bill.end_after_occurrences
@@ -809,6 +826,7 @@ function buildInitialData(bill: Bill | null, accounts: Account[]): FormData {
         recurrence_day: '',
         next_due_date: '',
         auto_create: false,
+        notify_email: true,
         end_type: 'never',
         end_date: '',
         end_after_occurrences: '',

@@ -33,6 +33,7 @@ class BillData extends BaseOutputData
         public ?string $end_date,
         public int $occurrences_count,
         public bool $is_active,
+        public bool $notify_email,
         public ?array $account,
         public ?array $to_account,
         public ?array $category,
@@ -65,6 +66,7 @@ class BillData extends BaseOutputData
             end_date: $bill->end_date?->toDateString(),
             occurrences_count: (int) $bill->occurrences_count,
             is_active: (bool) $bill->is_active,
+            notify_email: (bool) $bill->notify_email,
             account: $bill->relationLoaded('account') && $bill->account !== null
                 ? BillAccountOptionData::fromModel($bill->account)->toArray()
                 : null,

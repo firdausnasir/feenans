@@ -2,13 +2,13 @@ import { Head, Link, useHttp } from '@inertiajs/react';
 import { PlusCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { index as ledgersLoader } from '@/actions/App/Http/Controllers/Api/V1/LedgerController';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
 import { create, index, dashboard } from '@/routes/ledgers';
 import type { BreadcrumbItem } from '@/types';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 type Ledger = {
     id: number;
