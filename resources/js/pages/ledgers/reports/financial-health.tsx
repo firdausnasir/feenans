@@ -1,5 +1,6 @@
-import { Deferred, Head, usePage } from '@inertiajs/react';
+import { Head, useHttp, usePage } from '@inertiajs/react';
 import { BarChart3, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Area,
     AreaChart,
@@ -12,6 +13,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { financialHealth as financialHealthLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/ReportController';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +24,7 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
+    exportPdf as exportReportPdf,
     index as reportsIndex,
     financialHealth as financialHealthRoute,
 } from '@/routes/ledgers/reports';
@@ -29,27 +32,10 @@ import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type NetWorthEntry = {
-    month: string;
-    assets: number;
-    liabilities: number;
-    net_worth: number;
-};
-
-type SavingsRateEntry = {
-    month: string;
-    income: number;
-    expense: number;
-    savings: number;
-    rate: number;
-};
-
-type CurrentSnapshot = {
-    assets: number;
-    liabilities: number;
-    net_worth: number;
-    debt_to_asset_ratio: number;
-};
+type FinancialHealthReport = App.Data.Reports.Output.Web.FinancialHealthReportData;
+type NetWorthEntry = FinancialHealthReport['net_worth_history'][number];
+type SavingsRateEntry = FinancialHealthReport['savings_rate_history'][number];
+type CurrentSnapshot = FinancialHealthReport['current_snapshot'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -338,14 +324,13 @@ function FinancialHealthSkeleton() {
 }
 
 export default function FinancialHealthPage() {
-    const { currentLedger, health } = usePage<{
-        health?: {
-            net_worth_history: NetWorthEntry[];
-            savings_rate_history: SavingsRateEntry[];
-            current_snapshot: CurrentSnapshot;
-        };
-    }>().props;
+    const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
+    const healthLoaderState = useHttp<Record<string, never>, { data: FinancialHealthReport }>({});
+    const [health, setHealth] = useState<FinancialHealthReport | null>(null);
+    const [healthError, setHealthError] = useState<string | null>(null);
+    const [hasLoadedHealth, setHasLoadedHealth] = useState(false);
+    const latestRequestRef = useRef(0);
 
     const netWorthHistory = health?.net_worth_history ?? [];
     const savingsRateHistory = health?.savings_rate_history ?? [];
@@ -365,6 +350,49 @@ export default function FinancialHealthPage() {
         },
     ];
 
+    async function loadHealth(): Promise<void> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+        healthLoaderState.cancel();
+        setHealthError(null);
+
+        try {
+            const response = await healthLoaderState.get(
+                financialHealthLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHealth(response.data);
+            }
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHealthError('Failed to load financial health report.');
+            }
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedHealth(true);
+            }
+        }
+    }
+
+    useEffect(() => {
+        void loadHealth();
+
+        return () => {
+            healthLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
+
+    const showInitialLoading = healthLoaderState.processing && !hasLoadedHealth;
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} - Financial Health`} />
@@ -382,37 +410,61 @@ export default function FinancialHealthPage() {
                         size="sm"
                         className="w-full sm:ml-auto sm:w-auto"
                         asChild
-                    >
-                        <a href={`/ledgers/${ledger.id}/reports/export-pdf`}>
+                        >
+                        <a href={exportReportPdf.url(ledger.id)}>
                             Export PDF
                         </a>
                     </Button>
                 </div>
 
-                <Deferred data="health" fallback={<FinancialHealthSkeleton />}>
-                    {/* Current snapshot cards */}
-                    <SnapshotCards snapshot={currentSnapshot} />
-
-                    {/* Net worth history */}
+                {showInitialLoading ? (
+                    <FinancialHealthSkeleton />
+                ) : healthError && !health ? (
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Net worth over time</CardTitle>
-                        </CardHeader>
-                        <CardContent className="min-w-0 overflow-hidden">
-                            <NetWorthChart data={netWorthHistory} />
+                        <CardContent className="flex flex-col gap-3 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {healthError}
+                            </p>
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadHealth()}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
+                ) : (
+                    <>
+                        {healthLoaderState.processing && hasLoadedHealth ? (
+                            <p className="text-xs text-muted-foreground">
+                                Refreshing financial health report...
+                            </p>
+                        ) : null}
 
-                    {/* Savings rate */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Monthly savings rate</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <SavingsRateChart data={savingsRateHistory} />
-                        </CardContent>
-                    </Card>
-                </Deferred>
+                        <SnapshotCards snapshot={currentSnapshot} />
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Net worth over time</CardTitle>
+                            </CardHeader>
+                            <CardContent className="min-w-0 overflow-hidden">
+                                <NetWorthChart data={netWorthHistory} />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Monthly savings rate</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <SavingsRateChart data={savingsRateHistory} />
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
             </div>
         </AppLayout>
     );

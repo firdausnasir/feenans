@@ -251,7 +251,7 @@ test('update syncs split payees correctly', function () {
         ->and($transaction->splits->pluck('payee_id')->all())->toBe([$payeeA->id, $payeeB->id, $payeeA->id]);
 });
 
-test('transaction with splits shows split metadata in deferred index response', function () {
+test('transaction index shell omits deferred data when split transactions exist', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -286,15 +286,9 @@ test('transaction with splits shows split metadata in deferred index response', 
         ->assertInertia(fn (Assert $page) => $page
             ->component('ledgers/transactions/index')
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.splits_count', 2)
-                    ->where('data.0.description', 'Dinner receipt')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('deleting transaction also removes its splits', function () {

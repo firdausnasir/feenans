@@ -1,4 +1,4 @@
-import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     Bell,
@@ -9,7 +9,7 @@ import {
     DatabaseZap,
     X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Area,
     AreaChart,
@@ -21,6 +21,21 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 
+import {
+    dashboardUpcoming as dashboardUpcomingBillsLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/BillController';
+import {
+    dashboardTop as dashboardTopBudgetsLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/BudgetController';
+import {
+    dashboardTop as dashboardTopCategoriesLoader,
+    dashboardUncategorizedCount as dashboardUncategorizedCountLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/CategoryController';
+import {
+    dashboardDailyTrend as dashboardDailyTrendLoader,
+    dashboardRecent as dashboardRecentTransactionsLoader,
+    dashboardSummary as dashboardSummaryLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/TransactionController';
 import { PayBillDialog } from '@/components/pay-bill-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,6 +69,10 @@ import {
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount, formatDate } from '@/lib/format';
+import {
+    buildDashboardUrl,
+    shouldShowUpcomingRecurring,
+} from '@/pages/ledgers/dashboard/page-state';
 import { dashboard } from '@/routes/ledgers';
 import { index as accountsIndex } from '@/routes/ledgers/accounts';
 import { index as budgetsIndex } from '@/routes/ledgers/budgets';
@@ -109,16 +128,20 @@ type CycleResponse = {
     offset: number;
 };
 
+type ApiEnvelope<T> = {
+    data: T;
+};
+
+type DashboardSummaryPayload = {
+    cycle: CycleResponse;
+    summary: Summary;
+};
+
 type DashboardProps = {
+    currentLedger: { id: number; name: string };
     cycle: CycleResponse;
     summary: Summary;
     accounts: AccountGroup[];
-    dailyTrend?: DailyTrend[];
-    topCategories?: TopCategory[];
-    recentTransactions?: Transaction[];
-    uncategorizedCount?: number;
-    upcomingBills?: UpcomingBills;
-    topBudgets?: BudgetStat[];
 };
 
 const CHART_COLORS = [
@@ -170,69 +193,463 @@ function relativeDate(dateStr: string): string {
 }
 
 export default function LedgerDashboard() {
-    const { currentLedger: ledger } = usePage().props;
     const {
-        cycle,
-        summary,
+        currentLedger: ledger,
+        cycle: initialCycle,
+        summary: initialSummary,
         accounts,
-        dailyTrend,
-        topCategories,
-        recentTransactions,
-        uncategorizedCount,
-        upcomingBills,
-        topBudgets,
     } = usePage<DashboardProps>().props;
+    const summaryLoaderState = useHttp<Record<string, never>, ApiEnvelope<DashboardSummaryPayload>>({});
+    const dailyTrendLoaderState = useHttp<Record<string, never>, ApiEnvelope<DailyTrend[]>>({});
+    const topCategoriesLoaderState = useHttp<Record<string, never>, ApiEnvelope<TopCategory[]>>({});
+    const recentTransactionsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Transaction[]>>({});
+    const uncategorizedCountLoaderState = useHttp<Record<string, never>, ApiEnvelope<{ count: number }>>({});
+    const upcomingBillsLoaderState = useHttp<Record<string, never>, ApiEnvelope<UpcomingBills>>({});
+    const topBudgetsLoaderState = useHttp<Record<string, never>, ApiEnvelope<BudgetStat[]>>({});
 
     const breadcrumbs: BreadcrumbItem[] = [
-        { title: ledger!.name, href: dashboard.url(ledger!.id) },
-        { title: 'Dashboard', href: dashboard.url(ledger!.id) },
+        { title: ledger.name, href: dashboard.url(ledger.id) },
+        { title: 'Dashboard', href: dashboard.url(ledger.id) },
     ];
 
     const [payingBill, setPayingBill] = useState<Bill | null>(null);
     const [uncategorizedDismissed, setUncategorizedDismissed] = useState(false);
     const { privacyMode } = usePrivacyMode();
     const [isLoadingSampleData, setIsLoadingSampleData] = useState(false);
+    const [cycle, setCycle] = useState(initialCycle);
+    const [summary, setSummary] = useState(initialSummary);
+    const [dailyExpenseTrend, setDailyExpenseTrend] = useState<DailyTrend[]>([]);
+    const [topCats, setTopCats] = useState<TopCategory[]>([]);
+    const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
+    const [uncatCount, setUncatCount] = useState(0);
+    const [bills, setBills] = useState<UpcomingBills | null>(null);
+    const [budgets, setBudgets] = useState<BudgetStat[]>([]);
+    const [dailyTrendError, setDailyTrendError] = useState<string | null>(null);
+    const [topCategoriesError, setTopCategoriesError] = useState<string | null>(
+        null,
+    );
+    const [recentTransactionsError, setRecentTransactionsError] =
+        useState<string | null>(null);
+    const [hasResolvedDailyTrend, setHasResolvedDailyTrend] = useState(false);
+    const [hasResolvedTopCategories, setHasResolvedTopCategories] =
+        useState(false);
+    const [hasResolvedRecentTransactions, setHasResolvedRecentTransactions] =
+        useState(false);
+    const [hasResolvedUncategorizedCount, setHasResolvedUncategorizedCount] =
+        useState(false);
+    const [hasResolvedUpcomingBills, setHasResolvedUpcomingBills] =
+        useState(false);
+    const [hasResolvedTopBudgets, setHasResolvedTopBudgets] = useState(false);
+    const summaryRequestIdRef = useRef(0);
+    const dailyTrendRequestIdRef = useRef(0);
+    const topCategoriesRequestIdRef = useRef(0);
+    const recentTransactionsRequestIdRef = useRef(0);
+    const uncategorizedCountRequestIdRef = useRef(0);
+    const upcomingBillsRequestIdRef = useRef(0);
+    const topBudgetsRequestIdRef = useRef(0);
+    const currentOffsetRef = useRef(initialCycle.offset);
 
-    // Derived values with safe defaults for deferred props
-    const accountGroups = accounts ?? [];
-    const dailyExpenseTrend = dailyTrend ?? [];
-    const topCats = topCategories ?? [];
-    const recentTxs = recentTransactions ?? [];
-    const uncatCount = uncategorizedCount ?? 0;
-    const bills: UpcomingBills = {
-        upcoming: upcomingBills?.upcoming ?? [],
-        due: upcomingBills?.due ?? [],
-        missed: upcomingBills?.missed ?? [],
-    };
-    const budgets = topBudgets ?? [];
+    const accountGroups = accounts;
     const flatAccounts = accountGroups.flatMap((g) => g.accounts);
     const cycleDates = { start: cycle.cycle_start, end: cycle.cycle_end };
-
-    const hasAnyBills =
-        bills.due.length > 0 ||
-        bills.upcoming.length > 0 ||
-        bills.missed.length > 0;
-
     const isEmpty = accountGroups.length === 0;
+    const showUpcomingRecurring = shouldShowUpcomingRecurring({
+        hasResolvedInitialLoad: hasResolvedUpcomingBills,
+        processing: upcomingBillsLoaderState.processing,
+        bills,
+    });
 
-    function navigateCycle(newOffset: number) {
-        router.get(
-            dashboard.url(ledger!.id),
-            { offset: newOffset },
-            {
-                only: [
-                    'cycle',
-                    'summary',
-                    'dailyTrend',
-                    'topCategories',
-                    'recentTransactions',
-                    'uncategorizedCount',
-                ],
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
+    function getCycleQuery(offset: number) {
+        return {
+            query: {
+                offset: offset === 0 ? undefined : offset,
             },
+        };
+    }
+
+    function updateDashboardHistory(offset: number): void {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const nextUrl = buildDashboardUrl(
+            new URL(dashboard.url(ledger.id), window.location.origin).toString(),
+            offset,
         );
+        const parsedUrl = new URL(nextUrl);
+
+        window.history.replaceState(
+            window.history.state,
+            '',
+            `${parsedUrl.pathname}${parsedUrl.search}`,
+        );
+    }
+
+    function resetCycleSections(): void {
+        setDailyExpenseTrend([]);
+        setTopCats([]);
+        setRecentTxs([]);
+        setUncatCount(0);
+        setDailyTrendError(null);
+        setTopCategoriesError(null);
+        setRecentTransactionsError(null);
+        setHasResolvedDailyTrend(false);
+        setHasResolvedTopCategories(false);
+        setHasResolvedRecentTransactions(false);
+        setHasResolvedUncategorizedCount(false);
+    }
+
+    async function loadDashboardSummary(offset: number): Promise<boolean> {
+        let cancelled = false;
+        const requestId = summaryRequestIdRef.current + 1;
+
+        summaryRequestIdRef.current = requestId;
+        summaryLoaderState.cancel();
+
+        try {
+            const response = await summaryLoaderState.get(
+                dashboardSummaryLoader.url(ledger.id, getCycleQuery(offset)),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && summaryRequestIdRef.current === requestId) {
+                const payload = response?.data;
+
+                if (payload) {
+                    setCycle(payload.cycle);
+                    setSummary(payload.summary);
+                }
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    async function loadDailyTrend(offset: number): Promise<boolean> {
+        let cancelled = false;
+        const requestId = dailyTrendRequestIdRef.current + 1;
+
+        dailyTrendRequestIdRef.current = requestId;
+        dailyTrendLoaderState.cancel();
+        setDailyTrendError(null);
+
+        try {
+            const response = await dailyTrendLoaderState.get(
+                dashboardDailyTrendLoader.url(ledger.id, getCycleQuery(offset)),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && dailyTrendRequestIdRef.current === requestId) {
+                setDailyExpenseTrend(response?.data ?? []);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && dailyTrendRequestIdRef.current === requestId) {
+                setDailyTrendError('Failed to load expense trend.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled && dailyTrendRequestIdRef.current === requestId) {
+                setHasResolvedDailyTrend(true);
+            }
+        }
+    }
+
+    async function loadTopCategories(offset: number): Promise<boolean> {
+        let cancelled = false;
+        const requestId = topCategoriesRequestIdRef.current + 1;
+
+        topCategoriesRequestIdRef.current = requestId;
+        topCategoriesLoaderState.cancel();
+        setTopCategoriesError(null);
+
+        try {
+            const response = await topCategoriesLoaderState.get(
+                dashboardTopCategoriesLoader.url(
+                    ledger.id,
+                    getCycleQuery(offset),
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && topCategoriesRequestIdRef.current === requestId) {
+                setTopCats(response?.data ?? []);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && topCategoriesRequestIdRef.current === requestId) {
+                setTopCategoriesError('Failed to load top categories.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled && topCategoriesRequestIdRef.current === requestId) {
+                setHasResolvedTopCategories(true);
+            }
+        }
+    }
+
+    async function loadRecentTransactions(offset: number): Promise<boolean> {
+        let cancelled = false;
+        const requestId = recentTransactionsRequestIdRef.current + 1;
+
+        recentTransactionsRequestIdRef.current = requestId;
+        recentTransactionsLoaderState.cancel();
+        setRecentTransactionsError(null);
+
+        try {
+            const response = await recentTransactionsLoaderState.get(
+                dashboardRecentTransactionsLoader.url(
+                    ledger.id,
+                    getCycleQuery(offset),
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (
+                !cancelled &&
+                recentTransactionsRequestIdRef.current === requestId
+            ) {
+                setRecentTxs(response?.data ?? []);
+            }
+
+            return true;
+        } catch {
+            if (
+                !cancelled &&
+                recentTransactionsRequestIdRef.current === requestId
+            ) {
+                setRecentTransactionsError('Failed to load recent transactions.');
+            }
+
+            return false;
+        } finally {
+            if (
+                !cancelled &&
+                recentTransactionsRequestIdRef.current === requestId
+            ) {
+                setHasResolvedRecentTransactions(true);
+            }
+        }
+    }
+
+    async function loadUncategorizedCount(offset: number): Promise<boolean> {
+        let cancelled = false;
+        const requestId = uncategorizedCountRequestIdRef.current + 1;
+
+        uncategorizedCountRequestIdRef.current = requestId;
+        uncategorizedCountLoaderState.cancel();
+
+        try {
+            const response = await uncategorizedCountLoaderState.get(
+                dashboardUncategorizedCountLoader.url(
+                    ledger.id,
+                    getCycleQuery(offset),
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (
+                !cancelled &&
+                uncategorizedCountRequestIdRef.current === requestId
+            ) {
+                setUncatCount(response?.data.count ?? 0);
+            }
+
+            return true;
+        } catch {
+            return false;
+        } finally {
+            if (
+                !cancelled &&
+                uncategorizedCountRequestIdRef.current === requestId
+            ) {
+                setHasResolvedUncategorizedCount(true);
+            }
+        }
+    }
+
+    async function loadUpcomingBills(): Promise<boolean> {
+        let cancelled = false;
+        const requestId = upcomingBillsRequestIdRef.current + 1;
+
+        upcomingBillsRequestIdRef.current = requestId;
+        upcomingBillsLoaderState.cancel();
+
+        try {
+            const response = await upcomingBillsLoaderState.get(
+                dashboardUpcomingBillsLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && upcomingBillsRequestIdRef.current === requestId) {
+                setBills(response?.data ?? null);
+            }
+
+            return true;
+        } catch {
+            return false;
+        } finally {
+            if (!cancelled && upcomingBillsRequestIdRef.current === requestId) {
+                setHasResolvedUpcomingBills(true);
+            }
+        }
+    }
+
+    async function loadTopBudgets(): Promise<boolean> {
+        let cancelled = false;
+        const requestId = topBudgetsRequestIdRef.current + 1;
+
+        topBudgetsRequestIdRef.current = requestId;
+        topBudgetsLoaderState.cancel();
+
+        try {
+            const response = await topBudgetsLoaderState.get(
+                dashboardTopBudgetsLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && topBudgetsRequestIdRef.current === requestId) {
+                setBudgets(response?.data ?? []);
+            }
+
+            return true;
+        } catch {
+            return false;
+        } finally {
+            if (!cancelled && topBudgetsRequestIdRef.current === requestId) {
+                setHasResolvedTopBudgets(true);
+            }
+        }
+    }
+
+    async function loadCycleSections(offset: number): Promise<void> {
+        await Promise.allSettled([
+            loadDailyTrend(offset),
+            loadTopCategories(offset),
+            loadRecentTransactions(offset),
+            loadUncategorizedCount(offset),
+        ]);
+    }
+
+    function refreshDashboardModules(): void {
+        void Promise.allSettled([
+            loadDashboardSummary(currentOffsetRef.current),
+            loadCycleSections(currentOffsetRef.current),
+            loadUpcomingBills(),
+            loadTopBudgets(),
+        ]);
+    }
+
+    useEffect(() => {
+        setCycle({
+            cycle_start: initialCycle.cycle_start,
+            cycle_end: initialCycle.cycle_end,
+            prev_cycle_start: initialCycle.prev_cycle_start,
+            prev_cycle_end: initialCycle.prev_cycle_end,
+            offset: initialCycle.offset,
+        });
+        setSummary({
+            income: initialSummary.income,
+            expense: initialSummary.expense,
+            net: initialSummary.net,
+            prev_income: initialSummary.prev_income,
+            prev_expense: initialSummary.prev_expense,
+        });
+        currentOffsetRef.current = initialCycle.offset;
+    }, [
+        ledger.id,
+        initialCycle.cycle_start,
+        initialCycle.cycle_end,
+        initialCycle.prev_cycle_start,
+        initialCycle.prev_cycle_end,
+        initialCycle.offset,
+        initialSummary.income,
+        initialSummary.expense,
+        initialSummary.net,
+        initialSummary.prev_income,
+        initialSummary.prev_expense,
+    ]);
+
+    useEffect(() => {
+        currentOffsetRef.current = initialCycle.offset;
+        setBills(null);
+        setBudgets([]);
+        setHasResolvedUpcomingBills(false);
+        setHasResolvedTopBudgets(false);
+        resetCycleSections();
+        setUncategorizedDismissed(false);
+
+        void Promise.allSettled([
+            loadCycleSections(initialCycle.offset),
+            loadUpcomingBills(),
+            loadTopBudgets(),
+        ]);
+
+        return () => {
+            summaryLoaderState.cancel();
+            dailyTrendLoaderState.cancel();
+            topCategoriesLoaderState.cancel();
+            recentTransactionsLoaderState.cancel();
+            uncategorizedCountLoaderState.cancel();
+            upcomingBillsLoaderState.cancel();
+            topBudgetsLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id, initialCycle.offset]);
+
+    async function navigateCycle(newOffset: number): Promise<void> {
+        const previousOffset = currentOffsetRef.current;
+
+        currentOffsetRef.current = newOffset;
+        updateDashboardHistory(newOffset);
+
+        const summaryLoaded = await loadDashboardSummary(newOffset);
+
+        if (!summaryLoaded) {
+            currentOffsetRef.current = previousOffset;
+            updateDashboardHistory(previousOffset);
+            toast.error('Failed to load dashboard summary.');
+
+            return;
+        }
+
+        setUncategorizedDismissed(false);
+        resetCycleSections();
+        void loadCycleSections(newOffset);
     }
 
     const categoryChartConfig: ChartConfig = Object.fromEntries(
@@ -255,12 +672,13 @@ export default function LedgerDashboard() {
         setIsLoadingSampleData(true);
 
         router.post(
-            storeSampleData.url(ledger!.id),
+            storeSampleData.url(ledger.id),
             {},
             {
                 onSuccess: () => {
                     toast.success('Sample data loaded successfully.');
                     setIsLoadingSampleData(false);
+                    refreshDashboardModules();
                 },
                 onError: () => {
                     toast.error('Failed to load sample data.');
@@ -272,7 +690,7 @@ export default function LedgerDashboard() {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={ledger!.name} />
+            <Head title={ledger.name} />
 
             <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
                 {/* Cycle nav */}
@@ -282,7 +700,10 @@ export default function LedgerDashboard() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
-                            onClick={() => navigateCycle(cycle.offset - 1)}
+                            disabled={summaryLoaderState.processing}
+                            onClick={() => {
+                                void navigateCycle(cycle.offset - 1);
+                            }}
                         >
                             <ChevronLeft className="size-4" />
                         </Button>
@@ -295,7 +716,10 @@ export default function LedgerDashboard() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
-                            onClick={() => navigateCycle(cycle.offset + 1)}
+                            disabled={summaryLoaderState.processing}
+                            onClick={() => {
+                                void navigateCycle(cycle.offset + 1);
+                            }}
                         >
                             <ChevronRight className="size-4" />
                         </Button>
@@ -304,7 +728,10 @@ export default function LedgerDashboard() {
                                 variant="outline"
                                 size="sm"
                                 className="ml-1 h-6 text-xs"
-                                onClick={() => navigateCycle(0)}
+                                disabled={summaryLoaderState.processing}
+                                onClick={() => {
+                                    void navigateCycle(0);
+                                }}
                             >
                                 Current
                             </Button>
@@ -328,7 +755,7 @@ export default function LedgerDashboard() {
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row">
                                 <Button asChild>
-                                    <Link href={accountsIndex.url(ledger!.id)}>
+                                    <Link href={accountsIndex.url(ledger.id)}>
                                         <CreditCard className="mr-2 size-4" />
                                         Add Your First Account
                                     </Link>
@@ -349,41 +776,17 @@ export default function LedgerDashboard() {
                 )}
 
                 {/* Uncategorized alert */}
-                <Deferred data="uncategorizedCount" fallback={null}>
+                {hasResolvedUncategorizedCount && uncatCount > 0 && (
                     <UncategorizedAlert
                         count={uncatCount}
                         dismissed={uncategorizedDismissed}
-                        ledgerId={ledger!.id}
+                        ledgerId={ledger.id}
                         onDismiss={() => setUncategorizedDismissed(true)}
                     />
-                </Deferred>
+                )}
 
                 {/* Upcoming Recurring */}
-                <Deferred
-                    data="upcomingBills"
-                    fallback={
-                        <Card className="border-amber-500 p-0 dark:border-amber-400">
-                            <CardContent className="p-3">
-                                <div className="flex items-center gap-2 pb-2">
-                                    <Bell className="size-4 text-muted-foreground" />
-                                    <Skeleton className="h-4 w-36" />
-                                </div>
-                                <div className="space-y-1">
-                                    {[1, 2].map((i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center justify-between rounded-lg px-3 py-2"
-                                        >
-                                            <Skeleton className="h-4 w-28" />
-                                            <Skeleton className="h-7 w-24" />
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    }
-                >
-                    {hasAnyBills && (
+                {showUpcomingRecurring && bills && (
                         <Card className="border-amber-500 p-0 dark:border-amber-400">
                             <CardContent className="p-3">
                                 <div className="flex items-center gap-2 pb-2">
@@ -420,13 +823,12 @@ export default function LedgerDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
-                    )}
-                </Deferred>
+                )}
 
                 {/* KPI Cards - Income, Expense, Net in one row */}
                 <div className="grid grid-cols-3 gap-3">
                     <Link
-                        href={transactionsIndex.url(ledger!.id, {
+                        href={transactionsIndex.url(ledger.id, {
                             query: {
                                 'transaction_types[]': 'income',
                                 date_from: cycleDates.start,
@@ -452,7 +854,7 @@ export default function LedgerDashboard() {
                         </Card>
                     </Link>
                     <Link
-                        href={transactionsIndex.url(ledger!.id, {
+                        href={transactionsIndex.url(ledger.id, {
                             query: {
                                 'transaction_types[]': 'expense',
                                 date_from: cycleDates.start,
@@ -500,91 +902,95 @@ export default function LedgerDashboard() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Deferred
-                            data="dailyTrend"
-                            fallback={<Skeleton className="h-[280px] w-full" />}
-                        >
-                            {dailyExpenseTrend.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    No expense data this cycle.
-                                </p>
-                            ) : (
-                                <ChartContainer
-                                    config={expenseChartConfig}
-                                    className="h-[280px] w-full"
+                        {!hasResolvedDailyTrend ? (
+                            <Skeleton className="h-[280px] w-full" />
+                        ) : dailyTrendError ? (
+                            <DashboardLoaderErrorCard
+                                message={dailyTrendError}
+                                onRetry={() => {
+                                    void loadDailyTrend(currentOffsetRef.current);
+                                }}
+                            />
+                        ) : dailyExpenseTrend.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No expense data this cycle.
+                            </p>
+                        ) : (
+                            <ChartContainer
+                                config={expenseChartConfig}
+                                className="h-[280px] w-full"
+                            >
+                                <AreaChart
+                                    data={dailyExpenseTrend}
+                                    accessibilityLayer
                                 >
-                                    <AreaChart
-                                        data={dailyExpenseTrend}
-                                        accessibilityLayer
-                                    >
-                                        <CartesianGrid
-                                            strokeDasharray="3 3"
-                                            vertical={false}
-                                        />
-                                        <XAxis
-                                            dataKey="date"
-                                            tickLine={false}
-                                            axisLine={false}
-                                            fontSize={12}
-                                            tickFormatter={formatChartDate}
-                                        />
-                                        <YAxis
-                                            tickLine={false}
-                                            axisLine={false}
-                                            fontSize={12}
-                                            width={60}
-                                            tickFormatter={(v) =>
-                                                formatAbsAmount(v, privacyMode)
-                                            }
-                                        />
-                                        <ChartTooltip
-                                            content={
-                                                <ChartTooltipContent
-                                                    labelFormatter={(value) =>
-                                                        formatChartDate(
-                                                            String(value),
-                                                        )
-                                                    }
-                                                    formatter={(value) =>
-                                                        formatAbsAmount(
-                                                            Number(value),
-                                                            privacyMode,
-                                                        )
-                                                    }
-                                                />
-                                            }
-                                        />
-                                        <defs>
-                                            <linearGradient
-                                                id="expenseGradient"
-                                                x1="0"
-                                                y1="0"
-                                                x2="0"
-                                                y2="1"
-                                            >
-                                                <stop
-                                                    offset="5%"
-                                                    stopColor="oklch(0.637 0.237 25.331)"
-                                                    stopOpacity={0.3}
-                                                />
-                                                <stop
-                                                    offset="95%"
-                                                    stopColor="oklch(0.637 0.237 25.331)"
-                                                    stopOpacity={0}
-                                                />
-                                            </linearGradient>
-                                        </defs>
-                                        <Area
-                                            dataKey="expense"
-                                            type="monotone"
-                                            stroke="oklch(0.637 0.237 25.331)"
-                                            fill="url(#expenseGradient)"
-                                            strokeWidth={2}
-                                        />
-                                    </AreaChart>
-                                </ChartContainer>
-                            )}
-                        </Deferred>
+                                    <CartesianGrid
+                                        strokeDasharray="3 3"
+                                        vertical={false}
+                                    />
+                                    <XAxis
+                                        dataKey="date"
+                                        tickLine={false}
+                                        axisLine={false}
+                                        fontSize={12}
+                                        tickFormatter={formatChartDate}
+                                    />
+                                    <YAxis
+                                        tickLine={false}
+                                        axisLine={false}
+                                        fontSize={12}
+                                        width={60}
+                                        tickFormatter={(v) =>
+                                            formatAbsAmount(v, privacyMode)
+                                        }
+                                    />
+                                    <ChartTooltip
+                                        content={
+                                            <ChartTooltipContent
+                                                labelFormatter={(value) =>
+                                                    formatChartDate(
+                                                        String(value),
+                                                    )
+                                                }
+                                                formatter={(value) =>
+                                                    formatAbsAmount(
+                                                        Number(value),
+                                                        privacyMode,
+                                                    )
+                                                }
+                                            />
+                                        }
+                                    />
+                                    <defs>
+                                        <linearGradient
+                                            id="expenseGradient"
+                                            x1="0"
+                                            y1="0"
+                                            x2="0"
+                                            y2="1"
+                                        >
+                                            <stop
+                                                offset="5%"
+                                                stopColor="oklch(0.637 0.237 25.331)"
+                                                stopOpacity={0.3}
+                                            />
+                                            <stop
+                                                offset="95%"
+                                                stopColor="oklch(0.637 0.237 25.331)"
+                                                stopOpacity={0}
+                                            />
+                                        </linearGradient>
+                                    </defs>
+                                    <Area
+                                        dataKey="expense"
+                                        type="monotone"
+                                        stroke="oklch(0.637 0.237 25.331)"
+                                        fill="url(#expenseGradient)"
+                                        strokeWidth={2}
+                                    />
+                                </AreaChart>
+                            </ChartContainer>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -598,96 +1004,98 @@ export default function LedgerDashboard() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Deferred
-                                data="topCategories"
-                                fallback={
-                                    <Skeleton className="h-[280px] w-full" />
-                                }
-                            >
-                                {topCats.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">
-                                        No categorized expenses this cycle.
-                                    </p>
-                                ) : (
-                                    <ChartContainer
-                                        config={categoryChartConfig}
-                                        className="h-[280px] w-full"
+                            {!hasResolvedTopCategories ? (
+                                <Skeleton className="h-[280px] w-full" />
+                            ) : topCategoriesError ? (
+                                <DashboardLoaderErrorCard
+                                    message={topCategoriesError}
+                                    onRetry={() => {
+                                        void loadTopCategories(
+                                            currentOffsetRef.current,
+                                        );
+                                    }}
+                                />
+                            ) : topCats.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No categorized expenses this cycle.
+                                </p>
+                            ) : (
+                                <ChartContainer
+                                    config={categoryChartConfig}
+                                    className="h-[280px] w-full"
+                                >
+                                    <BarChart
+                                        data={categoryChartData}
+                                        layout="vertical"
+                                        accessibilityLayer
                                     >
-                                        <BarChart
-                                            data={categoryChartData}
-                                            layout="vertical"
-                                            accessibilityLayer
-                                        >
-                                            <CartesianGrid
-                                                strokeDasharray="3 3"
-                                                horizontal={false}
-                                            />
-                                            <YAxis
-                                                dataKey="name"
-                                                type="category"
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                                width={100}
-                                            />
-                                            <XAxis
-                                                type="number"
-                                                tickLine={false}
-                                                axisLine={false}
-                                                fontSize={12}
-                                                tickFormatter={(v) =>
-                                                    formatAbsAmount(
-                                                        v,
-                                                        privacyMode,
-                                                    )
-                                                }
-                                            />
-                                            <ChartTooltip
-                                                content={
-                                                    <ChartTooltipContent
-                                                        formatter={(value) =>
-                                                            formatAbsAmount(
-                                                                Number(value),
-                                                                privacyMode,
-                                                            )
-                                                        }
-                                                    />
-                                                }
-                                            />
-                                            <Bar
-                                                dataKey="total"
-                                                radius={[0, 4, 4, 0]}
-                                                className="cursor-pointer"
-                                                onClick={(data) => {
-                                                    const cat = topCats.find(
-                                                        (c) =>
-                                                            c.name ===
-                                                            data.name,
-                                                    );
-
-                                                    if (cat?.id) {
-                                                        router.visit(
-                                                            transactionsIndex.url(
-                                                                ledger!.id,
-                                                                {
-                                                                    query: {
-                                                                        'category_ids[]':
-                                                                            cat.id,
-                                                                        date_from:
-                                                                            cycleDates.start,
-                                                                        date_to:
-                                                                            cycleDates.end,
-                                                                    },
-                                                                },
-                                                            ),
-                                                        );
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            horizontal={false}
+                                        />
+                                        <YAxis
+                                            dataKey="name"
+                                            type="category"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            width={100}
+                                        />
+                                        <XAxis
+                                            type="number"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            fontSize={12}
+                                            tickFormatter={(v) =>
+                                                formatAbsAmount(
+                                                    v,
+                                                    privacyMode,
+                                                )
+                                            }
+                                        />
+                                        <ChartTooltip
+                                            content={
+                                                <ChartTooltipContent
+                                                    formatter={(value) =>
+                                                        formatAbsAmount(
+                                                            Number(value),
+                                                            privacyMode,
+                                                        )
                                                     }
-                                                }}
-                                            />
-                                        </BarChart>
-                                    </ChartContainer>
-                                )}
-                            </Deferred>
+                                                />
+                                            }
+                                        />
+                                        <Bar
+                                            dataKey="total"
+                                            radius={[0, 4, 4, 0]}
+                                            className="cursor-pointer"
+                                            onClick={(data) => {
+                                                const cat = topCats.find(
+                                                    (c) => c.name === data.name,
+                                                );
+
+                                                if (cat?.id) {
+                                                    router.visit(
+                                                        transactionsIndex.url(
+                                                            ledger.id,
+                                                            {
+                                                                query: {
+                                                                    'category_ids[]':
+                                                                        cat.id,
+                                                                    date_from:
+                                                                        cycleDates.start,
+                                                                    date_to:
+                                                                        cycleDates.end,
+                                                                },
+                                                            },
+                                                        ),
+                                                    );
+                                                }
+                                            }}
+                                        />
+                                    </BarChart>
+                                </ChartContainer>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -722,7 +1130,7 @@ export default function LedgerDashboard() {
                                                     <Link
                                                         key={account.id}
                                                         href={transactionsIndex.url(
-                                                            ledger!.id,
+                                                            ledger.id,
                                                             {
                                                                 query: {
                                                                     'account_ids[]':
@@ -796,37 +1204,33 @@ export default function LedgerDashboard() {
                 </div>
 
                 {/* Budget Progress */}
-                <Deferred
-                    data="topBudgets"
-                    fallback={
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Budget Progress</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {[1, 2, 3].map((i) => (
-                                        <div key={i} className="space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                                <Skeleton className="h-4 w-24" />
-                                                <Skeleton className="h-3 w-20" />
-                                            </div>
-                                            <Skeleton className="h-2 w-full" />
+                {!hasResolvedTopBudgets ? (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Budget Progress</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {[1, 2, 3].map((i) => (
+                                    <div key={i} className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <Skeleton className="h-4 w-24" />
+                                            <Skeleton className="h-3 w-20" />
                                         </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    }
-                >
-                    {budgets.length > 0 && (
+                                        <Skeleton className="h-2 w-full" />
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : budgets.length > 0 ? (
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center justify-between">
                                     <CardTitle>Budget Progress</CardTitle>
                                     <Button variant="ghost" size="sm" asChild>
                                         <Link
-                                            href={budgetsIndex.url(ledger!.id)}
+                                            href={budgetsIndex.url(ledger.id)}
                                         >
                                             View all
                                         </Link>
@@ -870,8 +1274,7 @@ export default function LedgerDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
-                    )}
-                </Deferred>
+                    ) : null}
 
                 {/* Recent Transactions */}
                 <Card>
@@ -879,38 +1282,43 @@ export default function LedgerDashboard() {
                         <div className="flex items-center justify-between">
                             <CardTitle>Recent Transactions</CardTitle>
                             <Button variant="outline" size="sm" asChild>
-                                <Link href={transactionsIndex.url(ledger!.id)}>
+                                <Link href={transactionsIndex.url(ledger.id)}>
                                     View all
                                 </Link>
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <Deferred
-                            data="recentTransactions"
-                            fallback={
-                                <div className="space-y-3">
-                                    {[1, 2, 3, 4, 5].map((i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center justify-between py-2"
-                                        >
-                                            <div className="space-y-1.5">
-                                                <Skeleton className="h-4 w-40" />
-                                                <Skeleton className="h-3 w-24" />
-                                            </div>
-                                            <Skeleton className="h-4 w-16" />
+                        {!hasResolvedRecentTransactions ? (
+                            <div className="space-y-3">
+                                {[1, 2, 3, 4, 5].map((i) => (
+                                    <div
+                                        key={i}
+                                        className="flex items-center justify-between py-2"
+                                    >
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="h-4 w-40" />
+                                            <Skeleton className="h-3 w-24" />
                                         </div>
-                                    ))}
-                                </div>
-                            }
-                        >
-                            {recentTxs.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    No recent transactions.
-                                </p>
-                            ) : (
-                                <>
+                                        <Skeleton className="h-4 w-16" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : recentTransactionsError ? (
+                            <DashboardLoaderErrorCard
+                                message={recentTransactionsError}
+                                onRetry={() => {
+                                    void loadRecentTransactions(
+                                        currentOffsetRef.current,
+                                    );
+                                }}
+                            />
+                        ) : recentTxs.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No recent transactions.
+                            </p>
+                        ) : (
+                            <>
                                     {/* Mobile cards */}
                                     <div className="divide-y sm:hidden">
                                         {recentTxs.map((transaction) => {
@@ -930,7 +1338,7 @@ export default function LedgerDashboard() {
                                                         router.visit(
                                                             transactionEdit.url(
                                                                 {
-                                                                    ledger: ledger!
+                                                                    ledger: ledger
                                                                         .id,
                                                                     transaction:
                                                                         transaction.id,
@@ -1009,7 +1417,7 @@ export default function LedgerDashboard() {
                                                             router.visit(
                                                                 transactionEdit.url(
                                                                     {
-                                                                        ledger: ledger!
+                                                                        ledger: ledger
                                                                             .id,
                                                                         transaction:
                                                                             transaction.id,
@@ -1060,19 +1468,40 @@ export default function LedgerDashboard() {
                                         </TableBody>
                                     </Table>
                                 </>
-                            )}
-                        </Deferred>
+                        )}
                     </CardContent>
                 </Card>
             </div>
 
             <PayBillDialog
                 bill={payingBill}
-                ledgerId={ledger!.id}
+                ledgerId={ledger.id}
                 accounts={flatAccounts}
                 onClose={() => setPayingBill(null)}
+                onSuccess={() => {
+                    refreshDashboardModules();
+                }}
             />
         </AppLayout>
+    );
+}
+
+function DashboardLoaderErrorCard({
+    message,
+    onRetry,
+}: {
+    message: string;
+    onRetry: () => void;
+}) {
+    return (
+        <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4">
+            <p className="text-sm text-muted-foreground">{message}</p>
+            <div>
+                <Button variant="outline" size="sm" onClick={onRetry}>
+                    Retry
+                </Button>
+            </div>
+        </div>
     );
 }
 

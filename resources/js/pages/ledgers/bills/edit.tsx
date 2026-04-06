@@ -1,10 +1,15 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as accountsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/AccountController';
+import { show as showBill } from '@/actions/App/Http/Controllers/Api/V1/Ledger/BillController';
+import { index as categoriesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/CategoryController';
+import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/PayeeController';
 import { update as updateRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -18,12 +23,16 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
+import { buildAccountSelectOptions } from '@/lib/account-select-options';
 import { buildCategoryOptions, describeRecurrence } from '@/lib/format';
 import { mapInertiaErrors } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { edit as editRoute, index as billsIndex } from '@/routes/ledgers/bills';
-import type { Account, Bill, BreadcrumbItem, Category, Payee } from '@/types';
+import type { Account, Bill, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
+
+type ApiEnvelope<T> = { data: T };
 
 type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 type EndType = 'never' | 'on_date' | 'after_occurrences';
@@ -41,6 +50,8 @@ type FormData = {
     recurrence_day: string;
     next_due_date: string;
     auto_create: boolean;
+    is_active: boolean;
+    notify_email: boolean;
     end_type: EndType;
     end_date: string;
     end_after_occurrences: string;
@@ -48,16 +59,81 @@ type FormData = {
 
 type FormErrors = Partial<Record<keyof FormData | 'new_payee_name', string>>;
 
-export default function EditBill() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
+function BillEditFormSkeleton() {
+    return (
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
+            <div className="space-y-6 rounded-xl border border-sidebar-border/70 p-6">
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-12" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-9 w-full" />
+                    </div>
+                    <div className="grid gap-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-9 w-full" />
+                    </div>
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <Skeleton className="h-9 w-28" />
+            </div>
+        </div>
+    );
+}
 
-    const { bill, accounts, categories, payees } = usePage<{
-        bill: Bill;
-        accounts: Account[];
-        categories: Category[];
-        payees: Payee[];
-    }>().props;
+function BillEditErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 p-4">
+            <p className="text-sm text-muted-foreground">Failed to load bill data.</p>
+            <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+            </Button>
+        </div>
+    );
+}
+
+function EditBillForm({
+    ledger,
+    bill,
+    accounts,
+    categories,
+    payees,
+}: {
+    ledger: Ledger;
+    bill: Bill;
+    accounts: Account[];
+    categories: Category[];
+    payees: Payee[];
+}) {
+    const accountOptions = buildAccountSelectOptions(accounts);
+    const resolveDefaultToAccountId = (sourceAccountId: string): string =>
+        buildAccountSelectOptions(accounts, sourceAccountId)[0]?.value ?? '';
 
     const [data, setFormData] = useState<FormData>({
         name: bill.name,
@@ -73,6 +149,8 @@ export default function EditBill() {
             bill.recurrence_day != null ? String(bill.recurrence_day) : '',
         next_due_date: bill.next_due_date ?? '',
         auto_create: bill.auto_create,
+        is_active: bill.is_active,
+        notify_email: bill.notify_email,
         end_type: (bill.end_type ?? 'never') as EndType,
         end_date: bill.end_date ?? '',
         end_after_occurrences:
@@ -80,6 +158,10 @@ export default function EditBill() {
                 ? String(bill.end_after_occurrences)
                 : '',
     });
+    const destinationAccountOptions = buildAccountSelectOptions(
+        accounts,
+        data.account_id,
+    );
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
     const [newPayeeName, setNewPayeeName] = useState('');
@@ -145,6 +227,8 @@ export default function EditBill() {
             recurrence_day: data.recurrence_day || null,
             next_due_date: data.next_due_date,
             auto_create: data.auto_create,
+            is_active: data.is_active,
+            notify_email: data.notify_email,
             end_type: data.end_type,
             end_date: data.end_date || null,
             end_after_occurrences: data.end_after_occurrences || null,
@@ -208,16 +292,15 @@ export default function EditBill() {
                                         !data.to_account_id &&
                                         accounts.length > 1
                                     ) {
-                                        const fallbackAccount = accounts.find(
-                                            (account) =>
-                                                String(account.id) !==
+                                        const fallbackAccountId =
+                                            resolveDefaultToAccountId(
                                                 data.account_id,
-                                        );
+                                            );
 
-                                        if (fallbackAccount) {
+                                        if (fallbackAccountId) {
                                             setData(
                                                 'to_account_id',
-                                                String(fallbackAccount.id),
+                                                fallbackAccountId,
                                             );
                                         }
                                     }
@@ -259,11 +342,7 @@ export default function EditBill() {
                     <div className="grid gap-2">
                         <Label>Account</Label>
                         <SearchableSelect
-                            options={accounts.map((account) => ({
-                                value: String(account.id),
-                                label: account.name,
-                                color: account.color,
-                            }))}
+                            options={accountOptions}
                             value={data.account_id || null}
                             onValueChange={(value) =>
                                 setData('account_id', value ?? '')
@@ -278,17 +357,7 @@ export default function EditBill() {
                         <div className="grid gap-2">
                             <Label>Destination account</Label>
                             <SearchableSelect
-                                options={accounts
-                                    .filter(
-                                        (account) =>
-                                            String(account.id) !==
-                                            data.account_id,
-                                    )
-                                    .map((account) => ({
-                                        value: String(account.id),
-                                        label: account.name,
-                                        color: account.color,
-                                    }))}
+                                options={destinationAccountOptions}
                                 value={data.to_account_id || null}
                                 onValueChange={(value) =>
                                     setData('to_account_id', value ?? '')
@@ -501,6 +570,42 @@ export default function EditBill() {
                         </Label>
                     </div>
 
+                    {/* Active */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="is_active"
+                            checked={data.is_active}
+                            onCheckedChange={(checked) =>
+                                setData('is_active', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="is_active">Active</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Inactive recurring transactions are paused and won&apos;t be tracked or auto-created.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Email notifications */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="notify_email"
+                            checked={data.notify_email}
+                            onCheckedChange={(checked) =>
+                                setData('notify_email', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="notify_email">Email reminders</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Receive email reminders 3 days before the due date, on the due date, and when overdue.
+                            </p>
+                        </div>
+                    </div>
+
                     {/* End type */}
                     <div className="grid gap-2">
                         <Label>End</Label>
@@ -584,5 +689,126 @@ export default function EditBill() {
                 </form>
             </div>
         </AppLayout>
+    );
+}
+
+export default function EditBill() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger! as Ledger;
+    const { bill_id: billId } = usePage<{ bill_id: number }>().props;
+
+    const billLoaderState = useHttp<Record<string, never>, ApiEnvelope<Bill>>({});
+    const accountsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Account[]>>({});
+    const categoriesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Category[]>>({});
+    const payeesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Payee[]>>({});
+
+    const [hasResolved, setHasResolved] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const mountRef = useRef(false);
+
+    function loadAll() {
+        let cancelled = false;
+        setLoadError(null);
+
+        billLoaderState.cancel();
+        accountsLoaderState.cancel();
+        categoriesLoaderState.cancel();
+        payeesLoaderState.cancel();
+
+        void Promise.allSettled([
+            billLoaderState.get(showBill.url({ ledger: ledger.id, bill: billId }), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            accountsLoaderState.get(accountsLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            categoriesLoaderState.get(categoriesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            payeesLoaderState.get(payeesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+        ]).then((results) => {
+            if (cancelled) {
+return;
+}
+
+            const anyFailed = results.some((r) => r.status === 'rejected');
+
+            if (anyFailed) {
+                setLoadError('Failed to load bill data.');
+            }
+
+            setHasResolved(true);
+        });
+
+        return () => {
+ cancelled = true; 
+};
+    }
+
+    useEffect(() => {
+        if (mountRef.current) {
+return;
+}
+
+        mountRef.current = true;
+        const cleanup = loadAll();
+
+        return () => {
+            cleanup();
+            billLoaderState.cancel();
+            accountsLoaderState.cancel();
+            categoriesLoaderState.cancel();
+            payeesLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id, billId]);
+
+    const bill = billLoaderState.response?.data;
+    const accounts = accountsLoaderState.response?.data ?? [];
+    const categories = categoriesLoaderState.response?.data ?? [];
+    const payees = payeesLoaderState.response?.data ?? [];
+
+    if (!hasResolved) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title="Edit Recurring Transaction" />
+                <BoneSkeleton name="bill-edit-form" loading fallback={<BillEditFormSkeleton />}>
+                    <BillEditFormSkeleton />
+                </BoneSkeleton>
+            </AppLayout>
+        );
+    }
+
+    if (loadError || !bill) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title="Edit Recurring Transaction" />
+                <BillEditErrorState onRetry={() => {
+                    setHasResolved(false);
+                    mountRef.current = false;
+                    loadAll();
+                }} />
+            </AppLayout>
+        );
+    }
+
+    return (
+        <EditBillForm
+            ledger={ledger}
+            bill={bill}
+            accounts={accounts}
+            categories={categories}
+            payees={payees}
+        />
     );
 }

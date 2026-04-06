@@ -39,14 +39,51 @@ test('budget index page renders successfully', function () {
             ->missing('budgets')
         );
 
-    $response->assertInertia(fn (Assert $page) => $page
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('budgets', 1, fn (Assert $budgetPage) => $budgetPage
-                ->where('category_name', 'Food')
+    $response->assertViewMissing('page.deferredProps');
+});
+
+test('budget index keeps categories immediate and hierarchical while budgets move to api reads', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $parent = Category::factory()->for($ledger)->create([
+        'name' => 'Food',
+        'position' => 1,
+    ]);
+    $child = Category::factory()->for($ledger)->create([
+        'parent_id' => $parent->id,
+        'name' => 'Dining Out',
+        'position' => 1,
+    ]);
+
+    Budget::query()->create([
+        'ledger_id' => $ledger->id,
+        'category_id' => $child->id,
+        'amount' => 300,
+        'period' => 'monthly',
+        'start_date' => now()->toDateString(),
+        'end_date' => null,
+        'is_active' => true,
+        'rollover' => false,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('ledgers.budgets.index', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ledgers/budgets/index')
+            ->has('categories', 1, fn (Assert $categoryPage) => $categoryPage
+                ->where('name', 'Food')
+                ->has('children', 1, fn (Assert $childPage) => $childPage
+                    ->where('name', 'Dining Out')
+                    ->etc()
+                )
                 ->etc()
             )
-        )
-    );
+            ->missing('budgets')
+        );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('budget can be created through web routes', function () {
@@ -67,7 +104,8 @@ test('budget can be created through web routes', function () {
         ]);
 
     $response->assertRedirect(route('ledgers.budgets.index', $ledger))
-        ->assertSessionHasNoErrors();
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Budget created.');
 
     expect($ledger->budgets()->where('category_id', $category->id)->exists())->toBeTrue();
 });
@@ -101,7 +139,8 @@ test('budget can be updated through web routes', function () {
         ]);
 
     $response->assertRedirect(route('ledgers.budgets.index', $ledger))
-        ->assertSessionHasNoErrors();
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Budget updated.');
 
     expect($budget->fresh())
         ->amount->toBe('175.00')
@@ -129,7 +168,8 @@ test('budget can be deleted through web routes', function () {
         ->from(route('ledgers.budgets.index', $ledger))
         ->delete(route('ledgers.budgets.destroy', [$ledger, $budget]));
 
-    $response->assertRedirect(route('ledgers.budgets.index', $ledger));
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger))
+        ->assertSessionHas('success', 'Budget deleted.');
 
     expect(Budget::query()->whereKey($budget->id)->exists())->toBeFalse();
 });
@@ -154,6 +194,31 @@ test('budget store rejects categories from another ledger', function () {
 
     $response->assertRedirect(route('ledgers.budgets.index', $ledger))
         ->assertSessionHasErrors('category_id');
+
+    expect($ledger->budgets()->count())->toBe(0);
+});
+
+test('budget store preserves validation messages through web routes', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.budgets.index', $ledger))
+        ->post(route('ledgers.budgets.store', $ledger), [
+            'amount' => 0,
+            'period' => '',
+            'start_date' => '',
+            'end_date' => now()->subDay()->toDateString(),
+            'rollover' => false,
+        ]);
+
+    $response->assertRedirect(route('ledgers.budgets.index', $ledger))
+        ->assertSessionHasErrors([
+            'amount' => 'The budget amount must be at least 0.01.',
+            'period' => 'Please select a budget period.',
+            'start_date' => 'Please select a start date.',
+        ]);
 
     expect($ledger->budgets()->count())->toBe(0);
 });

@@ -1,5 +1,8 @@
 <?php
 
+use App\Actions\Transactions\UseCases\DeleteTransactionAction;
+use App\Actions\Transactions\UseCases\StoreTransactionAction;
+use App\Actions\Transactions\UseCases\UpdateTransactionAction;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -10,6 +13,104 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+
+test('transaction store routes through StoreTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+
+    $called = false;
+    $real = app()->make(StoreTransactionAction::class);
+    app()->bind(StoreTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.store', $ledger), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => 25.00,
+            'description' => 'Store through action',
+            'transaction_date' => '2026-03-13',
+        ])
+        ->assertRedirect();
+
+    expect($called)->toBeTrue();
+});
+
+test('transaction update routes through UpdateTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before action update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $called = false;
+    $real = app()->make(UpdateTransactionAction::class);
+    app()->bind(UpdateTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => 25.00,
+            'description' => 'Updated through action',
+            'transaction_date' => '2026-03-20',
+        ])
+        ->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction updated.');
+
+    expect($called)->toBeTrue();
+});
+
+test('transaction destroy routes through DeleteTransactionAction', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->expense()
+        ->create();
+
+    $called = false;
+    $real = app()->make(DeleteTransactionAction::class);
+    app()->bind(DeleteTransactionAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->delete(route('ledgers.transactions.destroy', [$ledger, $transaction]))
+        ->assertRedirect(route('ledgers.transactions.index', $ledger))
+        ->assertSessionHas('success', 'Transaction deleted.');
+
+    expect($called)->toBeTrue();
+});
 
 test('users can create an income transaction', function () {
     $user = User::factory()->create();
@@ -35,6 +136,36 @@ test('users can create an income transaction', function () {
     expect($transaction)->not->toBeNull()
         ->and((float) $transaction->amount)->toBe(500.00)
         ->and($transaction->transaction_type)->toBe(TransactionType::Income);
+});
+
+test('transaction store can reuse an existing payee through the web route', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Coffee Shop']);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.store', $ledger), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'payee_id' => null,
+            'new_payee_name' => 'Coffee Shop',
+            'transaction_type' => 'expense',
+            'amount' => 20.25,
+            'description' => 'Morning coffee',
+            'transaction_date' => '2026-03-13',
+        ]);
+
+    $response->assertRedirect();
+
+    $transaction = $ledger->transactions()->latest('id')->first();
+
+    expect($ledger->payees()->where('name', 'Coffee Shop')->count())->toBe(1)
+        ->and($transaction?->payee_id)->toBe($payee->id);
 });
 
 test('users can create a transfer via HTTP', function () {
@@ -70,7 +201,7 @@ test('users can create a transfer via HTTP', function () {
         ->and($incoming->account_id)->toBe($toAccount->id);
 });
 
-test('transaction index filters by account', function () {
+test('transaction index preserves account filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -98,17 +229,12 @@ test('transaction index filters by account', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.account_ids', [(string) $accountA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Account A transaction')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by search term', function () {
+test('transaction index preserves search term in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -135,17 +261,12 @@ test('transaction index filters by search term', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.search', 'coffee')
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.description', 'Morning coffee')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by transaction type', function () {
+test('transaction index preserves transaction type filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -174,17 +295,12 @@ test('transaction index filters by transaction type', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.transaction_types', ['income'])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.transaction_type', 'income')
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index normalizes transfer filters from the page query shape', function () {
+test('transaction index normalizes transfer filter in shell props from the page query shape', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -213,26 +329,12 @@ test('transaction index normalizes transfer filters from the page query shape', 
             ->component('ledgers/transactions/index')
             ->where('filters.transaction_types', ['transfer'])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactionsProp) => $transactionsProp
-                    ->has('data', 2)
-                    ->where('data.0.transaction_type', 'transfer')
-                    ->where('data.1.transaction_type', 'transfer')
-                    ->where('data', fn ($transactions) => $transactions
-                        ->pluck('id')
-                        ->sort()
-                        ->values()
-                        ->all() === collect([$incomingTransfer->id, $outgoingTransfer->id])
-                        ->sort()
-                        ->values()
-                        ->all())
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by category', function () {
+test('transaction index preserves category filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -259,17 +361,12 @@ test('transaction index filters by category', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.category_ids', [(string) $catA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.category.id', $catA->id)
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
-test('transaction index filters by payee', function () {
+test('transaction index preserves payee filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -296,14 +393,9 @@ test('transaction index filters by payee', function () {
             ->component('ledgers/transactions/index')
             ->where('filters.payee_ids', [(string) $payeeA->id])
             ->missing('transactions')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('transactions', fn (Assert $transactions) => $transactions
-                    ->has('data', 1)
-                    ->where('data.0.payee.id', $payeeA->id)
-                    ->etc()
-                )
-            )
         );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('transaction store is forbidden for another users ledger', function () {
@@ -434,6 +526,44 @@ test('transaction update can create a new payee through the web route', function
 
     expect($ledger->payees()->where('name', 'Fresh Edit Payee')->exists())->toBeTrue()
         ->and($transaction->payee?->name)->toBe('Fresh Edit Payee');
+});
+
+test('transaction update can reuse an existing payee through the web route', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => 'expense']);
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Fresh Edit Payee']);
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before payee update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Updated from web route',
+            'transaction_date' => '2026-03-20',
+            'new_payee_name' => 'Fresh Edit Payee',
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    $transaction->refresh();
+
+    expect($ledger->payees()->where('name', 'Fresh Edit Payee')->count())->toBe(1)
+        ->and($transaction->payee_id)->toBe($payee->id);
 });
 
 test('transaction store validation redirects back with submitted input', function () {

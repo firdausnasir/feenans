@@ -1,13 +1,24 @@
 <?php
 
+use App\Actions\Bills\Queries\GetBillMissedCyclesQuery;
+use App\Actions\Bills\Queries\ListUpcomingBillsQuery;
+use App\Actions\Bills\UseCases\PayBillAction;
+use App\Actions\Bills\UseCases\ProcessAutoBillsAction;
+use App\Actions\Bills\UseCases\StoreBillAction;
+use App\Actions\Bills\UseCases\UpdateBillAction;
+use App\Data\Bills\Input\PayBillData;
+use App\Data\Bills\Input\StoreBillData;
+use App\Data\Bills\Input\UpdateBillData;
 use App\Enums\RecurrenceType;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Bill;
 use App\Models\Ledger;
+use App\Models\Payee;
 use App\Models\Transaction;
-use App\Services\BillService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 function makeLedgerWithAccount(): array
@@ -19,24 +30,28 @@ function makeLedgerWithAccount(): array
     return [$ledger, $account];
 }
 
-test('bill service can store a bill', function () {
+test('store bill action can store a bill', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
-    $bill = app(BillService::class)->store($ledger, [
-        'name' => 'Rent',
-        'amount' => 1200.00,
-        'account_id' => $account->id,
-        'category_id' => null,
-        'payee_id' => null,
-        'recurrence_type' => RecurrenceType::Monthly,
-        'recurrence_interval' => 1,
-        'recurrence_day' => null,
-        'next_due_date' => '2026-04-01',
-        'auto_create' => false,
-        'end_type' => null,
-        'end_date' => null,
-        'end_after_occurrences' => null,
-    ]);
+    $bill = app(StoreBillAction::class)(new StoreBillData(
+        name: 'Rent',
+        transaction_type: TransactionType::Expense->value,
+        amount: 1200.00,
+        account_id: $account->id,
+        to_account_id: null,
+        category_id: null,
+        payee_id: null,
+        new_payee_name: null,
+        recurrence_type: RecurrenceType::Monthly->value,
+        recurrence_interval: 1,
+        recurrence_day: null,
+        next_due_date: '2026-04-01',
+        auto_create: false,
+        end_type: null,
+        end_date: null,
+        end_after_occurrences: null,
+        ledger: $ledger,
+    ));
 
     expect($bill)->toBeInstanceOf(Bill::class)
         ->and($bill->name)->toBe('Rent')
@@ -45,27 +60,29 @@ test('bill service can store a bill', function () {
         ->and((string) $bill->amount)->toBe('1200.00');
 });
 
-test('bill service can store a transfer bill', function () {
+test('store bill action can store a transfer bill', function () {
     [$ledger, $fromAccount] = makeLedgerWithAccount();
     $toAccount = Account::factory()->for($ledger)->create();
 
-    $bill = app(BillService::class)->store($ledger, [
-        'name' => 'Savings transfer',
-        'transaction_type' => 'transfer',
-        'amount' => 250.00,
-        'account_id' => $fromAccount->id,
-        'to_account_id' => $toAccount->id,
-        'category_id' => null,
-        'payee_id' => null,
-        'recurrence_type' => RecurrenceType::Monthly,
-        'recurrence_interval' => 1,
-        'recurrence_day' => null,
-        'next_due_date' => '2026-04-01',
-        'auto_create' => false,
-        'end_type' => null,
-        'end_date' => null,
-        'end_after_occurrences' => null,
-    ]);
+    $bill = app(StoreBillAction::class)(new StoreBillData(
+        name: 'Savings transfer',
+        transaction_type: TransactionType::Transfer->value,
+        amount: 250.00,
+        account_id: $fromAccount->id,
+        to_account_id: $toAccount->id,
+        category_id: null,
+        payee_id: null,
+        new_payee_name: null,
+        recurrence_type: RecurrenceType::Monthly->value,
+        recurrence_interval: 1,
+        recurrence_day: null,
+        next_due_date: '2026-04-01',
+        auto_create: false,
+        end_type: null,
+        end_date: null,
+        end_after_occurrences: null,
+        ledger: $ledger,
+    ));
 
     expect($bill)->toBeInstanceOf(Bill::class)
         ->and($bill->transaction_type->value)->toBe('transfer')
@@ -74,7 +91,35 @@ test('bill service can store a transfer bill', function () {
         ->and((string) $bill->amount)->toBe('250.00');
 });
 
-test('bill service can update a bill', function () {
+test('store bill action reuses an existing payee name', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'ISP']);
+
+    $bill = app(StoreBillAction::class)(new StoreBillData(
+        name: 'Internet',
+        transaction_type: TransactionType::Expense->value,
+        amount: 50.00,
+        account_id: $account->id,
+        to_account_id: null,
+        category_id: null,
+        payee_id: null,
+        new_payee_name: 'ISP',
+        recurrence_type: RecurrenceType::Monthly->value,
+        recurrence_interval: 1,
+        recurrence_day: null,
+        next_due_date: '2026-04-01',
+        auto_create: false,
+        end_type: null,
+        end_date: null,
+        end_after_occurrences: null,
+        ledger: $ledger,
+    ));
+
+    expect($bill->payee_id)->toBe($payee->id)
+        ->and($ledger->payees()->where('name', 'ISP')->count())->toBe(1);
+});
+
+test('update bill action can update a bill', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -82,16 +127,46 @@ test('bill service can update a bill', function () {
         'amount' => 100.00,
     ]);
 
-    $updated = app(BillService::class)->update($bill, [
+    app()->instance('request', Request::create('/_tests/bills/'.$bill->id, 'PATCH', [
         'name' => 'New Name',
         'amount' => 200.00,
-    ]);
+    ]));
+
+    $updated = app(UpdateBillAction::class)(new UpdateBillData(
+        ledger: $ledger,
+        bill: $bill,
+        name: 'New Name',
+        amount: 200.00,
+    ));
 
     expect($updated->name)->toBe('New Name')
         ->and((string) $updated->amount)->toBe('200.00');
 });
 
-test('bill service pay bill creates transaction', function () {
+test('update bill action reuses an existing payee name', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Water Utility']);
+
+    $bill = Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Water Bill',
+        'payee_id' => null,
+    ]);
+
+    app()->instance('request', Request::create('/_tests/bills/'.$bill->id, 'PATCH', [
+        'new_payee_name' => 'Water Utility',
+    ]));
+
+    $updated = app(UpdateBillAction::class)(new UpdateBillData(
+        ledger: $ledger,
+        bill: $bill,
+        new_payee_name: 'Water Utility',
+    ));
+
+    expect($updated->payee_id)->toBe($payee->id)
+        ->and($ledger->payees()->where('name', 'Water Utility')->count())->toBe(1);
+});
+
+test('pay bill action creates transaction', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -100,7 +175,10 @@ test('bill service pay bill creates transaction', function () {
         'next_due_date' => CarbonImmutable::today(),
     ]);
 
-    $transaction = app(BillService::class)->payBill($bill);
+    $transaction = app(PayBillAction::class)(new PayBillData(
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     expect($transaction)->toBeInstanceOf(Transaction::class)
         ->and((string) $transaction->amount)->toBe('-150.00')
@@ -109,7 +187,7 @@ test('bill service pay bill creates transaction', function () {
         ->and($transaction->transaction_date->toDateString())->toBe(CarbonImmutable::today()->toDateString());
 });
 
-test('bill service pay transfer bill creates paired transactions', function () {
+test('pay bill action creates paired transactions for transfer bills', function () {
     [$ledger, $fromAccount] = makeLedgerWithAccount();
     $toAccount = Account::factory()->for($ledger)->create();
 
@@ -121,7 +199,10 @@ test('bill service pay transfer bill creates paired transactions', function () {
         'next_due_date' => CarbonImmutable::today(),
     ]);
 
-    $transaction = app(BillService::class)->payBill($bill);
+    $transaction = app(PayBillAction::class)(new PayBillData(
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     $transactions = Transaction::query()
         ->where('bill_id', $bill->id)
@@ -138,7 +219,7 @@ test('bill service pay transfer bill creates paired transactions', function () {
         ->and($transactions[0]->transfer_pair_id)->toBe($transactions[1]->transfer_pair_id);
 });
 
-test('bill service pay bill advances next due date', function () {
+test('pay bill action advances the next due date', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -149,14 +230,17 @@ test('bill service pay bill advances next due date', function () {
 
     $originalDue = $bill->next_due_date->toDateString();
 
-    app(BillService::class)->payBill($bill);
+    app(PayBillAction::class)(new PayBillData(
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     $bill->refresh();
 
     expect($bill->next_due_date->toDateString())->not->toBe($originalDue);
 });
 
-test('bill service pay bill deactivates bill when end reached', function () {
+test('pay bill action deactivates a bill when its occurrence limit is reached', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -166,30 +250,17 @@ test('bill service pay bill deactivates bill when end reached', function () {
         'occurrences_count' => 0,
     ]);
 
-    app(BillService::class)->payBill($bill);
+    app(PayBillAction::class)(new PayBillData(
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     $bill->refresh();
 
     expect($bill->is_active)->toBeFalse();
 });
 
-test('bill service advance to next due updates date', function () {
-    [$ledger, $account] = makeLedgerWithAccount();
-
-    $bill = Bill::factory()->for($ledger)->for($account)->create([
-        'next_due_date' => CarbonImmutable::parse('2026-03-01'),
-        'recurrence_type' => RecurrenceType::Monthly,
-        'recurrence_interval' => 1,
-    ]);
-
-    app(BillService::class)->advanceToNextDue($bill);
-
-    $bill->refresh();
-
-    expect($bill->next_due_date->toDateString())->toBe('2026-04-01');
-});
-
-test('bill service compute missed cycles returns 0 when not overdue', function () {
+test('get bill missed cycles query returns 0 when the bill is not overdue', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -198,12 +269,12 @@ test('bill service compute missed cycles returns 0 when not overdue', function (
         'recurrence_interval' => 1,
     ]);
 
-    $count = app(BillService::class)->computeMissedCycles($bill);
+    $count = app(GetBillMissedCyclesQuery::class)($bill);
 
     expect($count)->toBe(0);
 });
 
-test('bill service compute missed cycles returns correct count when overdue', function () {
+test('get bill missed cycles query returns the correct count when overdue', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -212,12 +283,12 @@ test('bill service compute missed cycles returns correct count when overdue', fu
         'recurrence_interval' => 1,
     ]);
 
-    $count = app(BillService::class)->computeMissedCycles($bill);
+    $count = app(GetBillMissedCyclesQuery::class)($bill);
 
     expect($count)->toBe(2);
 });
 
-test('bill service process auto bills creates transactions for due bills', function () {
+test('process auto bills action creates transactions for due bills', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -228,12 +299,13 @@ test('bill service process auto bills creates transactions for due bills', funct
         'amount' => 75.00,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(1);
 });
 
-test('bill service process auto bills skips processing while another run holds the lock', function () {
+test('process auto bills action skips processing while another run holds the lock', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -249,7 +321,8 @@ test('bill service process auto bills skips processing while another run holds t
     expect($lock->get())->toBeTrue();
 
     try {
-        app(BillService::class)->processAutoBills();
+        $processAutoBills = app(ProcessAutoBillsAction::class);
+        $processAutoBills();
     } finally {
         $lock->release();
     }
@@ -258,7 +331,7 @@ test('bill service process auto bills skips processing while another run holds t
         ->and($bill->fresh()->next_due_date->isSameDay(CarbonImmutable::today()))->toBeTrue();
 });
 
-test('bill service process auto bills creates paired transactions for due transfer bills', function () {
+test('process auto bills action creates paired transactions for due transfer bills', function () {
     [$ledger, $fromAccount] = makeLedgerWithAccount();
     $toAccount = Account::factory()->for($ledger)->create();
 
@@ -272,7 +345,8 @@ test('bill service process auto bills creates paired transactions for due transf
         'amount' => 75.00,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     $transactions = Transaction::query()
         ->where('bill_id', $bill->id)
@@ -284,7 +358,7 @@ test('bill service process auto bills creates paired transactions for due transf
         ->and((string) $transactions[1]->amount)->toBe('75.00');
 });
 
-test('bill service process auto bills handles multiple missed cycles', function () {
+test('process auto bills action handles multiple missed cycles', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -295,12 +369,13 @@ test('bill service process auto bills handles multiple missed cycles', function 
         'amount' => 50.00,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(3);
 });
 
-test('bill service process auto bills skips non-auto bills', function () {
+test('process auto bills action skips non-auto bills', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -309,12 +384,13 @@ test('bill service process auto bills skips non-auto bills', function () {
         'recurrence_type' => RecurrenceType::Monthly,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(0);
 });
 
-test('bill service process auto bills deactivates expired bills', function () {
+test('process auto bills action deactivates expired bills', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -327,13 +403,14 @@ test('bill service process auto bills deactivates expired bills', function () {
         'recurrence_interval' => 1,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     $bill->refresh();
     expect($bill->is_active)->toBeFalse();
 });
 
-test('bill service get upcoming bills returns correct groups', function () {
+test('list upcoming bills query returns the correct groups', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $due = Bill::factory()->for($ledger)->for($account)->create([
@@ -359,17 +436,54 @@ test('bill service get upcoming bills returns correct groups', function () {
         'auto_create' => true,
     ]);
 
-    $result = app(BillService::class)->getUpcomingBills($ledger);
+    $result = app(ListUpcomingBillsQuery::class)($ledger, 30);
 
-    expect($result['due']->contains($due))->toBeTrue()
-        ->and($result['upcoming']->contains($upcoming))->toBeTrue()
-        ->and($result['missed']->contains($missed))->toBeTrue()
+    expect(collect($result['due'])->pluck('id'))->toContain($due->id)
+        ->and(collect($result['upcoming'])->pluck('id'))->toContain($upcoming->id)
+        ->and(collect($result['missed'])->pluck('id'))->toContain($missed->id)
         ->and($result['missed'])->toHaveCount(1)
         ->and($result['due'])->toHaveCount(1)
         ->and($result['upcoming'])->toHaveCount(1);
 });
 
-test('bill service pay bill respects overrides', function () {
+test('list upcoming bills only resolves missed cycle counts for missed bills', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today(),
+        'is_active' => true,
+    ]);
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today()->addDay(),
+        'is_active' => true,
+    ]);
+
+    $missed = Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today()->subDays(2),
+        'is_active' => true,
+        'auto_create' => false,
+    ]);
+
+    $mock = Mockery::mock(GetBillMissedCyclesQuery::class);
+    $mock->shouldReceive('__invoke')
+        ->once()
+        ->andReturnUsing(function (Bill $bill) use ($missed): int {
+            expect($bill->is($missed))->toBeTrue();
+
+            return 2;
+        });
+
+    app()->instance(GetBillMissedCyclesQuery::class, $mock);
+
+    $result = app(ListUpcomingBillsQuery::class)($ledger, 30);
+
+    expect($result['due'][0]['missed_cycles'])->toBe(0)
+        ->and($result['upcoming'][0]['missed_cycles'])->toBe(0)
+        ->and($result['missed'][0]['missed_cycles'])->toBe(2);
+});
+
+test('pay bill action respects overrides', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -378,16 +492,18 @@ test('bill service pay bill respects overrides', function () {
         'next_due_date' => CarbonImmutable::today(),
     ]);
 
-    $transaction = app(BillService::class)->payBill($bill, [
-        'amount' => 100,
-        'date' => '2026-01-01',
-    ]);
+    $transaction = app(PayBillAction::class)(new PayBillData(
+        amount: 100,
+        date: '2026-01-01',
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     expect((string) $transaction->amount)->toBe('-100.00')
         ->and($transaction->transaction_date->toDateString())->toBe('2026-01-01');
 });
 
-test('bill service pay bill deactivates when on_date end reached', function () {
+test('pay bill action deactivates a bill when its end date is reached', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -398,14 +514,17 @@ test('bill service pay bill deactivates when on_date end reached', function () {
         'recurrence_interval' => 1,
     ]);
 
-    app(BillService::class)->payBill($bill);
+    app(PayBillAction::class)(new PayBillData(
+        ledger: $ledger,
+        bill: $bill,
+    ));
 
     $bill->refresh();
 
     expect($bill->is_active)->toBeFalse();
 });
 
-test('bill service process auto bills stops when end reached during multi-cycle catchup', function () {
+test('process auto bills action stops when an end condition is reached during multi-cycle catchup', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
     $bill = Bill::factory()->for($ledger)->for($account)->create([
@@ -419,7 +538,8 @@ test('bill service process auto bills stops when end reached during multi-cycle 
         'occurrences_count' => 1,
     ]);
 
-    app(BillService::class)->processAutoBills();
+    $processAutoBills = app(ProcessAutoBillsAction::class);
+    $processAutoBills();
 
     expect(Transaction::query()->where('description', $bill->name)->count())->toBe(1);
     $bill->refresh();

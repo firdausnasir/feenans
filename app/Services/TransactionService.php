@@ -4,13 +4,13 @@ namespace App\Services;
 
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Attachment;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\Payee;
 use App\Models\Transaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class TransactionService
@@ -370,8 +370,11 @@ class TransactionService
      */
     private function deleteAttachments(Transaction $transaction): void
     {
-        foreach ($transaction->attachments()->get() as $attachment) {
-            Storage::delete($attachment->path);
+        $attachments = $transaction->attachments()->get();
+
+        Attachment::deleteFiles($attachments->pluck('path')->all());
+
+        foreach ($attachments as $attachment) {
             $attachment->delete();
         }
     }

@@ -1,7 +1,8 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import { Plus, Tag } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as categoriesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/CategoryController';
 import {
     destroy as destroyCategory,
     reorder as reorderCategories,
@@ -49,6 +50,8 @@ type AddSubState = {
 type DeleteTarget = {
     category: Category;
 };
+
+type ApiEnvelope<T> = { data: T };
 
 type DeleteAction = 'uncategorize' | 'reassign';
 
@@ -143,6 +146,23 @@ function CategoriesLoadingSkeleton() {
                             <Skeleton className="ml-auto h-4 w-8" />
                         </div>
                     ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function CategoriesErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load categories.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
                 </div>
             </CardContent>
         </Card>
@@ -369,11 +389,13 @@ function DeleteCategoryDialog({
     allCategories,
     ledgerId,
     onClose,
+    onDeleted,
 }: {
     deleteTarget: DeleteTarget | null;
     allCategories: Category[];
     ledgerId: number;
     onClose: () => void;
+    onDeleted: () => Promise<void>;
 }) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteAction, setDeleteAction] =
@@ -412,14 +434,13 @@ function DeleteCategoryDialog({
                 }),
                 {
                     data: { reassign_category_id: reassignValue },
-                    only: ['categories', 'flash'],
                     preserveState: true,
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: async () => {
                         setDeleteAction('uncategorize');
                         setReassignCategoryId('');
                         onClose();
-                        toast.success('Category deleted');
+                        await onDeleted();
                     },
                     onError: (errors) => {
                         const mapped = mapInertiaErrorsArray(errors);
@@ -590,6 +611,8 @@ function CategoryList({
     setAddSubState,
     onDeleteRequest,
     onAddCategory,
+    onCategoryUpdated,
+    onCategoriesReordered,
     openAddFormTrigger,
 }: {
     ledgerId: number;
@@ -607,6 +630,8 @@ function CategoryList({
         parentId?: number,
         transactionType?: 'expense' | 'income',
     ) => void;
+    onCategoryUpdated: () => Promise<void>;
+    onCategoriesReordered: () => Promise<void>;
     openAddFormTrigger?: number;
 }) {
     const [showAddForm, setShowAddForm] = useState(false);
@@ -672,12 +697,11 @@ function CategoryList({
                     parent_id: editState.parentId,
                 },
                 {
-                    only: ['categories', 'flash'],
                     preserveState: true,
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: async () => {
                         setEditState(null);
-                        toast.success('Category updated');
+                        await onCategoryUpdated();
                     },
                     onError: (errors) => {
                         const mapped = mapInertiaErrorsArray(errors);
@@ -755,9 +779,11 @@ function CategoryList({
                 reorderCategories.url(ledgerId),
                 { items },
                 {
-                    only: ['categories', 'flash'],
                     preserveState: true,
                     preserveScroll: true,
+                    onSuccess: async () => {
+                        await onCategoriesReordered();
+                    },
                     onError: () => {
                         toast.error('Failed to reorder categories.');
                     },
@@ -1032,23 +1058,81 @@ function CategoryList({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function CategoriesIndex() {
-    const { currentLedger, categories: deferredCategories } = usePage<{
+    const { currentLedger } = usePage<{
         currentLedger: { id: number; name: string };
-        categories?: Category[];
     }>().props;
     const ledger = currentLedger!;
-    const categories = deferredCategories ?? [];
+    const categoriesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Category[]>>({});
 
     const [editState, setEditState] = useState<EditState | null>(null);
     const [addSubState, setAddSubState] = useState<AddSubState | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
     const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
     const [addFormTrigger, setAddFormTrigger] = useState(0);
+    const [categoriesError, setCategoriesError] = useState<string | null>(null);
+    const [hasLoadedCategories, setHasLoadedCategories] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Categories', href: categoriesIndex.url(ledger.id) },
     ];
+
+    const categories = categoriesLoaderState.response?.data ?? [];
+
+    async function loadCategories(): Promise<boolean> {
+        let cancelled = false;
+
+        categoriesLoaderState.cancel();
+        setCategoriesError(null);
+
+        try {
+            await categoriesLoaderState.get(categoriesLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setCategoriesError('Failed to load categories.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasLoadedCategories(true);
+            }
+        }
+    }
+
+    async function refreshCategoriesAfterMutation(
+        successMessage?: string,
+        staleDataMessage = 'Failed to refresh categories.',
+    ): Promise<void> {
+        const refreshed = await loadCategories();
+
+        if (!successMessage) {
+            if (!refreshed) {
+                toast.error(staleDataMessage);
+            }
+
+            return;
+        }
+
+        toast[refreshed ? 'success' : 'error'](
+            refreshed ? successMessage : staleDataMessage,
+        );
+    }
+
+    useEffect(() => {
+        void loadCategories();
+
+        return () => {
+            categoriesLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
 
     async function handleAddCategory(
         name: string,
@@ -1068,11 +1152,13 @@ export default function CategoriesIndex() {
                     transaction_type: transactionType,
                 },
                 {
-                    only: ['categories', 'flash'],
                     preserveState: true,
                     preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success('Category created');
+                    onSuccess: async () => {
+                        await refreshCategoriesAfterMutation(
+                            'Category created',
+                            'Category created, but failed to refresh categories.',
+                        );
                     },
                     onError: (errors) => {
                         const mapped = mapInertiaErrorsArray(errors);
@@ -1109,10 +1195,17 @@ export default function CategoriesIndex() {
                     </Button>
                 </div>
 
-                <Deferred
-                    data="categories"
-                    fallback={<CategoriesLoadingSkeleton />}
-                >
+                {categoriesLoaderState.processing && hasLoadedCategories ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing categories...
+                    </p>
+                ) : null}
+
+                {categoriesLoaderState.processing && !hasLoadedCategories ? (
+                    <CategoriesLoadingSkeleton />
+                ) : categoriesError && categories.length === 0 ? (
+                    <CategoriesErrorState onRetry={() => void loadCategories()} />
+                ) : (
                     <Tabs
                         defaultValue="expense"
                         onValueChange={(v) => {
@@ -1138,6 +1231,18 @@ export default function CategoriesIndex() {
                                     setDeleteTarget({ category: cat })
                                 }
                                 onAddCategory={makeAddHandler('expense')}
+                                onCategoryUpdated={() =>
+                                    refreshCategoriesAfterMutation(
+                                        'Category updated',
+                                        'Category updated, but failed to refresh categories.',
+                                    )
+                                }
+                                onCategoriesReordered={() =>
+                                    refreshCategoriesAfterMutation(
+                                        undefined,
+                                        'Categories reordered, but failed to refresh categories.',
+                                    )
+                                }
                                 openAddFormTrigger={
                                     activeTab === 'expense'
                                         ? addFormTrigger
@@ -1159,6 +1264,18 @@ export default function CategoriesIndex() {
                                     setDeleteTarget({ category: cat })
                                 }
                                 onAddCategory={makeAddHandler('income')}
+                                onCategoryUpdated={() =>
+                                    refreshCategoriesAfterMutation(
+                                        'Category updated',
+                                        'Category updated, but failed to refresh categories.',
+                                    )
+                                }
+                                onCategoriesReordered={() =>
+                                    refreshCategoriesAfterMutation(
+                                        undefined,
+                                        'Categories reordered, but failed to refresh categories.',
+                                    )
+                                }
                                 openAddFormTrigger={
                                     activeTab === 'income'
                                         ? addFormTrigger
@@ -1167,7 +1284,7 @@ export default function CategoriesIndex() {
                             />
                         </TabsContent>
                     </Tabs>
-                </Deferred>
+                )}
             </div>
 
             {/* Delete confirmation dialog */}
@@ -1176,6 +1293,12 @@ export default function CategoriesIndex() {
                 allCategories={categories}
                 ledgerId={ledger.id}
                 onClose={() => setDeleteTarget(null)}
+                onDeleted={() =>
+                    refreshCategoriesAfterMutation(
+                        'Category deleted',
+                        'Category deleted, but failed to refresh categories.',
+                    )
+                }
             />
         </AppLayout>
     );

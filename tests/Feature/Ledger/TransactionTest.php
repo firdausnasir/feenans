@@ -1,5 +1,9 @@
 <?php
 
+use App\Actions\Transactions\Queries\GetTransactionEditPageQuery;
+use App\Actions\Transactions\Queries\GetTransactionIndexPageQuery;
+use App\Data\Transactions\Input\GetTransactionIndexData;
+use App\Data\Transactions\Output\Web\TransactionData as WebTransactionData;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -343,4 +347,57 @@ test('transaction edit page renders for transfer transaction', function () {
         ->component('ledgers/transactions/edit')
         ->where('transaction_id', $outgoing->id)
     );
+});
+
+test('transaction index page query returns shaped transaction arrays', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->create([
+            'description' => 'Query shaped transaction',
+            'transaction_date' => '2026-03-20',
+        ]);
+
+    $page = app(GetTransactionIndexPageQuery::class)(
+        $ledger,
+        new GetTransactionIndexData(ledger: $ledger, user: $user),
+    );
+
+    $items = $page->transactions()->items();
+
+    expect($items[0])->toBeArray()
+        ->and($items[0]['id'])->toBe($transaction->id)
+        ->and($items[0]['description'])->toBe('Query shaped transaction');
+});
+
+test('transaction edit page query returns transaction data contract', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+    $payee = Payee::factory()->for($ledger)->create();
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->for($payee)
+        ->create([
+            'description' => 'Edit page contract transaction',
+            'transaction_date' => '2026-03-20',
+        ]);
+
+    $page = app(GetTransactionEditPageQuery::class)($ledger, $transaction);
+
+    expect($page->transaction)->toBeInstanceOf(WebTransactionData::class)
+        ->and($page->transaction->toArray()['id'])->toBe($transaction->id)
+        ->and($page->transaction->toArray()['description'])->toBe('Edit page contract transaction');
 });

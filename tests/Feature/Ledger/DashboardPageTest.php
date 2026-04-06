@@ -1,5 +1,10 @@
 <?php
 
+use App\Actions\Bills\Queries\ListUpcomingBillsQuery;
+use App\Actions\Budgets\Queries\ListBudgetsQuery;
+use App\Actions\Dashboard\Queries\GetDashboardPageQuery;
+use App\Data\Dashboard\Output\Web\DashboardPageData;
+use App\Http\Controllers\Ledger\DashboardController;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Bill;
@@ -141,23 +146,11 @@ test('accounts grouped by type with correct balances', function () {
         );
 });
 
-test('deferred props are available via follow-up request', function () {
-    $now = CarbonImmutable::now();
-    ['start' => $start] = $this->ledger->cycleBounds($now);
+test('dashboard page no longer exposes module props as deferred props', function () {
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
 
-    Transaction::factory()
-        ->for($this->ledger)
-        ->for($this->account)
-        ->for($this->category)
-        ->count(5)
-        ->create([
-            'transaction_type' => 'expense',
-            'amount' => '-20.00',
-            'transaction_date' => $start->addDay()->toDateString(),
-        ]);
-
-    $this->actingAs($this->user)
-        ->get(route('ledgers.dashboard', $this->ledger))
+    $response
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
             ->missing('recentTransactions')
@@ -166,33 +159,71 @@ test('deferred props are available via follow-up request', function () {
             ->missing('uncategorizedCount')
             ->missing('upcomingBills')
             ->missing('topBudgets')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('recentTransactions', 5)
-                ->has('uncategorizedCount')
-                ->has('dailyTrend')
-                ->has('topCategories')
-                ->has('upcomingBills')
-                ->has('topBudgets')
-            )
         );
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->toBeEmpty();
 });
 
-test('upcoming bills are returned in deferred props', function () {
+test('dashboard shell does not expose upcoming bills props', function () {
     Bill::factory()->for($this->ledger)->for($this->account)->create([
         'next_due_date' => CarbonImmutable::today()->addDays(3)->toDateString(),
         'is_active' => true,
     ]);
 
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
+
+    $response
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page->missing('upcomingBills'));
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->not->toContain('upcomingBills');
+});
+
+test('dashboard shell does not load upcoming bills through ListUpcomingBillsQuery', function () {
+    Bill::factory()->for($this->ledger)->for($this->account)->create([
+        'name' => 'Water Bill',
+        'amount' => 25.00,
+        'next_due_date' => CarbonImmutable::today()->addDay()->toDateString(),
+        'is_active' => true,
+    ]);
+
+    $called = false;
+    $markCalled = function () use (&$called): void {
+        $called = true;
+    };
+    $real = app()->make(ListUpcomingBillsQuery::class);
+
+    app()->bind(ListUpcomingBillsQuery::class, function () use ($real, $markCalled) {
+        return new class($real, $markCalled) extends ListUpcomingBillsQuery
+        {
+            public function __construct(
+                private readonly ListUpcomingBillsQuery $real,
+                private $markCalled,
+            ) {}
+
+            public function __invoke(Ledger $ledger, int $days = 3): array
+            {
+                ($this->markCalled)();
+
+                return ($this->real)($ledger, $days);
+            }
+        };
+    });
+
     $this->actingAs($this->user)
         ->get(route('ledgers.dashboard', $this->ledger))
-        ->assertSuccessful()
-        ->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('upcomingBills.upcoming', 1)
-                ->has('upcomingBills.due', 0)
-                ->has('upcomingBills.missed', 0)
-            )
-        );
+        ->assertSuccessful();
+
+    expect($called)->toBeFalse('Dashboard shell must not load upcoming bills through ListUpcomingBillsQuery');
 });
 
 test('cycle navigation scopes summary to the selected cycle', function () {
@@ -269,7 +300,7 @@ test('dashboard is forbidden for non-owner', function () {
         ->assertForbidden();
 });
 
-test('top budgets are returned sorted by percentage', function () {
+test('dashboard shell does not expose top budgets props', function () {
     $catA = Category::factory()->for($this->ledger)->create(['name' => 'Food']);
     $catB = Category::factory()->for($this->ledger)->create(['name' => 'Transport']);
 
@@ -304,14 +335,98 @@ test('top budgets are returned sorted by percentage', function () {
         'transaction_date' => $start->addDay()->toDateString(),
     ]);
 
+    $response = $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $this->ledger));
+
+    $response
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page->missing('topBudgets'));
+
+    expect(collect(data_get(
+        json_decode(json_encode($response->viewData('page')), true),
+        'deferredProps',
+        [],
+    ))->flatten()->all())->not->toContain('topBudgets');
+});
+
+test('GetDashboardPageQuery still builds dashboard module section callbacks', function () {
+    $data = app(GetDashboardPageQuery::class)($this->ledger, 0);
+
+    expect($data)->toBeInstanceOf(DashboardPageData::class)
+        ->and($data->cycle)->toHaveKey('cycle_start')
+        ->and($data->cycle)->toHaveKey('cycle_end')
+        ->and($data->cycle)->toHaveKey('offset')
+        ->and($data->summary)->toHaveKey('income')
+        ->and($data->summary)->toHaveKey('expense')
+        ->and($data->summary)->toHaveKey('net')
+        ->and($data->accounts)->toBeArray()
+        ->and($data->dailyTrend)->toBeCallable()
+        ->and($data->topCategories)->toBeCallable()
+        ->and($data->recentTransactions)->toBeCallable()
+        ->and($data->uncategorizedCount)->toBeCallable()
+        ->and($data->upcomingBills)->toBeCallable()
+        ->and($data->topBudgets)->toBeCallable();
+});
+
+test('dashboard shell does not trigger upcoming bill or budget queries', function () {
+    $this->mock(ListUpcomingBillsQuery::class)
+        ->shouldNotReceive('__invoke');
+
+    $this->mock(ListBudgetsQuery::class)
+        ->shouldNotReceive('__invoke');
+
     $this->actingAs($this->user)
         ->get(route('ledgers.dashboard', $this->ledger))
         ->assertSuccessful()
         ->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('topBudgets', 2)
-                ->where('topBudgets.0.category_name', 'Transport')
-                ->where('topBudgets.1.category_name', 'Food')
-            )
+            ->missing('upcomingBills')
+            ->missing('topBudgets')
         );
+});
+
+test('previous cycle summary uses actual cycle bounds not naive day subtraction', function () {
+    // Fix the date to April 15 2025: with cycle_start_day=31, the current cycle is
+    // March 31–April 29 and the actual previous cycle is Feb 28–March 27.
+    // The naive day-subtraction would compute March 1–March 30 (wrong).
+    CarbonImmutable::setTestNow('2025-04-15');
+
+    $ledger = Ledger::factory()->for($this->user)->create(['cycle_start_day' => 31]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    // Feb 28 is inside the actual prev cycle (Feb 28–March 27) but outside
+    // the naive calculation (March 1–March 30), so this is the edge-case transaction.
+    Transaction::factory()->for($ledger)->for($account)->for($category)->create([
+        'transaction_type' => 'income',
+        'amount' => '777.00',
+        'transaction_date' => '2025-02-28',
+    ]);
+
+    // March 28 is inside the naive range but outside the actual prev cycle.
+    // With the fix this must NOT appear in prev_income.
+    Transaction::factory()->for($ledger)->for($account)->for($category)->create([
+        'transaction_type' => 'income',
+        'amount' => '999.00',
+        'transaction_date' => '2025-03-28',
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('ledgers.dashboard', $ledger))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.prev_income', 777)
+        );
+
+    CarbonImmutable::setTestNow();
+});
+
+test('DashboardController has no private composition methods', function () {
+    $reflection = new ReflectionClass(DashboardController::class);
+    $privateMethods = array_filter(
+        $reflection->getMethods(ReflectionMethod::IS_PRIVATE),
+        fn ($m) => $m->class === DashboardController::class,
+    );
+
+    expect($privateMethods)->toBeEmpty('DashboardController must delegate all composition to GetDashboardPageQuery');
 });

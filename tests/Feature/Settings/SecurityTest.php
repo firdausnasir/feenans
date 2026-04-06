@@ -20,20 +20,21 @@ test('security page is displayed', function () {
         ->get(route('security.edit'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/security')
-            ->where('canManageTwoFactor', true)
-            ->where('twoFactorEnabled', false)
+            ->missing('canManageTwoFactor')
+            ->missing('twoFactorEnabled')
+            ->missing('requiresConfirmation')
+            ->missing('twoFactorQrCodeSvg')
+            ->missing('twoFactorSecretKey')
+            ->missing('twoFactorRecoveryCodes')
             ->has('passwordReset', fn (Assert $passwordReset) => $passwordReset
                 ->where('email', $user->email)
                 ->where('status', null)
                 ->etc()
             )
-            ->missing('twoFactorQrCodeSvg')
-            ->missing('twoFactorSecretKey')
-            ->missing('twoFactorRecoveryCodes')
         );
 });
 
-test('security page loads two factor setup props on reload only when enabled', function () {
+test('security page no longer passes two factor props as inertia data', function () {
     $this->skipUnlessFortifyFeature(Features::twoFactorAuthentication());
 
     Features::twoFactorAuthentication([
@@ -52,25 +53,12 @@ test('security page loads two factor setup props on reload only when enabled', f
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/security')
-            ->where('twoFactorEnabled', true)
+            ->missing('canManageTwoFactor')
+            ->missing('twoFactorEnabled')
+            ->missing('requiresConfirmation')
             ->missing('twoFactorQrCodeSvg')
             ->missing('twoFactorSecretKey')
             ->missing('twoFactorRecoveryCodes')
-            ->reloadOnly('twoFactorQrCodeSvg', fn (Assert $reload) => $reload
-                ->has('twoFactorQrCodeSvg')
-                ->missing('twoFactorSecretKey')
-                ->missing('twoFactorRecoveryCodes')
-            )
-            ->reloadOnly('twoFactorSecretKey', fn (Assert $reload) => $reload
-                ->where('twoFactorSecretKey', 'test-secret')
-                ->missing('twoFactorQrCodeSvg')
-                ->missing('twoFactorRecoveryCodes')
-            )
-            ->reloadOnly('twoFactorRecoveryCodes', fn (Assert $reload) => $reload
-                ->where('twoFactorRecoveryCodes', ['code-1', 'code-2'])
-                ->missing('twoFactorQrCodeSvg')
-                ->missing('twoFactorSecretKey')
-            )
         );
 });
 
@@ -120,7 +108,7 @@ test('security page renders without two factor when feature is disabled', functi
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/security')
-            ->where('canManageTwoFactor', false)
+            ->missing('canManageTwoFactor')
             ->missing('twoFactorEnabled')
             ->missing('requiresConfirmation'),
         );

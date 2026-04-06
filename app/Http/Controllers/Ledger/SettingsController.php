@@ -9,7 +9,6 @@ use App\Http\Requests\UpdateAccountTypeRequest;
 use App\Http\Requests\UpdateSettingsRequest;
 use App\Models\AccountType;
 use App\Models\Ledger;
-use App\Services\SampleDataService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,25 +16,11 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function __construct(private readonly SampleDataService $sampleDataService) {}
-
     public function index(Request $request, Ledger $ledger): Response
     {
         $this->authorize('view', $ledger);
 
-        $ledger->load(['accountTypes' => fn ($query) => $query->orderBy('position')]);
-
-        return Inertia::render('ledgers/settings/index', [
-            'ledger' => [
-                'id' => $ledger->id,
-                'name' => $ledger->name,
-                'currency_code' => $ledger->currency_code,
-                'cycle_start_day' => $ledger->cycle_start_day,
-                'uses_seeded_categories' => $ledger->uses_seeded_categories,
-            ],
-            'accountTypes' => fn () => $ledger->accountTypes,
-            'hasSampleData' => fn () => $this->sampleDataService->hasSampleData($ledger),
-        ]);
+        return Inertia::render('ledgers/settings/index');
     }
 
     public function update(UpdateSettingsRequest $request, Ledger $ledger): RedirectResponse

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ActivityLog;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -76,6 +77,10 @@ class ActivityLogService
 
         if ($value instanceof \BackedEnum) {
             return (string) $value->value;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->format(DateTimeInterface::ATOM);
         }
 
         if (is_bool($value)) {

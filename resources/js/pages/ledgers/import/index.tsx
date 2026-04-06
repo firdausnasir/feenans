@@ -1,7 +1,12 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import { Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    accounts as importAccountsLoader,
+    history as importHistoryLoader,
+    savedMappings as savedMappingsLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/ImportController';
 import {
     destroyMapping as destroyImportMapping,
     execute as executeImport,
@@ -33,27 +38,17 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { mapInertiaErrorsArray } from '@/lib/utils';
+import {
+    createInitialImportPageState,
+    emptyMapping,
+    deriveMapping,
+    NOT_MAPPED,
+    shouldBlockImportStepTwo,
+} from '@/pages/ledgers/import/page-state';
+import type { Mapping, ParseResult } from '@/pages/ledgers/import/page-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, BreadcrumbItem } from '@/types';
-
-type ParseResult = {
-    headers: string[];
-    preview_rows: string[][];
-    total_rows: number;
-    file_path: string;
-    detected_bank?: string;
-    suggested_mapping?: Record<string, string>;
-};
-
-type Mapping = {
-    date: string;
-    amount: string;
-    description: string;
-    category: string;
-    payee: string;
-    type: string;
-};
 
 type SavedMapping = {
     id: number;
@@ -71,7 +66,9 @@ type ImportHistoryRecord = {
     imported_at: string;
 };
 
-const NOT_MAPPED = '__not_mapped__';
+type ApiEnvelope<T> = {
+    data: T;
+};
 
 type ImportPageProps = {
     currentLedger: { id: number; name: string };
@@ -81,9 +78,6 @@ type ImportPageProps = {
         import_parse_result?: ParseResult | null;
     };
     parseResult?: ParseResult | null;
-    accounts?: Account[];
-    savedMappings?: SavedMapping[];
-    importHistory?: ImportHistoryRecord[];
 };
 
 const TARGET_FIELDS: {
@@ -112,89 +106,33 @@ function ImportLoadingSkeleton() {
     );
 }
 
-const emptyMapping = (): Mapping => ({
-    date: NOT_MAPPED,
-    amount: NOT_MAPPED,
-    description: NOT_MAPPED,
-    category: NOT_MAPPED,
-    payee: NOT_MAPPED,
-    type: NOT_MAPPED,
-});
-
-function deriveMapping(result: ParseResult): {
-    mapping: Mapping;
-    detectedBank: string | null;
-} {
-    if (result.detected_bank && result.suggested_mapping) {
-        return {
-            detectedBank: result.detected_bank,
-            mapping: {
-                date: result.suggested_mapping.date ?? NOT_MAPPED,
-                amount: result.suggested_mapping.amount ?? NOT_MAPPED,
-                description: result.suggested_mapping.description ?? NOT_MAPPED,
-                category: result.suggested_mapping.category ?? NOT_MAPPED,
-                payee: result.suggested_mapping.payee ?? NOT_MAPPED,
-                type: result.suggested_mapping.type ?? NOT_MAPPED,
-            },
-        };
-    }
-
-    const autoMapping = emptyMapping();
-
-    for (const header of result.headers) {
-        const lower = header.toLowerCase();
-
-        if (lower.includes('date') && autoMapping.date === NOT_MAPPED) {
-            autoMapping.date = header;
-        } else if (
-            lower.includes('amount') &&
-            autoMapping.amount === NOT_MAPPED
-        ) {
-            autoMapping.amount = header;
-        } else if (
-            (lower.includes('description') ||
-                lower.includes('memo') ||
-                lower.includes('narration')) &&
-            autoMapping.description === NOT_MAPPED
-        ) {
-            autoMapping.description = header;
-        } else if (
-            (lower.includes('payee') ||
-                lower.includes('merchant') ||
-                lower.includes('vendor')) &&
-            autoMapping.payee === NOT_MAPPED
-        ) {
-            autoMapping.payee = header;
-        } else if (
-            (lower.includes('type') || lower.includes('transaction type')) &&
-            autoMapping.type === NOT_MAPPED
-        ) {
-            autoMapping.type = header;
-        }
-    }
-
-    return {
-        mapping: autoMapping,
-        detectedBank: null,
-    };
+function LoaderErrorCard({
+    message,
+    onRetry,
+}: {
+    readonly message: string;
+    readonly onRetry: () => void;
+}) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 p-6">
+                <p className="text-sm text-muted-foreground">{message}</p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
 }
 
 export default function ImportIndex() {
     const page = usePage<ImportPageProps>();
-    const {
-        currentLedger,
-        flash,
-        parseResult: pageParseResult,
-        accounts: deferredAccounts,
-        savedMappings: deferredSavedMappings,
-        importHistory: deferredImportHistory,
-    } = page.props;
+    const { currentLedger, flash, parseResult: pageParseResult } = page.props;
     const ledger = currentLedger!;
     const latestParseResult =
         pageParseResult ?? flash.import_parse_result ?? null;
-    const accounts = deferredAccounts ?? [];
-    const importHistory = deferredImportHistory ?? [];
-    const savedMappings = deferredSavedMappings ?? [];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
@@ -202,18 +140,27 @@ export default function ImportIndex() {
         { title: 'Import', href: '#' },
     ];
 
-    const initialMappingState = latestParseResult
-        ? deriveMapping(latestParseResult)
-        : { mapping: emptyMapping(), detectedBank: null };
+    const accountsLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<Account[]>
+    >({});
+    const savedMappingsLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<SavedMapping[]>
+    >({});
+    const historyLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<ImportHistoryRecord[]>
+    >({});
 
-    const [step, setStep] = useState<1 | 2 | 3>(latestParseResult ? 2 : 1);
+    const initialPageState = createInitialImportPageState(latestParseResult);
+
+    const [step, setStep] = useState<1 | 2 | 3>(initialPageState.step);
     const [isLoading, setIsLoading] = useState(false);
     const [parseResult, setParseResult] = useState<ParseResult | null>(
-        latestParseResult,
+        initialPageState.parseResult,
     );
-    const [mapping, setMapping] = useState<Mapping>(
-        initialMappingState.mapping,
-    );
+    const [mapping, setMapping] = useState<Mapping>(initialPageState.mapping);
     const [accountId, setAccountId] = useState<string>('');
     const [skipDuplicates, setSkipDuplicates] = useState(true);
     const [dragOver, setDragOver] = useState(false);
@@ -225,11 +172,63 @@ export default function ImportIndex() {
     const [isSavingMapping, setIsSavingMapping] = useState(false);
     const [showSaveMappingInput, setShowSaveMappingInput] = useState(false);
     const [detectedBank, setDetectedBank] = useState<string | null>(
-        initialMappingState.detectedBank,
+        initialPageState.detectedBank,
     );
 
     // Import history state
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [savedMappings, setSavedMappings] = useState<SavedMapping[]>([]);
+    const [importHistory, setImportHistory] = useState<ImportHistoryRecord[]>(
+        [],
+    );
+    const [accountsError, setAccountsError] = useState<string | null>(null);
+    const [savedMappingsError, setSavedMappingsError] = useState<string | null>(
+        null,
+    );
+    const [historyError, setHistoryError] = useState<string | null>(null);
+    const [hasLoadedAccounts, setHasLoadedAccounts] = useState(false);
+    const [hasLoadedSavedMappings, setHasLoadedSavedMappings] = useState(false);
+    const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
+    const accountsRequestIdRef = useRef(0);
+    const savedMappingsRequestIdRef = useRef(0);
+    const historyRequestIdRef = useRef(0);
+    const previousLedgerIdRef = useRef(ledger.id);
+
+    useEffect(() => {
+        const nextPageState = createInitialImportPageState(latestParseResult);
+
+        accountsLoaderState.cancel();
+        savedMappingsLoaderState.cancel();
+        historyLoaderState.cancel();
+        accountsRequestIdRef.current += 1;
+        savedMappingsRequestIdRef.current += 1;
+        historyRequestIdRef.current += 1;
+
+        setStep(nextPageState.step);
+        setIsLoading(false);
+        setParseResult(nextPageState.parseResult);
+        setMapping(nextPageState.mapping);
+        setAccountId('');
+        setSkipDuplicates(true);
+        setDragOver(false);
+        setParseError(null);
+        setSaveMappingName('');
+        setIsSavingMapping(false);
+        setShowSaveMappingInput(false);
+        setDetectedBank(nextPageState.detectedBank);
+        setHistoryOpen(false);
+        setAccounts([]);
+        setSavedMappings([]);
+        setImportHistory([]);
+        setAccountsError(null);
+        setSavedMappingsError(null);
+        setHistoryError(null);
+        setHasLoadedAccounts(false);
+        setHasLoadedSavedMappings(false);
+        setHasLoadedHistory(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [latestParseResult, ledger.id]);
 
     useEffect(() => {
         if (flash.success) {
@@ -240,6 +239,152 @@ export default function ImportIndex() {
             toast.error(flash.error);
         }
     }, [flash.error, flash.success]);
+
+    async function loadAccounts(options?: {
+        force?: boolean;
+    }): Promise<boolean> {
+        if (
+            !options?.force &&
+            (hasLoadedAccounts || accountsLoaderState.processing)
+        ) {
+            return true;
+        }
+
+        let cancelled = false;
+        const requestId = accountsRequestIdRef.current + 1;
+
+        accountsRequestIdRef.current = requestId;
+        accountsLoaderState.cancel();
+        setAccountsError(null);
+
+        try {
+            await accountsLoaderState.get(importAccountsLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            if (!cancelled && accountsRequestIdRef.current === requestId) {
+                setAccounts(accountsLoaderState.response?.data ?? []);
+                setHasLoadedAccounts(true);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && accountsRequestIdRef.current === requestId) {
+                setAccountsError('Failed to load accounts.');
+            }
+
+            return false;
+        }
+    }
+
+    async function loadSavedMappings(options?: {
+        force?: boolean;
+    }): Promise<boolean> {
+        if (
+            !options?.force &&
+            (hasLoadedSavedMappings || savedMappingsLoaderState.processing)
+        ) {
+            return true;
+        }
+
+        let cancelled = false;
+        const requestId = savedMappingsRequestIdRef.current + 1;
+
+        savedMappingsRequestIdRef.current = requestId;
+        savedMappingsLoaderState.cancel();
+        setSavedMappingsError(null);
+
+        try {
+            await savedMappingsLoaderState.get(
+                savedMappingsLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && savedMappingsRequestIdRef.current === requestId) {
+                setSavedMappings(savedMappingsLoaderState.response?.data ?? []);
+                setHasLoadedSavedMappings(true);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && savedMappingsRequestIdRef.current === requestId) {
+                setSavedMappingsError('Failed to load saved mappings.');
+            }
+
+            return false;
+        }
+    }
+
+    async function loadImportHistory(options?: {
+        force?: boolean;
+    }): Promise<boolean> {
+        if (
+            !options?.force &&
+            (hasLoadedHistory || historyLoaderState.processing)
+        ) {
+            return true;
+        }
+
+        let cancelled = false;
+        const requestId = historyRequestIdRef.current + 1;
+
+        historyRequestIdRef.current = requestId;
+        historyLoaderState.cancel();
+        setHistoryError(null);
+
+        try {
+            await historyLoaderState.get(importHistoryLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            if (!cancelled && historyRequestIdRef.current === requestId) {
+                setImportHistory(historyLoaderState.response?.data ?? []);
+                setHasLoadedHistory(true);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && historyRequestIdRef.current === requestId) {
+                setHistoryError('Failed to load import history.');
+            }
+
+            return false;
+        }
+    }
+
+    useEffect(() => {
+        void loadImportHistory({ force: true });
+
+        return () => {
+            accountsLoaderState.cancel();
+            savedMappingsLoaderState.cancel();
+            historyLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
+
+    useEffect(() => {
+        const ledgerChanged = previousLedgerIdRef.current !== ledger.id;
+
+        previousLedgerIdRef.current = ledger.id;
+
+        if (step >= 2) {
+            void loadAccounts({ force: ledgerChanged });
+        }
+
+        if (step === 2) {
+            void loadSavedMappings({ force: ledgerChanged });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id, step]);
 
     const resetImportState = () => {
         setStep(1);
@@ -380,12 +525,12 @@ export default function ImportIndex() {
                 },
             },
             {
-                only: ['savedMappings', 'flash'],
                 preserveState: true,
                 preserveScroll: true,
                 onSuccess: () => {
                     setSaveMappingName('');
                     setShowSaveMappingInput(false);
+                    void loadSavedMappings({ force: true });
                 },
                 onError: (errors) => {
                     const mapped = mapInertiaErrorsArray(errors);
@@ -408,9 +553,11 @@ export default function ImportIndex() {
                 importMapping: mappingId,
             }),
             {
-                only: ['savedMappings', 'flash'],
                 preserveState: true,
                 preserveScroll: true,
+                onSuccess: () => {
+                    void loadSavedMappings({ force: true });
+                },
                 onError: () => {
                     toast.error('Failed to delete mapping');
                 },
@@ -422,6 +569,15 @@ export default function ImportIndex() {
         mapping.date !== NOT_MAPPED &&
         mapping.amount !== NOT_MAPPED &&
         accountId !== '';
+    const shouldBlockStepTwo = shouldBlockImportStepTwo({
+        accountsError,
+        accountsCount: accounts.length,
+    });
+    const showStepTwoSkeleton =
+        step === 2 &&
+        parseResult !== null &&
+        !hasLoadedAccounts &&
+        accountsLoaderState.processing;
 
     const getPreviewValue = (row: string[], field: keyof Mapping): string => {
         if (!parseResult) {
@@ -486,11 +642,12 @@ export default function ImportIndex() {
                 skip_duplicates: skipDuplicates,
             },
             {
-                only: ['parseResult', 'importHistory', 'flash'],
+                only: ['parseResult', 'flash'],
                 preserveState: true,
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     resetImportState();
+                    await loadImportHistory({ force: true });
                 },
                 onError: (errors) => {
                     const mapped = mapInertiaErrorsArray(errors);
@@ -642,11 +799,20 @@ export default function ImportIndex() {
                     )}
 
                     {/* Step 2: Map Columns */}
-                    {step === 2 && parseResult && (
-                        <Deferred
-                            data={['accounts', 'savedMappings']}
-                            fallback={<ImportLoadingSkeleton />}
-                        >
+                    {step === 2 &&
+                        parseResult &&
+                        (showStepTwoSkeleton ? (
+                            <ImportLoadingSkeleton />
+                        ) : shouldBlockStepTwo ? (
+                            <LoaderErrorCard
+                                message={
+                                    accountsError ?? 'Failed to load accounts.'
+                                }
+                                onRetry={() => {
+                                    void loadAccounts({ force: true });
+                                }}
+                            />
+                        ) : (
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Map Columns</CardTitle>
@@ -672,6 +838,30 @@ export default function ImportIndex() {
                                     )}
 
                                     {/* Load saved mapping */}
+                                    {savedMappingsError && (
+                                        <Alert>
+                                            <AlertTitle>
+                                                Saved mappings unavailable
+                                            </AlertTitle>
+                                            <AlertDescription className="flex items-center justify-between gap-3">
+                                                <span>
+                                                    {savedMappingsError}
+                                                </span>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        void loadSavedMappings({
+                                                            force: true,
+                                                        });
+                                                    }}
+                                                >
+                                                    Retry
+                                                </Button>
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+
                                     {savedMappings.length > 0 && (
                                         <div className="flex flex-col gap-2">
                                             <Label>Load saved mapping</Label>
@@ -915,226 +1105,219 @@ export default function ImportIndex() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        </Deferred>
-                    )}
+                        ))}
 
                     {/* Step 3: Preview */}
                     {step === 3 && parseResult && (
-                        <Deferred
-                            data="accounts"
-                            fallback={<ImportLoadingSkeleton />}
-                        >
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Preview & Confirm</CardTitle>
-                                </CardHeader>
-                                <CardContent className="flex flex-col gap-6">
-                                    <p className="text-sm text-muted-foreground">
-                                        Showing the first{' '}
-                                        {parseResult.preview_rows.length} of{' '}
-                                        {parseResult.total_rows} rows. Review
-                                        before importing.
-                                    </p>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Preview & Confirm</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-6">
+                                <p className="text-sm text-muted-foreground">
+                                    Showing the first{' '}
+                                    {parseResult.preview_rows.length} of{' '}
+                                    {parseResult.total_rows} rows. Review before
+                                    importing.
+                                </p>
 
-                                    <div className="overflow-x-auto rounded-md border">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Date</TableHead>
-                                                    <TableHead>
-                                                        Amount
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Description
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Category
-                                                    </TableHead>
-                                                    <TableHead>Payee</TableHead>
-                                                    <TableHead>Type</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {parseResult.preview_rows.map(
-                                                    (row, i) => (
-                                                        <TableRow key={i}>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'date',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'amount',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'description',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'category',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'payee',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'type',
-                                                                )}
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ),
-                                                )}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
+                                <div className="overflow-x-auto rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Date</TableHead>
+                                                <TableHead>Amount</TableHead>
+                                                <TableHead>
+                                                    Description
+                                                </TableHead>
+                                                <TableHead>Category</TableHead>
+                                                <TableHead>Payee</TableHead>
+                                                <TableHead>Type</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {parseResult.preview_rows.map(
+                                                (row, i) => (
+                                                    <TableRow key={i}>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'date',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'amount',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'description',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'category',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'payee',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'type',
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ),
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
 
-                                    <div className="flex gap-3">
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => setStep(2)}
-                                        >
-                                            Back
-                                        </Button>
-                                        <Button
-                                            onClick={() =>
-                                                void handleConfirmImport()
-                                            }
-                                            disabled={isLoading}
-                                        >
-                                            {isLoading
-                                                ? 'Importing...'
-                                                : `Import ${parseResult.total_rows} transactions`}
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </Deferred>
+                                <div className="flex gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setStep(2)}
+                                    >
+                                        Back
+                                    </Button>
+                                    <Button
+                                        onClick={() =>
+                                            void handleConfirmImport()
+                                        }
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading
+                                            ? 'Importing...'
+                                            : `Import ${parseResult.total_rows} transactions`}
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {/* Import History */}
-                    <Deferred data="importHistory" fallback={null}>
-                        {importHistory.length > 0 && (
-                            <Collapsible
-                                open={historyOpen}
-                                onOpenChange={setHistoryOpen}
-                            >
-                                <Card>
-                                    <CardHeader>
-                                        <CollapsibleTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="flex w-full items-center justify-between"
-                                            >
-                                                <CardTitle>
-                                                    Import History
-                                                </CardTitle>
-                                                <span className="text-sm text-muted-foreground">
-                                                    {historyOpen
-                                                        ? 'Hide'
-                                                        : `Show (${importHistory.length})`}
-                                                </span>
-                                            </button>
-                                        </CollapsibleTrigger>
-                                    </CardHeader>
-                                    <CollapsibleContent>
-                                        <CardContent>
-                                            <div className="overflow-x-auto rounded-md border">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>
-                                                                Filename
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Total Rows
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Imported
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Skipped
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Date
-                                                            </TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {importHistory.map(
-                                                            (record) => (
-                                                                <TableRow
-                                                                    key={
-                                                                        record.id
+                    {historyError && importHistory.length === 0 ? (
+                        <LoaderErrorCard
+                            message={historyError}
+                            onRetry={() => {
+                                void loadImportHistory({ force: true });
+                            }}
+                        />
+                    ) : importHistory.length > 0 ? (
+                        <Collapsible
+                            open={historyOpen}
+                            onOpenChange={setHistoryOpen}
+                        >
+                            <Card>
+                                <CardHeader>
+                                    <CollapsibleTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between"
+                                        >
+                                            <CardTitle>
+                                                Import History
+                                            </CardTitle>
+                                            <span className="text-sm text-muted-foreground">
+                                                {historyOpen
+                                                    ? 'Hide'
+                                                    : `Show (${importHistory.length})`}
+                                            </span>
+                                        </button>
+                                    </CollapsibleTrigger>
+                                </CardHeader>
+                                <CollapsibleContent>
+                                    <CardContent>
+                                        <div className="overflow-x-auto rounded-md border">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>
+                                                            Filename
+                                                        </TableHead>
+                                                        <TableHead>
+                                                            Total Rows
+                                                        </TableHead>
+                                                        <TableHead>
+                                                            Imported
+                                                        </TableHead>
+                                                        <TableHead>
+                                                            Skipped
+                                                        </TableHead>
+                                                        <TableHead>
+                                                            Date
+                                                        </TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {importHistory.map(
+                                                        (record) => (
+                                                            <TableRow
+                                                                key={record.id}
+                                                            >
+                                                                <TableCell className="font-medium">
+                                                                    {
+                                                                        record.filename
                                                                     }
-                                                                >
-                                                                    <TableCell className="font-medium">
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    {
+                                                                        record.row_count
+                                                                    }
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Badge variant="secondary">
                                                                         {
-                                                                            record.filename
+                                                                            record.imported_count
                                                                         }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            record.row_count
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        <Badge variant="secondary">
+                                                                    </Badge>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    {record.skipped_count >
+                                                                    0 ? (
+                                                                        <Badge variant="outline">
                                                                             {
-                                                                                record.imported_count
+                                                                                record.skipped_count
                                                                             }
                                                                         </Badge>
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {record.skipped_count >
-                                                                        0 ? (
-                                                                            <Badge variant="outline">
-                                                                                {
-                                                                                    record.skipped_count
-                                                                                }
-                                                                            </Badge>
-                                                                        ) : (
-                                                                            '0'
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell className="text-muted-foreground">
-                                                                        {new Date(
-                                                                            record.imported_at,
-                                                                        ).toLocaleDateString(
-                                                                            undefined,
-                                                                            {
-                                                                                year: 'numeric',
-                                                                                month: 'short',
-                                                                                day: 'numeric',
-                                                                                hour: '2-digit',
-                                                                                minute: '2-digit',
-                                                                            },
-                                                                        )}
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ),
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </CardContent>
-                                    </CollapsibleContent>
-                                </Card>
-                            </Collapsible>
-                        )}
-                    </Deferred>
+                                                                    ) : (
+                                                                        '0'
+                                                                    )}
+                                                                </TableCell>
+                                                                <TableCell className="text-muted-foreground">
+                                                                    {new Date(
+                                                                        record.imported_at,
+                                                                    ).toLocaleDateString(
+                                                                        undefined,
+                                                                        {
+                                                                            year: 'numeric',
+                                                                            month: 'short',
+                                                                            day: 'numeric',
+                                                                            hour: '2-digit',
+                                                                            minute: '2-digit',
+                                                                        },
+                                                                    )}
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ),
+                                                    )}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </CardContent>
+                                </CollapsibleContent>
+                            </Card>
+                        </Collapsible>
+                    ) : null}
                 </>
             </div>
         </AppLayout>

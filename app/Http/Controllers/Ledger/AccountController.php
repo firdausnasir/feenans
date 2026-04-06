@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers\Ledger;
 
-use App\Enums\TransactionType;
+use App\Actions\Accounts\Queries\ExportAccountTransactionsQuery;
+use App\Actions\Accounts\UseCases\AdjustAccountBalanceAction;
+use App\Actions\Accounts\UseCases\DeleteAccountAction;
+use App\Actions\Accounts\UseCases\ReorderAccountsAction;
+use App\Actions\Accounts\UseCases\StoreAccountAction;
+use App\Actions\Accounts\UseCases\UpdateAccountAction;
+use App\Data\Accounts\Input\AdjustAccountBalanceData;
+use App\Data\Accounts\Input\ReorderAccountsData;
+use App\Data\Accounts\Input\StoreAccountData;
+use App\Data\Accounts\Input\UpdateAccountData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\AdjustBalanceRequest;
-use App\Http\Requests\ReorderRequest;
-use App\Http\Requests\StoreAccountRequest;
-use App\Http\Requests\UpdateAccountRequest;
-use App\Http\Resources\AccountResource;
 use App\Models\Account;
 use App\Models\Ledger;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -20,307 +23,55 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AccountController extends Controller
 {
-    public function index(Ledger $ledger, Request $request): Response
-    {
+    public function index(
+        Ledger $ledger,
+    ): Response {
         $this->authorize('view', $ledger);
 
-        $accountTypes = $ledger->accountTypes()->orderBy('position')->get();
-
-        return Inertia::render('ledgers/accounts/index', [
-            'accounts' => Inertia::defer(fn () => $this->buildGroupedAccounts($ledger), 'accounts'),
-            'accountTypes' => Inertia::defer(fn () => $accountTypes, 'accounts'),
-            'netWorth' => Inertia::defer(fn () => $this->buildNetWorth($ledger)),
-        ]);
+        return Inertia::render('ledgers/accounts/index');
     }
 
-    /**
-     * @return array<int, array{group: string, label: string, accounts: array, total_balance: string}>
-     */
-    private function buildGroupedAccounts(Ledger $ledger): array
+    public function store(Ledger $ledger, StoreAccountData $data, StoreAccountAction $storeAccount): RedirectResponse
     {
-        $accounts = $ledger->accounts()
-            ->with('accountType')
-            ->withCurrentBalance()
-            ->visible()
-            ->orderBy('position')
-            ->orderBy('name')
-            ->get();
-
-        return $this->groupAccountsByTotals($accounts);
-    }
-
-    /**
-     * Group accounts by include_in_totals for the accounts index page.
-     *
-     * @return array<int, array{group: string, label: string, accounts: array, total_balance: string}>
-     */
-    private function groupAccountsByTotals($accounts): array
-    {
-        $accounts = self::loadCurrentBalanceAggregates($accounts);
-
-        $groups = [
-            ['key' => 'included', 'label' => 'Included in totals', 'filter' => true],
-            ['key' => 'excluded', 'label' => 'Savings', 'filter' => false],
-        ];
-
-        return collect($groups)
-            ->map(function ($group) use ($accounts) {
-                $filtered = $accounts->where('include_in_totals', $group['filter'])->values();
-
-                if ($filtered->isEmpty()) {
-                    return null;
-                }
-
-                return [
-                    'group' => $group['key'],
-                    'label' => $group['label'],
-                    'accounts' => AccountResource::collection($filtered)->resolve(),
-                    'total_balance' => number_format(
-                        $filtered->sum(fn (Account $account) => $account->currentBalanceAmount()),
-                        2,
-                        '.',
-                        '',
-                    ),
-                ];
-            })
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Group accounts by their account type and format for API response.
-     *
-     * @return array<int, array{type: array, accounts: array, total_balance: string}>
-     */
-    public static function groupAccountsByType($accounts, $accountTypes): array
-    {
-        $accounts = self::loadCurrentBalanceAggregates($accounts);
-
-        return $accountTypes
-            ->map(function ($type) use ($accounts) {
-                $typeAccounts = $accounts->where('account_type_id', $type->id)->values();
-
-                if ($typeAccounts->isEmpty()) {
-                    return null;
-                }
-
-                return [
-                    'type' => [
-                        'id' => $type->id,
-                        'name' => $type->name,
-                        'color' => $type->color,
-                        'is_credit' => $type->is_credit,
-                    ],
-                    'accounts' => AccountResource::collection($typeAccounts)->resolve(),
-                    'total_balance' => number_format(
-                        $typeAccounts->sum(fn (Account $account) => $account->currentBalanceAmount()),
-                        2,
-                        '.',
-                        '',
-                    ),
-                ];
-            })
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    private static function loadCurrentBalanceAggregates($accounts)
-    {
-        if ($accounts->isEmpty()) {
-            return $accounts;
-        }
-
-        $missingAggregates = $accounts->contains(
-            fn (Account $account) => ! array_key_exists('transactions_sum_amount', $account->getAttributes())
-        );
-
-        if ($missingAggregates) {
-            $accounts->loadSum('transactions', 'amount');
-        }
-
-        return $accounts;
-    }
-
-    /**
-     * @return array{assets: float, liabilities: float, net: float, trend: array}
-     */
-    private function buildNetWorth(Ledger $ledger): array
-    {
-        $flatAccounts = $ledger->accounts()
-            ->visible()
-            ->with('accountType')
-            ->withCurrentBalance()
-            ->get()
-            ->map(function ($account) {
-                $balance = (float) $account->initial_balance + (float) ($account->transactions_sum_amount ?? 0);
-                $account->balance = round($balance, 2);
-
-                return $account;
-            });
-
-        $creditTypeIds = $flatAccounts->pluck('accountType')
-            ->filter()
-            ->where('is_credit', true)
-            ->pluck('id')
-            ->unique();
-
-        $totalAssets = $flatAccounts->reject(fn ($a) => $creditTypeIds->contains($a->account_type_id))->sum('balance');
-        $totalLiabilities = $flatAccounts->filter(fn ($a) => $creditTypeIds->contains($a->account_type_id))->sum('balance');
-
-        $totalInitial = $flatAccounts->sum(fn ($a) => (float) $a->initial_balance);
-        $accountIds = $flatAccounts->pluck('id');
-        $cutoffs = collect(range(5, 0))->map(fn ($m) => now()->subMonths($m)->endOfMonth());
-
-        $priorSum = (float) $ledger->transactions()
-            ->where('transaction_date', '<', $cutoffs->first()->copy()->startOfMonth())
-            ->whereIn('account_id', $accountIds)
-            ->sum('amount');
-
-        $periodTxns = $ledger->transactions()
-            ->whereBetween('transaction_date', [$cutoffs->first()->copy()->startOfMonth(), $cutoffs->last()])
-            ->whereIn('account_id', $accountIds)
-            ->select('transaction_date', 'amount')
-            ->get()
-            ->groupBy(fn ($t) => $t->transaction_date->format('Y-m'));
-
-        $running = $priorSum;
-        $trend = $cutoffs->map(function ($cutoff) use ($periodTxns, &$running, $totalInitial) {
-            $key = $cutoff->format('Y-m');
-            $running += (float) ($periodTxns[$key] ?? collect())->sum('amount');
-
-            return [
-                'month' => $cutoff->format('M'),
-                'net' => round($totalInitial + $running, 2),
-            ];
-        })->values()->all();
-
-        return [
-            'assets' => round($totalAssets, 2),
-            'liabilities' => round($totalLiabilities, 2),
-            'net' => round($totalAssets + $totalLiabilities, 2),
-            'trend' => $trend,
-        ];
-    }
-
-    public function store(StoreAccountRequest $request, Ledger $ledger): RedirectResponse
-    {
-        $this->authorize('view', $ledger);
-
-        $ledger->accounts()->create($request->validated());
+        $storeAccount($data);
 
         return back()->with('success', 'Account created.');
     }
 
-    public function update(UpdateAccountRequest $request, Ledger $ledger, Account $account): RedirectResponse
+    public function update(Ledger $ledger, Account $account, UpdateAccountData $data, UpdateAccountAction $updateAccount): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $account->update($request->validated());
+        $updateAccount($data);
 
         return back()->with('success', 'Account updated.');
     }
 
-    public function destroy(Ledger $ledger, Account $account): RedirectResponse
+    public function destroy(Ledger $ledger, Account $account, DeleteAccountAction $deleteAccount): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $account->delete();
+        $deleteAccount($account);
 
         return back()->with('success', 'Account deleted.');
     }
 
-    public function reorder(ReorderRequest $request, Ledger $ledger): RedirectResponse
+    public function reorder(Ledger $ledger, ReorderAccountsData $data, ReorderAccountsAction $reorderAccounts): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        foreach ($request->items as $item) {
-            $ledger->accounts()->where('id', $item['id'])->update(['position' => $item['position']]);
-        }
+        $reorderAccounts($data);
 
         return back();
     }
 
-    public function adjustBalance(AdjustBalanceRequest $request, Ledger $ledger, Account $account): RedirectResponse
+    public function adjustBalance(Ledger $ledger, Account $account, AdjustAccountBalanceData $data, AdjustAccountBalanceAction $adjustBalance): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $validated = $request->validated();
-        $amount = (float) $validated['amount'];
-
-        if ($amount != 0) {
-            $transactionType = $amount > 0
-                ? TransactionType::Income
-                : TransactionType::Expense;
-
-            $ledger->transactions()->create([
-                'account_id' => $account->id,
-                'transaction_type' => $transactionType,
-                'amount' => $amount,
-                'description' => $validated['description'] ?? 'Balance adjustment',
-                'transaction_date' => $validated['date'] ?? CarbonImmutable::today()->toDateString(),
-            ]);
-        }
+        $adjustBalance($data);
 
         return back()->with('success', 'Balance adjusted.');
     }
 
-    public function export(Request $request, Ledger $ledger, Account $account): StreamedResponse
+    public function export(Request $request, Ledger $ledger, Account $account, ExportAccountTransactionsQuery $exportQuery): StreamedResponse
     {
         $this->authorize('view', $ledger);
 
-        $dateFrom = $request->query('date_from');
-        $dateTo = $request->query('date_to');
-
-        $query = $account->transactions()
-            ->with(['category', 'payee'])
-            ->orderBy('transaction_date')
-            ->orderBy('id');
-
-        if ($dateFrom) {
-            $query->where('transaction_date', '>=', $dateFrom);
-        }
-
-        if ($dateTo) {
-            $query->where('transaction_date', '<=', $dateTo);
-        }
-
-        $filename = 'account-'.$account->name.'-transactions.csv';
-
-        return response()->streamDownload(function () use ($query, $account, $dateFrom) {
-            $handle = fopen('php://output', 'w');
-
-            fputcsv($handle, ['Date', 'Description', 'Type', 'Category', 'Payee', 'Amount', 'Running Balance', 'Notes']);
-
-            $runningBalance = (float) $account->initial_balance;
-
-            if ($dateFrom) {
-                $priorSum = (float) $account->transactions()
-                    ->where('transaction_date', '<', $dateFrom)
-                    ->sum('amount');
-                $runningBalance += $priorSum;
-            }
-
-            $query->chunk(500, function ($transactions) use ($handle, &$runningBalance) {
-                foreach ($transactions as $t) {
-                    $amount = (float) $t->amount;
-                    $runningBalance += $amount;
-
-                    fputcsv($handle, [
-                        $t->transaction_date->toDateString(),
-                        $t->description ?? '',
-                        $t->transaction_type instanceof TransactionType ? $t->transaction_type->value : $t->transaction_type,
-                        $t->category?->name ?? '',
-                        $t->payee?->name ?? '',
-                        number_format($amount, 2, '.', ''),
-                        number_format($runningBalance, 2, '.', ''),
-                        $t->notes ?? '',
-                    ]);
-                }
-            });
-
-            fclose($handle);
-        }, $filename, ['Content-Type' => 'text/csv']);
+        return $exportQuery($account, $request->query('date_from'), $request->query('date_to'));
     }
 }

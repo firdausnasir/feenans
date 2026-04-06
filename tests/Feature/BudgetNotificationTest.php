@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Budgets\UseCases\CheckBudgetThresholdsAction;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Budget;
@@ -8,7 +9,6 @@ use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Notifications\BudgetThresholdReached;
-use App\Services\BudgetService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -37,7 +37,7 @@ test('checkThresholds sends threshold notification at 80 percent', function () {
         'transaction_date' => '2026-03-10',
     ]);
 
-    app(BudgetService::class)->checkThresholds($ledger);
+    app(CheckBudgetThresholdsAction::class)($ledger);
 
     $notifications = $user->notifications()->get();
 
@@ -71,7 +71,7 @@ test('checkThresholds sends exceeded notification at 100 percent', function () {
         'transaction_date' => '2026-03-10',
     ]);
 
-    app(BudgetService::class)->checkThresholds($ledger);
+    app(CheckBudgetThresholdsAction::class)($ledger);
 
     $notifications = $user->notifications()->get();
 
@@ -104,9 +104,9 @@ test('checkThresholds does not create duplicate notifications', function () {
         'transaction_date' => '2026-03-10',
     ]);
 
-    $service = app(BudgetService::class);
-    $service->checkThresholds($ledger);
-    $service->checkThresholds($ledger);
+    $action = app(CheckBudgetThresholdsAction::class);
+    $action($ledger);
+    $action($ledger);
 
     expect($user->notifications()->count())->toBe(1);
 });
@@ -136,7 +136,7 @@ test('checkThresholds does not notify when under 80 percent', function () {
         'transaction_date' => '2026-03-10',
     ]);
 
-    app(BudgetService::class)->checkThresholds($ledger);
+    app(CheckBudgetThresholdsAction::class)($ledger);
 
     expect($user->notifications()->count())->toBe(0);
 });
@@ -185,7 +185,7 @@ test('checkThresholds filters by category when provided', function () {
     ]);
 
     // Only check groceries category
-    app(BudgetService::class)->checkThresholds($ledger, $groceries->id);
+    app(CheckBudgetThresholdsAction::class)($ledger, $groceries->id);
 
     $notifications = $user->notifications()->get();
 
@@ -229,7 +229,7 @@ test('checkThresholds batches spend and unread notification lookups', function (
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    app(BudgetService::class)->checkThresholds($ledger);
+    app(CheckBudgetThresholdsAction::class)($ledger);
 
     $queryLog = collect(DB::getQueryLog());
 

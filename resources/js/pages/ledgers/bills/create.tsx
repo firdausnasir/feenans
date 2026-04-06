@@ -1,10 +1,14 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as accountsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/AccountController';
+import { index as categoriesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/CategoryController';
+import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/PayeeController';
 import { store as storeRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -18,7 +22,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
+import { buildAccountSelectOptions } from '@/lib/account-select-options';
 import { buildCategoryOptions, describeRecurrence } from '@/lib/format';
 import { mapInertiaErrors } from '@/lib/utils';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
@@ -26,7 +32,9 @@ import {
     create as createRoute,
     index as billsIndex,
 } from '@/routes/ledgers/bills';
-import type { Account, BreadcrumbItem, Category, Payee } from '@/types';
+import type { Account, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
+
+type ApiEnvelope<T> = { data: T };
 
 type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 type EndType = 'never' | 'on_date' | 'after_occurrences';
@@ -44,6 +52,8 @@ type FormData = {
     recurrence_day: string;
     next_due_date: string;
     auto_create: boolean;
+    is_active: boolean;
+    notify_email: boolean;
     end_type: EndType;
     end_date: string;
     end_after_occurrences: string;
@@ -51,22 +61,86 @@ type FormData = {
 
 type FormErrors = Partial<Record<keyof FormData | 'new_payee_name', string>>;
 
-export default function CreateBill() {
-    const { currentLedger } = usePage().props;
-    const ledger = currentLedger!;
+function BillFormSkeleton() {
+    return (
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
+            <div className="space-y-6 rounded-xl border border-sidebar-border/70 p-6">
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-12" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-9 w-full" />
+                    </div>
+                    <div className="grid gap-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-9 w-full" />
+                    </div>
+                </div>
+                <div className="grid gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-full" />
+                </div>
+                <Skeleton className="h-9 w-24" />
+            </div>
+        </div>
+    );
+}
 
-    const { accounts, categories, payees } = usePage<{
-        accounts: Account[];
-        categories: Category[];
-        payees: Payee[];
-    }>().props;
+function BillFormErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 p-4">
+            <p className="text-sm text-muted-foreground">Failed to load form data.</p>
+            <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+            </Button>
+        </div>
+    );
+}
+
+function CreateBillForm({
+    ledger,
+    accounts,
+    categories,
+    payees,
+}: {
+    ledger: Ledger;
+    accounts: Account[];
+    categories: Category[];
+    payees: Payee[];
+}) {
+    const accountOptions = buildAccountSelectOptions(accounts);
+    const resolveDefaultToAccountId = (sourceAccountId: string): string =>
+        buildAccountSelectOptions(accounts, sourceAccountId)[0]?.value ?? '';
 
     const [data, setFormData] = useState<FormData>(() => ({
         name: '',
         transaction_type: 'expense',
         amount: '',
-        account_id: accounts.length > 0 ? String(accounts[0].id) : '',
-        to_account_id: accounts.length > 1 ? String(accounts[1].id) : '',
+        account_id: accountOptions[0]?.value ?? '',
+        to_account_id: resolveDefaultToAccountId(accountOptions[0]?.value ?? ''),
         category_id: '',
         payee_id: '',
         recurrence_type: 'monthly',
@@ -74,10 +148,16 @@ export default function CreateBill() {
         recurrence_day: '',
         next_due_date: '',
         auto_create: false,
+        is_active: true,
+        notify_email: true,
         end_type: 'never',
         end_date: '',
         end_after_occurrences: '',
     }));
+    const destinationAccountOptions = buildAccountSelectOptions(
+        accounts,
+        data.account_id,
+    );
     const [newPayeeName, setNewPayeeName] = useState('');
     const [errors, setErrors] = useState<FormErrors>({});
     const [processing, setProcessing] = useState(false);
@@ -137,6 +217,8 @@ export default function CreateBill() {
             recurrence_day: data.recurrence_day || null,
             next_due_date: data.next_due_date,
             auto_create: data.auto_create,
+            is_active: data.is_active,
+            notify_email: data.notify_email,
             end_type: data.end_type,
             end_date: data.end_date || null,
             end_after_occurrences: data.end_after_occurrences || null,
@@ -196,16 +278,15 @@ export default function CreateBill() {
                                         !data.to_account_id &&
                                         accounts.length > 1
                                     ) {
-                                        const fallbackAccount = accounts.find(
-                                            (account) =>
-                                                String(account.id) !==
+                                        const fallbackAccountId =
+                                            resolveDefaultToAccountId(
                                                 data.account_id,
-                                        );
+                                            );
 
-                                        if (fallbackAccount) {
+                                        if (fallbackAccountId) {
                                             setData(
                                                 'to_account_id',
-                                                String(fallbackAccount.id),
+                                                fallbackAccountId,
                                             );
                                         }
                                     }
@@ -247,11 +328,7 @@ export default function CreateBill() {
                     <div className="grid gap-2">
                         <Label>Account</Label>
                         <SearchableSelect
-                            options={accounts.map((account) => ({
-                                value: String(account.id),
-                                label: account.name,
-                                color: account.color,
-                            }))}
+                            options={accountOptions}
                             value={data.account_id || null}
                             onValueChange={(value) =>
                                 setData('account_id', value ?? '')
@@ -266,17 +343,7 @@ export default function CreateBill() {
                         <div className="grid gap-2">
                             <Label>Destination account</Label>
                             <SearchableSelect
-                                options={accounts
-                                    .filter(
-                                        (account) =>
-                                            String(account.id) !==
-                                            data.account_id,
-                                    )
-                                    .map((account) => ({
-                                        value: String(account.id),
-                                        label: account.name,
-                                        color: account.color,
-                                    }))}
+                                options={destinationAccountOptions}
                                 value={data.to_account_id || null}
                                 onValueChange={(value) =>
                                     setData('to_account_id', value ?? '')
@@ -489,6 +556,42 @@ export default function CreateBill() {
                         </Label>
                     </div>
 
+                    {/* Active */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="is_active"
+                            checked={data.is_active}
+                            onCheckedChange={(checked) =>
+                                setData('is_active', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="is_active">Active</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Inactive recurring transactions are paused and won&apos;t be tracked or auto-created.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Email notifications */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            id="notify_email"
+                            checked={data.notify_email}
+                            onCheckedChange={(checked) =>
+                                setData('notify_email', checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <div className="grid gap-1">
+                            <Label htmlFor="notify_email">Email reminders</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Receive email reminders 3 days before the due date, on the due date, and when overdue.
+                            </p>
+                        </div>
+                    </div>
+
                     {/* End type */}
                     <div className="grid gap-2">
                         <Label>End</Label>
@@ -572,5 +675,115 @@ export default function CreateBill() {
                 </form>
             </div>
         </AppLayout>
+    );
+}
+
+export default function CreateBill() {
+    const { currentLedger } = usePage().props;
+    const ledger = currentLedger! as Ledger;
+
+    const accountsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Account[]>>({});
+    const categoriesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Category[]>>({});
+    const payeesLoaderState = useHttp<Record<string, never>, ApiEnvelope<Payee[]>>({});
+
+    const [hasResolved, setHasResolved] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const mountRef = useRef(false);
+
+    function loadAll() {
+        let cancelled = false;
+        setLoadError(null);
+
+        accountsLoaderState.cancel();
+        categoriesLoaderState.cancel();
+        payeesLoaderState.cancel();
+
+        void Promise.allSettled([
+            accountsLoaderState.get(accountsLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            categoriesLoaderState.get(categoriesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+            payeesLoaderState.get(payeesLoader.url(ledger.id), {
+                onCancel: () => {
+ cancelled = true; 
+},
+            }),
+        ]).then((results) => {
+            if (cancelled) {
+return;
+}
+
+            const anyFailed = results.some((r) => r.status === 'rejected');
+
+            if (anyFailed) {
+                setLoadError('Failed to load form data.');
+            }
+
+            setHasResolved(true);
+        });
+
+        return () => {
+ cancelled = true; 
+};
+    }
+
+    useEffect(() => {
+        if (mountRef.current) {
+return;
+}
+
+        mountRef.current = true;
+        const cleanup = loadAll();
+
+        return () => {
+            cleanup();
+            accountsLoaderState.cancel();
+            categoriesLoaderState.cancel();
+            payeesLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
+
+    const accounts = accountsLoaderState.response?.data ?? [];
+    const categories = categoriesLoaderState.response?.data ?? [];
+    const payees = payeesLoaderState.response?.data ?? [];
+
+    if (!hasResolved) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title={`New Recurring Transaction — ${ledger.name}`} />
+                <BoneSkeleton name="bill-create-form" loading fallback={<BillFormSkeleton />}>
+                    <BillFormSkeleton />
+                </BoneSkeleton>
+            </AppLayout>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <AppLayout breadcrumbs={[]}>
+                <Head title={`New Recurring Transaction — ${ledger.name}`} />
+                <BillFormErrorState onRetry={() => {
+                    setHasResolved(false);
+                    mountRef.current = false;
+                    loadAll();
+                }} />
+            </AppLayout>
+        );
+    }
+
+    return (
+        <CreateBillForm
+            ledger={ledger}
+            accounts={accounts}
+            categories={categories}
+            payees={payees}
+        />
     );
 }

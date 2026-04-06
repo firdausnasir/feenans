@@ -3,23 +3,19 @@
 use App\Http\Controllers\Ledger\AttachmentController;
 use App\Http\Controllers\Ledger\ImportController as LedgerImportController;
 use App\Http\Controllers\Ledger\PayeeController as LedgerPayeeController;
+use App\Http\Controllers\Ledger\ReportController as LedgerReportController;
 use App\Http\Controllers\Ledger\SettingsController as LedgerSettingsController;
 use App\Http\Controllers\Ledger\TransactionController as LedgerTransactionController;
 use App\Http\Requests\AdjustBalanceRequest;
-use App\Http\Requests\BulkDestroyTransactionsRequest;
-use App\Http\Requests\BulkUpdateTransactionsRequest;
 use App\Http\Requests\DestroyCategoryRequest;
-use App\Http\Requests\ParseImportRequest;
 use App\Http\Requests\PayBillRequest;
 use App\Http\Requests\ReorderRequest;
 use App\Http\Requests\SaveOnboardingStepRequest;
 use App\Http\Requests\StoreAccountRequest;
 use App\Http\Requests\StoreAccountTypeRequest;
-use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Requests\StoreBillRequest;
 use App\Http\Requests\StoreBudgetRequest;
 use App\Http\Requests\StoreCategoryRequest;
-use App\Http\Requests\StoreImportMappingRequest;
 use App\Http\Requests\StoreTransactionRequest;
 use App\Http\Requests\TagRequest;
 use App\Http\Requests\UpdateAccountRequest;
@@ -35,6 +31,8 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Validator;
 
@@ -437,12 +435,7 @@ test('SaveOnboardingStepRequest step 3 requires no validation', function () {
 });
 
 dataset('controller form request signatures', [
-    'ledger payee store' => [LedgerPayeeController::class, 'store', UpdatePayeeRequest::class],
-    'ledger payee update' => [LedgerPayeeController::class, 'update', UpdatePayeeRequest::class],
-    'ledger attachment store' => [AttachmentController::class, 'store', StoreAttachmentRequest::class],
-    'ledger import mapping store' => [LedgerImportController::class, 'storeMapping', StoreImportMappingRequest::class],
     'ledger settings account type update' => [LedgerSettingsController::class, 'updateAccountType', UpdateAccountTypeRequest::class],
-    'ledger transaction bulk destroy' => [LedgerTransactionController::class, 'bulkDestroy', BulkDestroyTransactionsRequest::class],
 ]);
 
 test('controllers use form requests for refactored validation endpoints', function (string $controller, string $method, string $requestClass) {
@@ -454,21 +447,105 @@ test('controllers use form requests for refactored validation endpoints', functi
     expect($parameterType->getName())->toBe($requestClass);
 })->with('controller form request signatures');
 
+dataset('shared-core payee controller methods', [
+    'ledger payee store' => [LedgerPayeeController::class, 'store'],
+    'ledger payee update' => [LedgerPayeeController::class, 'update'],
+]);
+
+test('shared-core payee controller actions no longer use UpdatePayeeRequest', function (string $controller, string $method) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterTypes = collect($reflection->getParameters())
+        ->map(fn (ReflectionParameter $parameter): ?string => $parameter->getType()?->getName())
+        ->all();
+
+    expect($parameterTypes)->not->toContain(UpdatePayeeRequest::class);
+
+    collect($parameterTypes)
+        ->filter()
+        ->each(function (string $parameterType) {
+            expect(is_a($parameterType, Request::class, true))->toBeFalse();
+            expect(is_a($parameterType, FormRequest::class, true))->toBeFalse();
+        });
+})->with('shared-core payee controller methods');
+
+dataset('shared-core transaction write controller methods', [
+    'ledger transaction store' => [LedgerTransactionController::class, 'store'],
+    'ledger transaction update' => [LedgerTransactionController::class, 'update'],
+    'ledger transaction bulk update' => [LedgerTransactionController::class, 'bulkUpdate'],
+    'ledger transaction bulk destroy' => [LedgerTransactionController::class, 'bulkDestroy'],
+    'ledger attachment store' => [AttachmentController::class, 'store'],
+    'ledger attachment destroy' => [AttachmentController::class, 'destroy'],
+]);
+
+test('shared-core transaction write controller actions no longer use request objects', function (string $controller, string $method) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterTypes = collect($reflection->getParameters())
+        ->map(fn (ReflectionParameter $parameter): ?string => $parameter->getType()?->getName())
+        ->filter()
+        ->values();
+
+    $parameterTypes->each(function (string $parameterType) {
+        expect(is_a($parameterType, Request::class, true))->toBeFalse();
+        expect(is_a($parameterType, FormRequest::class, true))->toBeFalse();
+    });
+})->with('shared-core transaction write controller methods');
+
+dataset('shared-core import controller methods', [
+    'ledger import create' => [LedgerImportController::class, 'create'],
+    'ledger import parse' => [LedgerImportController::class, 'parse'],
+    'ledger import execute' => [LedgerImportController::class, 'execute'],
+    'ledger import mapping store' => [LedgerImportController::class, 'storeMapping'],
+    'ledger import mapping destroy' => [LedgerImportController::class, 'destroyMapping'],
+]);
+
+test('shared-core import controller actions no longer use request objects', function (string $controller, string $method) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterTypes = collect($reflection->getParameters())
+        ->map(fn (ReflectionParameter $parameter): ?string => $parameter->getType()?->getName())
+        ->filter()
+        ->values();
+
+    $parameterTypes->each(function (string $parameterType) {
+        expect(is_a($parameterType, Request::class, true))->toBeFalse();
+        expect(is_a($parameterType, FormRequest::class, true))->toBeFalse();
+    });
+})->with('shared-core import controller methods');
+
+dataset('shared-core report controller methods', [
+    'ledger report index' => [LedgerReportController::class, 'index'],
+    'ledger report export pdf' => [LedgerReportController::class, 'exportPdf'],
+    'ledger report financial health' => [LedgerReportController::class, 'financialHealth'],
+    'ledger report budget performance' => [LedgerReportController::class, 'budgetPerformance'],
+    'ledger report cash flow' => [LedgerReportController::class, 'cashFlow'],
+]);
+
+test('shared-core report controller actions no longer use request objects', function (string $controller, string $method) {
+    $reflection = new ReflectionMethod($controller, $method);
+
+    $parameterTypes = collect($reflection->getParameters())
+        ->map(fn (ReflectionParameter $parameter): ?string => $parameter->getType()?->getName())
+        ->filter()
+        ->values();
+
+    $parameterTypes->each(function (string $parameterType) {
+        expect(is_a($parameterType, Request::class, true))->toBeFalse();
+        expect(is_a($parameterType, FormRequest::class, true))->toBeFalse();
+    });
+})->with('shared-core report controller methods');
+
 dataset('ledger authorization requests', [
     'adjust balance' => [AdjustBalanceRequest::class, 'POST'],
-    'bulk destroy transactions' => [BulkDestroyTransactionsRequest::class, 'POST'],
-    'bulk update transactions' => [BulkUpdateTransactionsRequest::class, 'POST'],
     'destroy category' => [DestroyCategoryRequest::class, 'DELETE'],
-    'parse import' => [ParseImportRequest::class, 'POST'],
     'pay bill' => [PayBillRequest::class, 'POST'],
     'reorder' => [ReorderRequest::class, 'POST'],
     'store account' => [StoreAccountRequest::class, 'POST'],
     'store account type' => [StoreAccountTypeRequest::class, 'POST'],
-    'store attachment' => [StoreAttachmentRequest::class, 'POST'],
     'store bill' => [StoreBillRequest::class, 'POST'],
     'store budget' => [StoreBudgetRequest::class, 'POST'],
     'store category' => [StoreCategoryRequest::class, 'POST'],
-    'store import mapping' => [StoreImportMappingRequest::class, 'POST'],
     'store payee' => [UpdatePayeeRequest::class, 'POST'],
     'store transaction' => [StoreTransactionRequest::class, 'POST'],
     'store tag' => [TagRequest::class, 'POST'],

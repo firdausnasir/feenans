@@ -47,6 +47,7 @@ class Bill extends Model
         'end_date',
         'occurrences_count',
         'is_active',
+        'notify_email',
         'is_sample',
     ];
 
@@ -63,6 +64,7 @@ class Bill extends Model
             'end_date' => 'date:Y-m-d',
             'auto_create' => 'boolean',
             'is_active' => 'boolean',
+            'notify_email' => 'boolean',
             'is_sample' => 'boolean',
             'recurrence_type' => RecurrenceType::class,
             'transaction_type' => TransactionType::class,

@@ -9,24 +9,6 @@ use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('users can create a tag in a ledger', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->from(route('ledgers.tags.index', $ledger))
-        ->post(route('ledgers.tags.store', $ledger), [
-            'name' => 'groceries',
-            'color' => '#4ade80',
-        ]);
-
-    $response->assertRedirect(route('ledgers.tags.index', $ledger))
-        ->assertSessionHasNoErrors();
-
-    expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
-});
-
 test('tag store does not create duplicate tags for the same ledger', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -42,21 +24,6 @@ test('tag store does not create duplicate tags for the same ledger', function ()
     expect($ledger->tags()->where('name', 'dining')->count())->toBe(1);
 });
 
-test('users can delete a tag', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    $tag = Tag::factory()->for($ledger)->create(['name' => 'to-delete']);
-
-    $response = $this
-        ->actingAs($user)
-        ->from(route('ledgers.tags.index', $ledger))
-        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
-
-    $response->assertRedirect(route('ledgers.tags.index', $ledger));
-
-    expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
-});
-
 test('tag index renders the inertia shell for api-driven tag data', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -69,13 +36,11 @@ test('tag index renders the inertia shell for api-driven tag data', function () 
             ->component('ledgers/tags/index')
             ->where('currentLedger.id', $ledger->id)
             ->missing('tags')
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('tags', 1, fn (Assert $tagPage) => $tagPage
-                    ->where('name', 'shell-tag')
-                    ->etc()
-                )
-            )
         );
+
+    $this->actingAs($user)
+        ->get(route('ledgers.tags.index', $ledger))
+        ->assertViewMissing('page.deferredProps');
 });
 
 test('tag can be created through web routes', function () {
@@ -94,26 +59,6 @@ test('tag can be created through web routes', function () {
         ->assertSessionHasNoErrors();
 
     expect($ledger->tags()->where('name', 'groceries')->exists())->toBeTrue();
-});
-
-test('tag index supports partial reloads for tags', function () {
-    $user = User::factory()->create();
-    $ledger = Ledger::factory()->for($user)->create();
-    Tag::factory()->for($ledger)->create(['name' => 'groceries']);
-
-    $response = $this->actingAs($user)
-        ->get(route('ledgers.tags.index', $ledger));
-
-    $response->assertSuccessful();
-    $response->assertInertia(fn (Assert $page) => $page
-        ->reloadOnly('tags', fn (Assert $reload) => $reload
-            ->has('tags', 1, fn (Assert $tagPage) => $tagPage
-                ->where('name', 'groceries')
-                ->etc()
-            )
-            ->missing('currentLedger')
-        )
-    );
 });
 
 test('tag web create uses shared tag request validation messages', function () {
@@ -135,6 +80,45 @@ test('tag web create uses shared tag request validation messages', function () {
         ]);
 });
 
+test('tag web create uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => 'shared-create',
+            'color' => '#22c55e',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Tag created.');
+});
+
+test('tag web update rejects duplicate names within the same ledger', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    Tag::factory()->for($ledger)->create(['name' => 'existing-tag']);
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'editable-tag']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'existing-tag',
+            'color' => '#22c55e',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasErrors(['name']);
+
+    expect($tag->fresh()->name)->toBe('editable-tag');
+});
+
 test('tag can be updated through web routes', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -154,6 +138,27 @@ test('tag can be updated through web routes', function () {
     expect($tag->fresh()->name)->toBe('new-tag');
 });
 
+test('tag web update uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'before-update']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'after-update',
+            'color' => '#3b82f6',
+        ]);
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('success', 'Tag updated.');
+});
+
 test('tag can be deleted through web routes', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -167,6 +172,52 @@ test('tag can be deleted through web routes', function () {
     $response->assertRedirect(route('ledgers.tags.index', $ledger));
 
     expect($ledger->tags()->where('name', 'to-delete')->exists())->toBeFalse();
+});
+
+test('tag web delete uses correct redirect and flash under shared actions', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $tag = Tag::factory()->for($ledger)->create(['name' => 'delete-shared']);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.tags.index', $ledger))
+        ->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]));
+
+    $response->assertRedirect(route('ledgers.tags.index', $ledger))
+        ->assertSessionHas('success', 'Tag deleted.');
+});
+
+test('tag web routes continue to enforce ledger authorization through shared actions', function () {
+    $owner = User::factory()->create();
+    $outsider = User::factory()->create();
+    $ledger = Ledger::factory()->for($owner)->create();
+    $tag = Tag::factory()->for($ledger)->create();
+
+    $this->actingAs($outsider)
+        ->get(route('ledgers.tags.index', $ledger))
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->post(route('ledgers.tags.store', $ledger), [
+            'name' => 'forbidden-create',
+            'color' => '#22c55e',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->patch(route('ledgers.tags.update', [$ledger, $tag]), [
+            'name' => 'forbidden-update',
+            'color' => '#3b82f6',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($outsider)
+        ->delete(route('ledgers.tags.destroy', [$ledger, $tag]))
+        ->assertForbidden();
 });
 
 test('transaction with tags syncs tags correctly on store', function () {
@@ -195,7 +246,7 @@ test('transaction with tags syncs tags correctly on store', function () {
         ->toBe(collect([$tag1->id, $tag2->id])->sort()->values()->toArray());
 });
 
-test('transaction index can be filtered by tag', function () {
+test('transaction index preserves tag filter in shell props', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     $accountType = AccountType::factory()->for($ledger)->create();
@@ -220,15 +271,11 @@ test('transaction index can be filtered by tag', function () {
 
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
+        ->where('filters.tag_ids', [(string) $tag->id])
         ->missing('transactions')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('transactions', fn (Assert $transactions) => $transactions
-                ->has('data', 1)
-                ->where('data.0.id', $tagged->id)
-                ->etc()
-            )
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('transaction tags are synced on update', function () {
@@ -263,7 +310,7 @@ test('transaction tags are synced on update', function () {
     expect($transaction->tags()->pluck('tags.id')->toArray())->toBe([$tag2->id]);
 });
 
-test('tag index page loads deferred tags data', function () {
+test('tag index page keeps only shell props for api-backed reads', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
     Tag::factory()->for($ledger)->create([
@@ -278,13 +325,11 @@ test('tag index page loads deferred tags data', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/tags/index')
+        ->where('currentLedger.id', $ledger->id)
         ->missing('tags')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('tags', 1)
-            ->where('tags.0.name', 'travel')
-            ->where('tags.0.color', '#4ade80')
-        )
     );
+
+    $response->assertViewMissing('page.deferredProps');
 });
 
 test('ledger tag web routes are available for inertia actions', function () {

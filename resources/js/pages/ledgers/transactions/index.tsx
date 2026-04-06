@@ -1,4 +1,4 @@
-import { Head, InfiniteScroll, router, usePage } from '@inertiajs/react';
+import { Head, router, useHttp, usePage } from '@inertiajs/react';
 import {
     ArrowRightLeft,
     ChevronDown,
@@ -13,6 +13,7 @@ import {
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { index as transactionsLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/TransactionController';
 import type { DuplicateData } from '@/components/add-transaction-modal';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
 import { SearchableSelect } from '@/components/searchable-select';
@@ -85,7 +86,6 @@ import type {
     BreadcrumbItem,
     Category,
     Ledger,
-    Pagination,
     Payee,
     Tag,
     Transaction,
@@ -95,6 +95,16 @@ import type { MobileTransactionListItem } from './mobile-transaction-groups';
 import { groupTransactionsForMobile } from './mobile-transaction-groups';
 import { MobileTransactionList } from './mobile-transaction-list';
 import { resolveTransferPairTitle } from './mobile-transaction-row-data';
+import {
+    buildTransactionsUrl,
+    canAppendTransactionsPage,
+    isLastTransactionsPage,
+    mergeTransactionPageData,
+    resolveTransactionsResponse,
+    shouldContinueTransactionsReload,
+    shouldApplyTransactionsResponse,
+    shouldResetTransactionsState,
+} from './page-state';
 import type { Filters } from './query-params';
 import {
     buildQueryParams,
@@ -110,7 +120,17 @@ type TransactionPageProps = {
     categories: Category[];
     payees: Payee[];
     tags: Tag[];
-    transactions?: Pagination<Transaction>;
+};
+
+type TransactionListResponse = {
+    data: Transaction[];
+    meta: {
+        filters: Filters;
+        current_page: number;
+        per_page: number;
+        next_page_url: string | null;
+        prev_page_url: string | null;
+    };
 };
 
 type EditFormData = {
@@ -255,6 +275,7 @@ function EditTransactionModal({
     categories,
     payees,
     tags,
+    onTransactionChanged,
     onClose,
 }: {
     ledger: Ledger;
@@ -263,6 +284,7 @@ function EditTransactionModal({
     categories: Category[];
     payees: Payee[];
     tags: Tag[];
+    onTransactionChanged: () => void;
     onClose: () => void;
 }) {
     const isTransfer = transaction.transfer_pair_id !== null;
@@ -470,6 +492,7 @@ function EditTransactionModal({
                 preserveScroll: true,
                 onSuccess: () => {
                     toast.success('Transaction updated');
+                    onTransactionChanged();
                     onClose();
                 },
                 onError: (errors) => {
@@ -500,6 +523,7 @@ function EditTransactionModal({
                 preserveScroll: true,
                 onSuccess: () => {
                     toast.success('Transaction deleted');
+                    onTransactionChanged();
                     onClose();
                 },
                 onError: () => {
@@ -1458,17 +1482,35 @@ export default function TransactionsIndex() {
     const { currentLedger } = usePage().props;
     const ledger = currentLedger as Ledger;
     const { privacyMode } = usePrivacyMode();
-    const {
-        filters: committedFilters,
-        accounts,
-        categories,
-        payees,
-        tags,
-        transactions,
-    } = usePage<TransactionPageProps>().props;
+    const { filters, accounts, categories, payees, tags } =
+        usePage<TransactionPageProps>().props;
+    const transactionsLoaderState = useHttp<
+        Record<string, never>,
+        TransactionListResponse
+    >({});
 
-    // Local draft filter state (initialized from committed)
-    const [localFilters, setLocalFilters] = useState<Filters>(committedFilters);
+    const [activeFilters, setActiveFilters] = useState<Filters>(filters);
+    const [localFilters, setLocalFilters] = useState<Filters>(filters);
+    const [transactionsResponse, setTransactionsResponse] =
+        useState<TransactionListResponse | null>(null);
+    const [transactionsError, setTransactionsError] = useState<string | null>(
+        null,
+    );
+    const [hasLoadedTransactions, setHasLoadedTransactions] = useState(false);
+    const [isAppendingTransactions, setIsAppendingTransactions] =
+        useState(false);
+    const latestRequestRef = useRef(0);
+    const latestOperationRef = useRef(0);
+    const previousLedgerIdRef = useRef(ledger.id);
+    const previousFiltersRef = useRef<Filters>(filters);
+    const hasInitializedTransactionsRef = useRef(false);
+    const appendLockRef = useRef(false);
+
+    const resolvedTransactions = useMemo(
+        () => transactionsResponse?.data ?? [],
+        [transactionsResponse],
+    );
+    const transactionsMeta = transactionsResponse?.meta ?? null;
 
     // Selection state
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -1494,6 +1536,259 @@ export default function TransactionsIndex() {
         loading: loadingAttachments,
         deleteAttachment,
     } = useAttachments(ledger.id, attachmentModalTransaction);
+
+    function setAppendLock(locked: boolean) {
+        appendLockRef.current = locked;
+        setIsAppendingTransactions(locked);
+    }
+
+    function beginTransactionsOperation(): number {
+        latestOperationRef.current += 1;
+
+        return latestOperationRef.current;
+    }
+
+    function updateTransactionsUrl(filtersToUse: Filters, page = 1): void {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const url = new URL(
+            buildTransactionsUrl(
+                new URL(
+                    transactionsIndex.url(ledger.id),
+                    window.location.origin,
+                ).toString(),
+                filtersToUse,
+                page,
+            ),
+        );
+
+        window.history.replaceState(
+            window.history.state,
+            '',
+            `${url.pathname}${url.search}`,
+        );
+    }
+
+    async function loadTransactions(
+        nextFilters: Filters,
+        page = 1,
+        mode: 'replace' | 'append' = 'replace',
+    ): Promise<TransactionListResponse | null> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+
+        if (mode === 'replace') {
+            transactionsLoaderState.cancel();
+            setAppendLock(false);
+            setActiveFilters(nextFilters);
+            updateTransactionsUrl(nextFilters, page);
+        } else {
+            setAppendLock(true);
+        }
+
+        setTransactionsError(null);
+
+        try {
+            const requestResponse = await transactionsLoaderState.get(
+                transactionsLoader.url(
+                    { ledger: ledger.id },
+                    {
+                        query: {
+                            ...buildQueryParams(nextFilters),
+                            ...(page > 1 ? { page: String(page) } : {}),
+                        },
+                    },
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+
+                        if (mode === 'append') {
+                            setAppendLock(false);
+                        }
+                    },
+                },
+            );
+
+            const response = resolveTransactionsResponse(
+                requestResponse,
+                transactionsLoaderState.response ?? null,
+            );
+            const shouldApply = shouldApplyTransactionsResponse({
+                cancelled,
+                latestRequestId: latestRequestRef.current,
+                requestId,
+            });
+
+            if (response !== null && shouldApply) {
+                setTransactionsResponse((current) => {
+                    if (mode === 'append' && current !== null) {
+                        return {
+                            data: mergeTransactionPageData(
+                                current.data,
+                                response.data,
+                            ),
+                            meta: response.meta,
+                        };
+                    }
+
+                    return response;
+                });
+                setActiveFilters(response.meta.filters);
+
+                if (mode === 'append') {
+                    updateTransactionsUrl(
+                        response.meta.filters,
+                        response.meta.current_page,
+                    );
+                }
+            }
+
+            return shouldApply ? response : null;
+        } catch {
+            if (
+                shouldApplyTransactionsResponse({
+                    cancelled,
+                    latestRequestId: latestRequestRef.current,
+                    requestId,
+                })
+            ) {
+                setTransactionsError('Failed to load transactions.');
+            }
+
+            return null;
+        } finally {
+            if (mode === 'append') {
+                setAppendLock(false);
+            }
+
+            if (
+                shouldApplyTransactionsResponse({
+                    cancelled,
+                    latestRequestId: latestRequestRef.current,
+                    requestId,
+                })
+            ) {
+                setHasLoadedTransactions(true);
+            }
+        }
+    }
+
+    async function reloadLoadedTransactions(): Promise<boolean> {
+        const operationId = beginTransactionsOperation();
+        const filtersToReload = activeFilters;
+        const pagesToReload = transactionsMeta?.current_page ?? 1;
+
+        for (let page = 1; page <= pagesToReload; page += 1) {
+            const response = await loadTransactions(
+                filtersToReload,
+                page,
+                page === 1 ? 'replace' : 'append',
+            );
+
+            if (
+                !shouldContinueTransactionsReload({
+                    operationId,
+                    latestOperationId: latestOperationRef.current,
+                    wasSuccessful: response !== null,
+                })
+            ) {
+                return false;
+            }
+
+            if (isLastTransactionsPage(response)) {
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    // Keep a ref to always call the latest version from the event listener
+    const reloadLoadedTransactionsRef = useRef(reloadLoadedTransactions);
+    reloadLoadedTransactionsRef.current = reloadLoadedTransactions;
+
+    function applyFiltersWith(nextFilters: Filters) {
+        setLocalFilters(nextFilters);
+        setSelectedIds([]);
+        setTransactionsResponse(null);
+        setTransactionsError(null);
+        setHasLoadedTransactions(false);
+        setAppendLock(false);
+        beginTransactionsOperation();
+        void loadTransactions(nextFilters);
+    }
+
+    function handleResetFilters() {
+        applyFiltersWith({ ...EMPTY_FILTERS });
+    }
+
+    const handleSearchChange = useCallback((value: string | null) => {
+        setLocalFilters((prev) => ({ ...prev, search: value }));
+    }, []);
+
+    async function loadNextTransactionsPage(): Promise<void> {
+        if (
+            !canAppendTransactionsPage({
+                nextPageUrl: transactionsMeta?.next_page_url ?? null,
+                processing: transactionsLoaderState.processing,
+                isAppending: appendLockRef.current,
+            })
+        ) {
+            return;
+        }
+
+        const nextPage = (transactionsMeta?.current_page ?? 1) + 1;
+        beginTransactionsOperation();
+
+        await loadTransactions(activeFilters, nextPage, 'append');
+    }
+
+    useEffect(() => {
+        if (
+            hasInitializedTransactionsRef.current &&
+            !shouldResetTransactionsState(
+                previousLedgerIdRef.current,
+                ledger.id,
+                previousFiltersRef.current,
+                filters,
+            )
+        ) {
+            return;
+        }
+
+        hasInitializedTransactionsRef.current = true;
+        previousLedgerIdRef.current = ledger.id;
+        previousFiltersRef.current = filters;
+        setAppendLock(false);
+        setLocalFilters(filters);
+        setActiveFilters(filters);
+        setSelectedIds([]);
+        setTransactionsResponse(null);
+        setTransactionsError(null);
+        setHasLoadedTransactions(false);
+        beginTransactionsOperation();
+        void loadTransactions(filters);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters, ledger.id]);
+
+    useEffect(() => {
+        return () => {
+            transactionsLoaderState.cancel();
+            appendLockRef.current = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const visibleIds = new Set(resolvedTransactions.map(({ id }) => id));
+
+        setSelectedIds((current) => current.filter((id) => visibleIds.has(id)));
+    }, [resolvedTransactions]);
 
     // Filter panel open/closed
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -1530,9 +1825,24 @@ export default function TransactionsIndex() {
         return () => mql.removeEventListener('change', handler);
     }, []);
 
+    // Reload transactions when the sidebar's AddTransactionModal closes after a save
+    useEffect(() => {
+        function handleTransactionSaved() {
+            void reloadLoadedTransactionsRef.current();
+        }
+
+        window.addEventListener('transactionSaved', handleTransactionSaved);
+
+        return () =>
+            window.removeEventListener(
+                'transactionSaved',
+                handleTransactionSaved,
+            );
+    }, []);
+
     // Check if filters have changed from committed
     const filtersChanged =
-        JSON.stringify(localFilters) !== JSON.stringify(committedFilters);
+        JSON.stringify(localFilters) !== JSON.stringify(activeFilters);
 
     // Flat categories for filter dropdowns and bulk actions
     const flatCategories = useMemo(
@@ -1555,45 +1865,11 @@ export default function TransactionsIndex() {
         applyFiltersWith(localFilters);
     }
 
-    function applyFiltersWith(filters: Filters) {
-        const params = buildQueryParams(filters);
-
-        router.get(transactionsIndex.url(ledger.id), params, {
-            only: ['transactions', 'filters'],
-            reset: ['transactions'],
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-        });
-        setSelectedIds([]);
-    }
-
-    function handleResetFilters() {
-        setLocalFilters({ ...EMPTY_FILTERS });
-
-        router.get(
-            transactionsIndex.url(ledger.id),
-            {},
-            {
-                only: ['transactions', 'filters'],
-                reset: ['transactions'],
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            },
-        );
-        setSelectedIds([]);
-    }
-
-    const handleSearchChange = useCallback((value: string | null) => {
-        setLocalFilters((prev) => ({ ...prev, search: value }));
-    }, []);
-
     // ─── Selection ───────────────────────────────────────────────────────
 
     const allVisibleIds = useMemo(
-        () => (transactions?.data ?? []).map((t) => t.id),
-        [transactions],
+        () => resolvedTransactions.map((transaction) => transaction.id),
+        [resolvedTransactions],
     );
 
     const { allSelected, someSelected } = deriveSelectionState({
@@ -1638,6 +1914,7 @@ export default function TransactionsIndex() {
                     clearSelection();
                     setShowBulkDeleteConfirm(false);
                     toast.success('Transactions deleted');
+                    void reloadLoadedTransactions();
                 },
                 onError: () => {
                     toast.error('Failed to delete transactions');
@@ -1673,6 +1950,7 @@ export default function TransactionsIndex() {
                     toast.success(
                         `${actionLabel} updated for selected transactions`,
                     );
+                    void reloadLoadedTransactions();
                 },
                 onError: () => {
                     toast.error('Failed to update transactions');
@@ -1706,6 +1984,7 @@ export default function TransactionsIndex() {
                 preserveScroll: true,
                 onSuccess: () => {
                     toast.success('Transaction deleted');
+                    void reloadLoadedTransactions();
                 },
                 onError: () => {
                     toast.error('Failed to delete transaction');
@@ -1733,19 +2012,13 @@ export default function TransactionsIndex() {
 
     // ─── Running balance ─────────────────────────────────────────────────
 
-    const isAccountFiltered = committedFilters.account_ids.length === 1;
+    const isAccountFiltered = activeFilters.account_ids.length === 1;
     const filteredAccount = isAccountFiltered
-        ? accounts.find((a) => String(a.id) === committedFilters.account_ids[0])
+        ? accounts.find((a) => String(a.id) === activeFilters.account_ids[0])
         : null;
 
     const runningBalances = useMemo(() => {
-        if (!filteredAccount || !transactions) {
-            return null;
-        }
-
-        const txns = transactions.data;
-
-        if (txns.length === 0) {
+        if (!filteredAccount || resolvedTransactions.length === 0) {
             return null;
         }
 
@@ -1753,25 +2026,25 @@ export default function TransactionsIndex() {
         const currentBalance = parseFloat(filteredAccount.current_balance);
         let cumulativeBefore = 0;
 
-        for (const txn of txns) {
+        for (const txn of resolvedTransactions) {
             balances.set(txn.id, currentBalance - cumulativeBefore);
             cumulativeBefore += parseFloat(txn.amount);
         }
 
         return balances;
-    }, [filteredAccount, transactions]);
+    }, [filteredAccount, resolvedTransactions]);
 
     // ─── Filter chips (from committed filters) ──────────────────────────
 
     const filterChips: FilterChip[] = useMemo(() => {
         const chips: FilterChip[] = [];
 
-        if (committedFilters.date_from || committedFilters.date_to) {
-            const from = committedFilters.date_from
-                ? formatDate(committedFilters.date_from)
+        if (activeFilters.date_from || activeFilters.date_to) {
+            const from = activeFilters.date_from
+                ? formatDate(activeFilters.date_from)
                 : 'Start';
-            const to = committedFilters.date_to
-                ? formatDate(committedFilters.date_to)
+            const to = activeFilters.date_to
+                ? formatDate(activeFilters.date_to)
                 : 'Now';
             chips.push({
                 key: 'date_range',
@@ -1784,10 +2057,10 @@ export default function TransactionsIndex() {
             });
         }
 
-        if (committedFilters.search) {
+        if (activeFilters.search) {
             chips.push({
                 key: 'search',
-                label: `"${committedFilters.search}"`,
+                label: `"${activeFilters.search}"`,
                 onRemove: (filters) => ({
                     ...filters,
                     search: null,
@@ -1795,7 +2068,7 @@ export default function TransactionsIndex() {
             });
         }
 
-        for (const id of committedFilters.account_ids) {
+        for (const id of activeFilters.account_ids) {
             const account = accounts.find((a) => String(a.id) === id);
 
             if (account) {
@@ -1814,7 +2087,7 @@ export default function TransactionsIndex() {
 
         const allCats = categories.flatMap((p) => [p, ...(p.children ?? [])]);
 
-        for (const id of committedFilters.category_ids) {
+        for (const id of activeFilters.category_ids) {
             const cat = allCats.find((c) => String(c.id) === id);
 
             if (cat) {
@@ -1831,7 +2104,7 @@ export default function TransactionsIndex() {
             }
         }
 
-        for (const type of committedFilters.transaction_types) {
+        for (const type of activeFilters.transaction_types) {
             chips.push({
                 key: `type_${type}`,
                 label: type.charAt(0).toUpperCase() + type.slice(1),
@@ -1844,7 +2117,7 @@ export default function TransactionsIndex() {
             });
         }
 
-        for (const id of committedFilters.payee_ids) {
+        for (const id of activeFilters.payee_ids) {
             const payee = payees.find((p) => String(p.id) === id);
 
             if (payee) {
@@ -1861,7 +2134,7 @@ export default function TransactionsIndex() {
             }
         }
 
-        for (const id of committedFilters.tag_ids) {
+        for (const id of activeFilters.tag_ids) {
             const tag = tags.find((t) => String(t.id) === id);
 
             if (tag) {
@@ -1876,7 +2149,7 @@ export default function TransactionsIndex() {
             }
         }
 
-        if (committedFilters.uncategorized === '1') {
+        if (activeFilters.uncategorized === '1') {
             chips.push({
                 key: 'uncategorized',
                 label: 'Uncategorized',
@@ -1887,7 +2160,7 @@ export default function TransactionsIndex() {
             });
         }
 
-        if (committedFilters.bill_id) {
+        if (activeFilters.bill_id) {
             chips.push({
                 key: 'bill',
                 label: 'Recurring',
@@ -1899,14 +2172,14 @@ export default function TransactionsIndex() {
         }
 
         return chips;
-    }, [committedFilters, accounts, categories, payees, tags]);
+    }, [activeFilters, accounts, categories, payees, tags]);
 
     const activeFilterCount = filterChips.length;
 
     // ─── Render transaction content ──────────────────────────────────────
 
-    function renderTransactionList(txs: Pagination<Transaction>) {
-        if (txs.data.length === 0) {
+    function renderTransactionList(transactions: Transaction[]) {
+        if (transactions.length === 0) {
             return (
                 <EmptyState
                     icon={<Receipt className="size-6" />}
@@ -1955,7 +2228,8 @@ export default function TransactionsIndex() {
                     </TableHeader>
                     <TableBody>
                         {(() => {
-                            const groups = groupTransactionsForMobile(txs.data);
+                            const groups =
+                                groupTransactionsForMobile(transactions);
                             const flatItems: MobileTransactionListItem[] =
                                 groups.flatMap((group) => group.items);
 
@@ -2314,7 +2588,7 @@ export default function TransactionsIndex() {
                 </Table>
 
                 <MobileTransactionList
-                    transactions={txs.data}
+                    transactions={transactions}
                     allSelected={allSelected}
                     someSelected={someSelected}
                     selectedIds={selectedIds}
@@ -2397,7 +2671,7 @@ export default function TransactionsIndex() {
                                                         onClick={() => {
                                                             const nextFilters =
                                                                 chip.onRemove(
-                                                                    localFilters,
+                                                                    activeFilters,
                                                                 );
                                                             setLocalFilters(
                                                                 nextFilters,
@@ -2488,7 +2762,7 @@ export default function TransactionsIndex() {
                         asChild
                     >
                         <a
-                            href={buildExportUrl(ledger.id, committedFilters)}
+                            href={buildExportUrl(ledger.id, activeFilters)}
                             download
                         >
                             Export CSV
@@ -2604,24 +2878,68 @@ export default function TransactionsIndex() {
                 )}
 
                 {/* Transaction list */}
-                {transactions ? (
-                    <InfiniteScroll
-                        data="transactions"
-                        manual
-                        onlyNext
-                        preserveUrl
-                        next={({ hasMore, loading, fetch }) => (
-                            <BottomScrollTrigger
-                                hasMore={hasMore}
-                                loading={loading}
-                                onFetch={fetch}
-                            />
-                        )}
-                    >
-                        {renderTransactionList(transactions)}
-                    </InfiniteScroll>
-                ) : (
+                {transactionsLoaderState.processing &&
+                hasLoadedTransactions &&
+                !isAppendingTransactions ? (
+                    <p className="text-xs text-muted-foreground">
+                        Refreshing transactions...
+                    </p>
+                ) : null}
+
+                {transactionsError && resolvedTransactions.length > 0 ? (
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+                        <p className="text-sm text-muted-foreground">
+                            {transactionsError}
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                void reloadLoadedTransactions();
+                            }}
+                        >
+                            Retry
+                        </Button>
+                    </div>
+                ) : null}
+
+                {!hasLoadedTransactions ? (
                     <TransactionListSkeleton />
+                ) : transactionsError && resolvedTransactions.length === 0 ? (
+                    <Card>
+                        <CardContent className="flex flex-col gap-3 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {transactionsError}
+                            </p>
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        beginTransactionsOperation();
+                                        void loadTransactions(activeFilters);
+                                    }}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <>
+                        {renderTransactionList(resolvedTransactions)}
+                        {resolvedTransactions.length > 0 ? (
+                            <BottomScrollTrigger
+                                hasMore={
+                                    transactionsMeta?.next_page_url !== null
+                                }
+                                loading={isAppendingTransactions}
+                                onFetch={() => {
+                                    void loadNextTransactionsPage();
+                                }}
+                            />
+                        ) : null}
+                    </>
                 )}
             </div>
 
@@ -2634,6 +2952,9 @@ export default function TransactionsIndex() {
                     categories={categories}
                     payees={payees}
                     tags={tags}
+                    onTransactionChanged={() => {
+                        void reloadLoadedTransactions();
+                    }}
                     onClose={() => setEditTransaction(null)}
                 />
             )}
@@ -2683,6 +3004,9 @@ export default function TransactionsIndex() {
                     }
                 }}
                 initialData={duplicateTransaction}
+                onModalClosed={() => {
+                    void reloadLoadedTransactions();
+                }}
                 modal
             />
 

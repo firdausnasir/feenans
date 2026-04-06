@@ -15,9 +15,7 @@ class LedgerController extends Controller
 {
     public function index(Request $request): Response
     {
-        return Inertia::render('ledgers/index', [
-            'ledgers' => $request->user()->ledgers()->orderBy('name')->get(),
-        ]);
+        return Inertia::render('ledgers/index');
     }
 
     public function create(Request $request): Response|RedirectResponse
@@ -45,9 +43,7 @@ class LedgerController extends Controller
     {
         $this->authorize('update', $ledger);
 
-        return Inertia::render('ledgers/edit', [
-            'ledger' => $ledger,
-        ]);
+        return Inertia::render('ledgers/edit');
     }
 
     public function update(UpdateLedgerRequest $request, Ledger $ledger): RedirectResponse

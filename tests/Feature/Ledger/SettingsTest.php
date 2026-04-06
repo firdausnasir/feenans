@@ -5,7 +5,7 @@ use App\Models\Ledger;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('settings page renders for ledger owner', function () {
+test('settings page renders shell without data props for ledger owner', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
 
@@ -16,13 +16,9 @@ test('settings page renders for ledger owner', function () {
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('ledgers/settings/index')
-        ->has('ledger', fn (Assert $ledgerPage) => $ledgerPage
-            ->where('id', $ledger->id)
-            ->where('name', $ledger->name)
-            ->etc()
-        )
-        ->has('accountTypes')
-        ->has('hasSampleData')
+        ->missing('ledger')
+        ->missing('accountTypes')
+        ->missing('hasSampleData')
     );
 });
 

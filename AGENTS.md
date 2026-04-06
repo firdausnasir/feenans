@@ -243,7 +243,8 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 
 ## Frontend Architecture
 
-- All new frontend features must fetch data from backend API endpoints. Inertia is used only to render the initial page view — dynamic data comes from API calls.
+- Browser-facing product pages use web and Inertia routes by default. Use Inertia features such as deferred props, partial reloads, merges, and form visits instead of browser calls to `/api/*` unless a specific exception is approved.
+- `/api/*` routes are for first-party non-browser clients such as mobile, desktop, CLI, or explicit admin exceptions while the architecture rollout is in progress.
 
 ## Linting
 

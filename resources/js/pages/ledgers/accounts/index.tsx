@@ -1,4 +1,4 @@
-import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/react';
 import {
     ChevronRight,
     CreditCard,
@@ -8,8 +8,13 @@ import {
     Trash2,
 } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    grouped as groupedAccountsLoader,
+    netWorth as netWorthLoader,
+    types as accountTypesLoader,
+} from '@/actions/App/Http/Controllers/Api/V1/Ledger/AccountController';
 import { ColorPicker } from '@/components/color-picker';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
@@ -51,10 +56,21 @@ import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { amountColor, formatAbsAmount, formatAmount } from '@/lib/format';
 import { mapInertiaErrorsArray } from '@/lib/utils';
-import { resolveDeferredArray } from '@/pages/ledgers/accounts/deferred-data';
+import {
+    getMutationRefreshNotice,
+    resolveAccountTypeIsCredit,
+    shouldShowAccountsEmptyState,
+} from '@/pages/ledgers/accounts/page-state';
 import { premium } from '@/routes';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
-import { index as accountsIndex } from '@/routes/ledgers/accounts';
+import {
+    adjustBalance as adjustBalanceRoute,
+    destroy as destroyAccountRoute,
+    index as accountsIndex,
+    reorder as reorderAccountsRoute,
+    store as storeAccountRoute,
+    update as updateAccountRoute,
+} from '@/routes/ledgers/accounts';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, AccountType, BreadcrumbItem } from '@/types';
 
@@ -72,6 +88,10 @@ type NetWorthData = {
     trend: Array<{ month: string; net: number }>;
 };
 
+type ApiEnvelope<T> = {
+    data: T;
+};
+
 type EditFormData = {
     account_type_id: string;
     name: string;
@@ -82,8 +102,7 @@ type EditFormData = {
     include_in_totals: boolean;
 };
 
-function NetWorthCards() {
-    const { netWorth } = usePage<{ netWorth: NetWorthData }>().props;
+function NetWorthCards({ netWorth }: { readonly netWorth: NetWorthData }) {
     const { privacyMode } = usePrivacyMode();
 
     return (
@@ -124,6 +143,27 @@ function NetWorthCards() {
     );
 }
 
+function LoaderErrorCard({
+    title,
+    onRetry,
+}: {
+    readonly title: string;
+    readonly onRetry: () => void;
+}) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 p-4">
+                <p className="text-sm text-muted-foreground">{title}</p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ── Create Account Modal ────────────────────────────────────────────────
 
 function CreateAccountModal({
@@ -137,7 +177,7 @@ function CreateAccountModal({
     readonly onOpenChange: (open: boolean) => void;
     readonly ledgerId: number;
     readonly accountTypes: AccountType[];
-    readonly onCreated: () => void;
+    readonly onCreated: () => Promise<boolean>;
 }) {
     const [formData, setFormData] = useState({
         account_type_id: '',
@@ -185,7 +225,7 @@ function CreateAccountModal({
         setErrors({});
 
         router.post(
-            `/ledgers/${ledgerId}/accounts`,
+            storeAccountRoute.url(ledgerId),
             {
                 account_type_id: formData.account_type_id,
                 name: formData.name,
@@ -201,9 +241,8 @@ function CreateAccountModal({
             },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setProcessing(false);
-                    toast.success('Account created');
                     onOpenChange(false);
                     setFormData({
                         account_type_id: '',
@@ -214,7 +253,14 @@ function CreateAccountModal({
                         payment_due_day: '',
                     });
                     setDefaultTypeSet(false);
-                    onCreated();
+                    const notice = getMutationRefreshNotice({
+                        refreshed: await onCreated(),
+                        successMessage: 'Account created',
+                        staleDataMessage:
+                            'Account created, but failed to refresh account data.',
+                    });
+
+                    toast[notice.level](notice.message);
                 },
                 onError: (errors) => {
                     setProcessing(false);
@@ -423,7 +469,7 @@ function EditAccountModal({
     readonly onOpenChange: (open: boolean) => void;
     readonly ledgerId: number;
     readonly accountTypes: AccountType[];
-    readonly onSaved: () => void;
+    readonly onSaved: () => Promise<boolean>;
 }) {
     const [formData, setFormData] = useState<EditFormData>({
         account_type_id: String(account.account_type_id),
@@ -454,7 +500,7 @@ function EditAccountModal({
     const selectedType = accountTypes.find(
         (t) => String(t.id) === formData.account_type_id,
     );
-    const effectiveIsCredit = selectedType?.is_credit ?? false;
+    const effectiveIsCredit = resolveAccountTypeIsCredit(selectedType, account);
 
     function updateField(field: string, value: string | boolean) {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -476,7 +522,7 @@ function EditAccountModal({
         setErrors({});
 
         router.put(
-            `/ledgers/${ledgerId}/accounts/${account.id}`,
+            updateAccountRoute.url([ledgerId, account.id]),
             {
                 account_type_id: formData.account_type_id,
                 name: formData.name,
@@ -492,11 +538,17 @@ function EditAccountModal({
             },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setProcessing(false);
-                    toast.success('Account updated');
                     onOpenChange(false);
-                    onSaved();
+                    const notice = getMutationRefreshNotice({
+                        refreshed: await onSaved(),
+                        successMessage: 'Account updated',
+                        staleDataMessage:
+                            'Account updated, but failed to refresh account data.',
+                    });
+
+                    toast[notice.level](notice.message);
                 },
                 onError: (errors) => {
                     setProcessing(false);
@@ -511,15 +563,21 @@ function EditAccountModal({
         const diff = parseFloat(newBalance) - currentBalance;
 
         router.post(
-            `/ledgers/${ledgerId}/accounts/${account.id}/adjust-balance`,
+            adjustBalanceRoute.url([ledgerId, account.id]),
             { amount: diff, description: 'Balance adjustment' },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: async () => {
                     setAdjusting(false);
-                    toast.success('Balance adjusted');
                     onOpenChange(false);
-                    onSaved();
+                    const notice = getMutationRefreshNotice({
+                        refreshed: await onSaved(),
+                        successMessage: 'Balance adjusted',
+                        staleDataMessage:
+                            'Balance adjusted, but failed to refresh account data.',
+                    });
+
+                    toast[notice.level](notice.message);
                 },
                 onError: () => {
                     setAdjusting(false);
@@ -531,13 +589,19 @@ function EditAccountModal({
 
     function handleDelete() {
         setDeleting(true);
-        router.delete(`/ledgers/${ledgerId}/accounts/${account.id}`, {
+        router.delete(destroyAccountRoute.url([ledgerId, account.id]), {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Account deleted');
+            onSuccess: async () => {
                 setShowDeleteConfirm(false);
                 onOpenChange(false);
-                onSaved();
+                const notice = getMutationRefreshNotice({
+                    refreshed: await onSaved(),
+                    successMessage: 'Account deleted',
+                    staleDataMessage:
+                        'Account deleted, but failed to refresh account data.',
+                });
+
+                toast[notice.level](notice.message);
             },
             onError: () => {
                 setDeleting(false);
@@ -851,25 +915,153 @@ function EditAccountModal({
 // ── Main Component ──────────────────────────────────────────────────────
 
 export default function AccountsIndex() {
-    const {
-        auth,
-        currentLedger: ledger,
-        accounts: accountGroups,
-        accountTypes,
-    } = usePage<{
-        accounts: AccountGroup[] | undefined;
-        accountTypes: AccountType[] | undefined;
+    const { auth, currentLedger: ledger } = usePage<{
+        auth: {
+            user?: {
+                membership?: {
+                    is_premium?: boolean;
+                };
+            };
+        };
+        currentLedger: {
+            id: number;
+            name: string;
+        } | null;
     }>().props;
+
+    const accountsLoaderState = useHttp<Record<string, never>, ApiEnvelope<AccountGroup[]>>({});
+    const accountTypesLoaderState = useHttp<Record<string, never>, ApiEnvelope<AccountType[]>>({});
+    const netWorthLoaderState = useHttp<Record<string, never>, ApiEnvelope<NetWorthData>>({});
+
+    const [accountsError, setAccountsError] = useState<string | null>(null);
+    const [accountTypesError, setAccountTypesError] = useState<string | null>(null);
+    const [netWorthError, setNetWorthError] = useState<string | null>(null);
+    const [hasResolvedAccountGroupsInitialLoad, setHasResolvedAccountGroupsInitialLoad] =
+        useState(false);
 
     const isPremiumUser = auth.user?.membership.is_premium ?? false;
     const { privacyMode } = usePrivacyMode();
 
-    function refetchData() {
-        router.reload({ only: ['accounts', 'netWorth'] });
+    const resolvedAccountGroups = accountsLoaderState.response?.data ?? [];
+    const resolvedAccountTypes = accountTypesLoaderState.response?.data ?? [];
+    const resolvedNetWorth = netWorthLoaderState.response?.data ?? null;
+    const showAccountsEmptyState = shouldShowAccountsEmptyState({
+        hasResolvedInitialLoad: hasResolvedAccountGroupsInitialLoad,
+        processing: accountsLoaderState.processing,
+        groupsCount: resolvedAccountGroups.length,
+        hasError: accountsError !== null,
+    });
+
+    async function loadAccountGroups(): Promise<boolean> {
+        if (!ledger) {
+            return false;
+        }
+
+        let cancelled = false;
+
+        accountsLoaderState.cancel();
+        setAccountsError(null);
+
+        try {
+            await accountsLoaderState.get(groupedAccountsLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setAccountsError('Failed to load accounts.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled) {
+                setHasResolvedAccountGroupsInitialLoad(true);
+            }
+        }
     }
 
-    const resolvedAccountGroups = resolveDeferredArray(accountGroups);
-    const resolvedAccountTypes = resolveDeferredArray(accountTypes);
+    async function loadAccountTypes() {
+        if (!ledger) {
+            return;
+        }
+
+        let cancelled = false;
+
+        accountTypesLoaderState.cancel();
+        setAccountTypesError(null);
+
+        try {
+            await accountTypesLoaderState.get(accountTypesLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+        } catch {
+            if (!cancelled) {
+                setAccountTypesError('Failed to load account types.');
+            }
+        }
+    }
+
+    async function loadNetWorth(): Promise<boolean> {
+        if (!ledger) {
+            return false;
+        }
+
+        let cancelled = false;
+
+        netWorthLoaderState.cancel();
+        setNetWorthError(null);
+
+        try {
+            await netWorthLoaderState.get(netWorthLoader.url(ledger.id), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            });
+
+            return true;
+        } catch {
+            if (!cancelled) {
+                setNetWorthError('Failed to load net worth.');
+            }
+
+            return false;
+        }
+    }
+
+    // Loaders intentionally rerun only when the ledger changes.
+    useEffect(() => {
+        if (!ledger) {
+            return;
+        }
+
+        void Promise.allSettled([
+            loadAccountGroups(),
+            loadAccountTypes(),
+            loadNetWorth(),
+        ]);
+
+        return () => {
+            accountsLoaderState.cancel();
+            accountTypesLoaderState.cancel();
+            netWorthLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger?.id]);
+
+    async function refetchData(): Promise<boolean> {
+        const [accountsRefreshed, netWorthRefreshed] = await Promise.all([
+            loadAccountGroups(),
+            loadNetWorth(),
+        ]);
+
+        return accountsRefreshed && netWorthRefreshed;
+    }
+
     const allAccounts = resolvedAccountGroups.flatMap(
         (group) => group.accounts,
     );
@@ -912,12 +1104,19 @@ export default function AccountsIndex() {
 
         setDeleteProcessing(true);
 
-        router.delete(`/ledgers/${ledger!.id}/accounts/${deletingAccount.id}`, {
+        router.delete(destroyAccountRoute.url([ledger!.id, deletingAccount.id]), {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Account deleted');
+            onSuccess: async () => {
                 setDeletingAccount(null);
                 setDeleteProcessing(false);
+                const notice = getMutationRefreshNotice({
+                    refreshed: await refetchData(),
+                    successMessage: 'Account deleted',
+                    staleDataMessage:
+                        'Account deleted, but failed to refresh account data.',
+                });
+
+                toast[notice.level](notice.message);
             },
             onError: () => {
                 setDeleteProcessing(false);
@@ -999,12 +1198,21 @@ export default function AccountsIndex() {
         isReorderingRef.current = true;
 
         router.post(
-            `/ledgers/${ledger!.id}/accounts/reorder`,
+            reorderAccountsRoute.url(ledger!.id),
             { items },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                preserveState: true,
+                onSuccess: async () => {
                     isReorderingRef.current = false;
+
+                    const refreshed = await loadAccountGroups();
+
+                    if (!refreshed) {
+                        toast.error(
+                            'Accounts reordered, but failed to refresh account data.',
+                        );
+                    }
                 },
                 onError: () => {
                     isReorderingRef.current = false;
@@ -1070,43 +1278,59 @@ export default function AccountsIndex() {
                 </div>
 
                 {/* Net worth cards - always single row */}
-                <Deferred
-                    data="netWorth"
-                    fallback={
-                        <div className="grid grid-cols-3 gap-3">
-                            {[1, 2, 3].map((i) => (
-                                <Card key={i} className="py-3">
-                                    <CardContent className="px-3">
-                                        <Skeleton className="mb-1 h-3 w-16" />
-                                        <Skeleton className="h-6 w-20" />
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    }
-                >
-                    <NetWorthCards />
-                </Deferred>
+                {resolvedNetWorth ? (
+                    <NetWorthCards netWorth={resolvedNetWorth} />
+                ) : netWorthError ? (
+                    <LoaderErrorCard
+                        title={netWorthError}
+                        onRetry={() => {
+                            void loadNetWorth();
+                        }}
+                    />
+                ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                        {[1, 2, 3].map((i) => (
+                            <Card key={i} className="py-3">
+                                <CardContent className="px-3">
+                                    <Skeleton className="mb-1 h-3 w-16" />
+                                    <Skeleton className="h-6 w-20" />
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
 
-                <Deferred
-                    data={['accounts', 'accountTypes']}
-                    fallback={
-                        <div className="space-y-6">
-                            {[1, 2].map((i) => (
-                                <div key={i} className="space-y-2">
-                                    <Skeleton className="h-8 w-40" />
-                                    {[1, 2, 3].map((j) => (
-                                        <Skeleton
-                                            key={j}
-                                            className="h-12 w-full"
-                                        />
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
-                    }
-                >
-                    {allAccounts.length === 0 && (
+                {accountTypesError && resolvedAccountTypes.length === 0 ? (
+                    <LoaderErrorCard
+                        title={accountTypesError}
+                        onRetry={() => {
+                            void loadAccountTypes();
+                        }}
+                    />
+                ) : null}
+
+                {accountsError && resolvedAccountGroups.length === 0 ? (
+                    <LoaderErrorCard
+                        title={accountsError}
+                        onRetry={() => {
+                            void loadAccountGroups();
+                        }}
+                    />
+                ) : accountsLoaderState.processing &&
+                  resolvedAccountGroups.length === 0 ? (
+                    <div className="space-y-6">
+                        {[1, 2].map((i) => (
+                            <div key={i} className="space-y-2">
+                                <Skeleton className="h-8 w-40" />
+                                {[1, 2, 3].map((j) => (
+                                    <Skeleton key={j} className="h-12 w-full" />
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <>
+                    {showAccountsEmptyState && (
                         <EmptyState
                             icon={<CreditCard className="size-6" />}
                             title="No accounts yet"
@@ -1506,7 +1730,8 @@ export default function AccountsIndex() {
                             </section>
                         );
                     })}
-                </Deferred>
+                    </>
+                )}
             </div>
 
             {/* Create modal */}

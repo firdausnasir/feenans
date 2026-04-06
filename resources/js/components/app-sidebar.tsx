@@ -6,6 +6,7 @@ import {
     Hash,
     LayoutDashboard,
     LayoutGrid,
+    MessageSquare,
     PiggyBank,
     Receipt,
     RefreshCw,
@@ -15,6 +16,7 @@ import {
     Upload,
     Users as UsersIcon,
 } from 'lucide-react';
+import { FeedbackDialog } from '@/components/feedback-dialog';
 import { LedgerSwitcher } from '@/components/ledger-switcher';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -68,6 +70,11 @@ export function AppSidebar() {
                           title: 'Memberships',
                           href: '/admin/memberships',
                           icon: Shield,
+                      },
+                      {
+                          title: 'Feedbacks',
+                          href: '/admin/feedbacks',
+                          icon: MessageSquare,
                       },
                   ],
               },
@@ -191,27 +198,32 @@ export function AppSidebar() {
                             </SidebarMenuItem>
                         </SidebarMenu>
                     </>
-                ) : settingsHref ? (
+                ) : (
                     <>
                         <SidebarSeparator />
-                        <SidebarMenu>
-                            <SidebarMenuItem>
-                                <SidebarMenuButton
-                                    asChild
-                                    isActive={isCurrentOrParentUrl(
-                                        settingsHref,
-                                    )}
-                                    tooltip={{ children: 'Workspace Settings' }}
-                                >
-                                    <Link href={settingsHref} prefetch>
-                                        <Settings />
-                                        <span>Workspace Settings</span>
-                                    </Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        </SidebarMenu>
+                        <FeedbackDialog />
+                        {settingsHref && (
+                            <SidebarMenu>
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={isCurrentOrParentUrl(
+                                            settingsHref,
+                                        )}
+                                        tooltip={{
+                                            children: 'Workspace Settings',
+                                        }}
+                                    >
+                                        <Link href={settingsHref} prefetch>
+                                            <Settings />
+                                            <span>Workspace Settings</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            </SidebarMenu>
+                        )}
                     </>
-                ) : null}
+                )}
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

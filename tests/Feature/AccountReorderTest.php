@@ -1,9 +1,12 @@
 <?php
 
+use App\Actions\Accounts\UseCases\ReorderAccountsAction;
+use App\Data\Accounts\Input\ReorderAccountsData;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('reorder endpoint updates account positions', function () {
@@ -46,13 +49,6 @@ test('accounts index renders successfully', function () {
             ->missing('accounts')
             ->missing('accountTypes')
             ->missing('netWorth')
-            ->loadDeferredProps(['default', 'accounts'], fn (Assert $reload) => $reload
-                ->has('accounts', 1)
-                ->where('accounts.0.group', 'included')
-                ->has('accounts.0.accounts', 2)
-                ->has('accountTypes')
-                ->has('netWorth')
-            )
         );
 });
 
@@ -79,6 +75,36 @@ test('reorder only updates accounts belonging to the ledger', function () {
 
     // Other ledger's account should NOT be updated
     expect($otherAccount->fresh()->position)->toBe(1);
+});
+
+test('reorder accounts action applies all positions with one update statement', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+
+    $first = Account::factory()->for($ledger)->for($accountType)->create(['position' => 1]);
+    $second = Account::factory()->for($ledger)->for($accountType)->create(['position' => 2]);
+
+    $updateStatements = 0;
+
+    DB::listen(function ($query) use (&$updateStatements): void {
+        if (str_starts_with(strtolower($query->sql), 'update')) {
+            $updateStatements++;
+        }
+    });
+
+    app(ReorderAccountsAction::class)(new ReorderAccountsData(
+        ledger: $ledger,
+        user: $user,
+        items: [
+            ['id' => $first->id, 'position' => 2],
+            ['id' => $second->id, 'position' => 1],
+        ],
+    ));
+
+    expect($updateStatements)->toBe(1)
+        ->and($first->fresh()->position)->toBe(2)
+        ->and($second->fresh()->position)->toBe(1);
 });
 
 test('reorder validates required fields', function () {

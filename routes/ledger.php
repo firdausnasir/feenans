@@ -16,6 +16,7 @@ use App\Http\Controllers\Ledger\TagController;
 use App\Http\Controllers\Ledger\TransactionController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\Settings\DataExportController;
+use App\Http\Controllers\Web\Architecture\ProofTagController as WebProofTagController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
@@ -148,6 +149,12 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::post('ledgers/{ledger}/tags', [TagController::class, 'store'])->name('ledgers.tags.store');
     Route::patch('ledgers/{ledger}/tags/{tag}', [TagController::class, 'update'])->name('ledgers.tags.update');
     Route::delete('ledgers/{ledger}/tags/{tag}', [TagController::class, 'destroy'])->name('ledgers.tags.destroy');
+
+    // Temporary architecture proof routes for shared request pipeline rollout.
+    Route::get('ledgers/{ledger}/architecture/proof-tags', [WebProofTagController::class, 'index'])
+        ->name('architecture.proof-tags.index');
+    Route::post('ledgers/{ledger}/architecture/proof-tags', [WebProofTagController::class, 'store'])
+        ->name('architecture.proof-tags.store');
 
     // Activity
     Route::get('ledgers/{ledger}/activity', [ActivityLogController::class, 'index'])

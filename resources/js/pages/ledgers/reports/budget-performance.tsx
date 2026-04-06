@@ -1,5 +1,7 @@
-import { Deferred, Head, usePage } from '@inertiajs/react';
+import { Head, useHttp, usePage } from '@inertiajs/react';
 import { AlertTriangle, BarChart3, CheckCircle, XCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { budgetPerformance as budgetPerformanceLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/ReportController';
 import { ReportViewSelect } from '@/components/report-view-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +13,7 @@ import AppLayout from '@/layouts/app-layout';
 import { formatAbsAmount } from '@/lib/format';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import {
+    exportPdf as exportReportPdf,
     index as reportsIndex,
     budgetPerformance as budgetPerformanceRoute,
 } from '@/routes/ledgers/reports';
@@ -18,16 +21,8 @@ import type { BreadcrumbItem } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type BudgetStat = {
-    id: number;
-    category_name: string;
-    amount: number;
-    spent: number;
-    remaining: number;
-    percentage: number;
-    period: string;
-    status: 'good' | 'warning' | 'danger' | 'over';
-};
+type BudgetPerformanceReport = App.Data.Reports.Output.Web.BudgetPerformanceReportData;
+type BudgetStat = BudgetPerformanceReport['budget_stats'][number];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -229,10 +224,13 @@ function BudgetPerformanceSkeleton() {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BudgetPerformancePage() {
-    const { currentLedger, performance } = usePage<{
-        performance?: { budget_stats: BudgetStat[]; period_label: string };
-    }>().props;
+    const { currentLedger } = usePage().props;
     const ledger = currentLedger!;
+    const performanceLoaderState = useHttp<Record<string, never>, { data: BudgetPerformanceReport }>({});
+    const [performance, setPerformance] = useState<BudgetPerformanceReport | null>(null);
+    const [performanceError, setPerformanceError] = useState<string | null>(null);
+    const [hasLoadedPerformance, setHasLoadedPerformance] = useState(false);
+    const latestRequestRef = useRef(0);
 
     const budgetStats = performance?.budget_stats ?? [];
 
@@ -244,6 +242,50 @@ export default function BudgetPerformancePage() {
             href: budgetPerformanceRoute.url(ledger.id),
         },
     ];
+
+    async function loadPerformance(): Promise<void> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+        performanceLoaderState.cancel();
+        setPerformanceError(null);
+
+        try {
+            const response = await performanceLoaderState.get(
+                budgetPerformanceLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setPerformance(response.data);
+            }
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setPerformanceError('Failed to load budget performance report.');
+            }
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedPerformance(true);
+            }
+        }
+    }
+
+    useEffect(() => {
+        void loadPerformance();
+
+        return () => {
+            performanceLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger.id]);
+
+    const showInitialLoading =
+        performanceLoaderState.processing && !hasLoadedPerformance;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -263,17 +305,40 @@ export default function BudgetPerformancePage() {
                         className="w-full sm:ml-auto sm:w-auto"
                         asChild
                     >
-                        <a href={`/ledgers/${ledger.id}/reports/export-pdf`}>
+                        <a href={exportReportPdf.url(ledger.id)}>
                             Export PDF
                         </a>
                     </Button>
                 </div>
 
-                <Deferred
-                    data="performance"
-                    fallback={<BudgetPerformanceSkeleton />}
-                >
-                    {budgetStats.length === 0 ? (
+                {showInitialLoading ? (
+                    <BudgetPerformanceSkeleton />
+                ) : performanceError && !performance ? (
+                    <Card>
+                        <CardContent className="flex flex-col gap-3 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {performanceError}
+                            </p>
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadPerformance()}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : budgetStats.length === 0 ? (
+                    <>
+                        {performanceLoaderState.processing &&
+                        hasLoadedPerformance ? (
+                            <p className="text-xs text-muted-foreground">
+                                Refreshing budget performance report...
+                            </p>
+                        ) : null}
+
                         <Card>
                             <CardContent className="py-12">
                                 <EmptyState
@@ -283,20 +348,25 @@ export default function BudgetPerformancePage() {
                                 />
                             </CardContent>
                         </Card>
-                    ) : (
-                        <>
-                            {/* Summary */}
-                            <BudgetSummary stats={budgetStats} />
+                    </>
+                ) : (
+                    <>
+                        {performanceLoaderState.processing &&
+                        hasLoadedPerformance ? (
+                            <p className="text-xs text-muted-foreground">
+                                Refreshing budget performance report...
+                            </p>
+                        ) : null}
 
-                            {/* Budget cards grid */}
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {budgetStats.map((stat) => (
-                                    <BudgetCard key={stat.id} stat={stat} />
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </Deferred>
+                        <BudgetSummary stats={budgetStats} />
+
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {budgetStats.map((stat) => (
+                                <BudgetCard key={stat.id} stat={stat} />
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
         </AppLayout>
     );

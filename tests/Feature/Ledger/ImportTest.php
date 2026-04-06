@@ -54,21 +54,6 @@ test('import page renders for authenticated user', function () {
         ->missing('accounts')
         ->missing('savedMappings')
         ->missing('importHistory')
-        ->loadDeferredProps(fn (Assert $reload) => $reload
-            ->has('accounts', 1, fn (Assert $accountPage) => $accountPage
-                ->where('name', $account->name)
-                ->etc()
-            )
-            ->has('savedMappings', 1, fn (Assert $mappingPage) => $mappingPage
-                ->where('name', 'My Mapping')
-                ->etc()
-            )
-            ->has('importHistory', 1, fn (Assert $historyPage) => $historyPage
-                ->where('filename', 'statement.csv')
-                ->where('row_count', 12)
-                ->etc()
-            )
-        )
     );
 });
 
@@ -179,6 +164,33 @@ test('parse endpoint returns correct row count for larger CSV', function () {
     $data = session('importParseResult');
     expect($data['total_rows'])->toBe(15);
     expect($data['preview_rows'])->toHaveCount(10);
+});
+
+test('parse detects known bank format and suggests a mapping', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $csv = "Transaction Date,Description,Debit,Credit\n2026-01-01,Coffee,25.00,\n";
+    $file = UploadedFile::fake()->createWithContent('maybank.csv', $csv);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.import.create', $ledger))
+        ->post(route('ledgers.import.parse', $ledger), ['file' => $file]);
+
+    $response->assertRedirect(route('ledgers.import.create', $ledger))
+        ->assertSessionHas('importParseResult', function (array $result): bool {
+            expect($result['detected_bank'])->toBe('Maybank')
+                ->and($result['suggested_mapping'])->toBe([
+                    'date' => 'Transaction Date',
+                    'amount' => 'Debit',
+                    'description' => 'Description',
+                ]);
+
+            return true;
+        });
 });
 
 test('parse endpoint rejects non-csv files', function () {

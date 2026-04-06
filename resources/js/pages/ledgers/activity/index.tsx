@@ -1,8 +1,9 @@
-import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Head, useHttp, usePage } from '@inertiajs/react';
 import { ClipboardList } from 'lucide-react';
-import { useState } from 'react';
-import { index as activityIndex } from '@/actions/App/Http/Controllers/Ledger/ActivityLogController';
+import { useEffect, useRef, useState } from 'react';
+import { index as activityLoader } from '@/actions/App/Http/Controllers/Api/V1/Ledger/ActivityLogController';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -16,9 +17,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePrivacyMode } from '@/contexts/privacy-mode-context';
 import AppLayout from '@/layouts/app-layout';
 import { MASKED_AMOUNT } from '@/lib/format';
+import {
+    ALL_FILTER,
+    getActivityFilterSelectState,
+    shouldResetActivityState
+    
+} from '@/pages/ledgers/activity/page-state';
+import type {ActivityFilters} from '@/pages/ledgers/activity/page-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as ledgerActivityIndex } from '@/routes/ledgers/activity';
-import type { BreadcrumbItem, Pagination } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 
 type ActivityItem = {
     id: number;
@@ -31,7 +39,15 @@ type ActivityItem = {
     user?: { name: string } | null;
 };
 
-const ALL_FILTER = '__all__';
+type ActivityResponse = {
+    data: ActivityItem[];
+    meta: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+    };
+};
 
 const SUBJECT_TYPES = [
     'Account',
@@ -99,6 +115,38 @@ function formatFieldName(field: string): string {
         .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function buildActivityQuery(filters: ActivityFilters): Record<string, string> {
+    const query: Record<string, string> = {};
+
+    if (filters.subject_type) {
+        query.subject_type = filters.subject_type;
+    }
+
+    if (filters.action) {
+        query.action = filters.action;
+    }
+
+    if (filters.page > 1) {
+        query.page = String(filters.page);
+    }
+
+    return query;
+}
+
+function updateActivityUrl(ledgerId: number, filters: ActivityFilters): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const url = new URL(ledgerActivityIndex.url(ledgerId), window.location.origin);
+
+    for (const [key, value] of Object.entries(buildActivityQuery(filters))) {
+        url.searchParams.set(key, value);
+    }
+
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+}
+
 function ChangeDiff({
     oldValues,
     newValues,
@@ -133,7 +181,7 @@ function ChangeDiff({
                         <span className="text-red-600 line-through dark:text-red-400">
                             {formatValue(oldValues[key], key, privacyMode)}
                         </span>
-                        {' → '}
+                        {' -> '}
                         <span className="text-green-600 dark:text-green-400">
                             {formatValue(newValues[key], key, privacyMode)}
                         </span>
@@ -220,9 +268,7 @@ function ActivityEntry({ entry }: { entry: ActivityItem }) {
                         <div>
                             <p className="text-sm font-medium">
                                 {entry.subject_type}
-                                {entry.subject_id
-                                    ? ` #${entry.subject_id}`
-                                    : ''}
+                                {entry.subject_id ? ` #${entry.subject_id}` : ''}
                             </p>
                         </div>
                     </div>
@@ -289,71 +335,157 @@ function ActivityLoadingSkeleton() {
     );
 }
 
+function ActivityErrorState({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Card>
+            <CardContent className="flex flex-col gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                    Failed to load activity.
+                </p>
+                <div>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                        Retry
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function ActivityIndex() {
-    const { currentLedger, filters, activity } = usePage<{
-        filters: {
-            subject_type: string | null;
-            action: string | null;
-            page: number;
-        };
-        activity?: Pagination<ActivityItem>;
+    const { currentLedger, filters } = usePage<{
+        currentLedger: { id: number; name: string } | null;
+        filters: ActivityFilters;
     }>().props;
     const ledger = currentLedger!;
 
+    const activityLoaderState = useHttp<Record<string, never>, ActivityResponse>({});
+
+    const initialFilterSelectState = getActivityFilterSelectState(filters);
+
     const [filterType, setFilterType] = useState<string>(
-        filters.subject_type ?? ALL_FILTER,
+        initialFilterSelectState.filterType,
     );
     const [filterAction, setFilterAction] = useState<string>(
-        filters.action ?? ALL_FILTER,
+        initialFilterSelectState.filterAction,
     );
-    const activityEntries = activity?.data ?? [];
+    const [activeFilters, setActiveFilters] = useState<ActivityFilters>(filters);
+    const [activityResponse, setActivityResponse] =
+        useState<ActivityResponse | null>(null);
+    const [activityError, setActivityError] = useState<string | null>(null);
+    const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+    const latestRequestRef = useRef(0);
+    const latestFiltersRef = useRef<ActivityFilters>(filters);
+    const previousLedgerIdRef = useRef(ledger.id);
+    const previousFiltersRef = useRef<ActivityFilters>(filters);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Activity', href: ledgerActivityIndex.url(ledger.id) },
     ];
 
-    function reloadActivity(next: {
-        subjectType?: string;
-        action?: string;
-        page?: number;
-    }) {
-        router.get(
-            activityIndex.url(ledger.id),
-            {
-                ...(next.subjectType && next.subjectType !== ALL_FILTER
-                    ? { subject_type: next.subjectType }
-                    : {}),
-                ...(next.action && next.action !== ALL_FILTER
-                    ? { action: next.action }
-                    : {}),
-                ...(next.page && next.page > 1
-                    ? { page: String(next.page) }
-                    : {}),
-            },
-            {
-                only: ['activity', 'filters'],
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            },
-        );
+    async function loadActivity(nextFilters: ActivityFilters): Promise<boolean> {
+        let cancelled = false;
+        const requestId = latestRequestRef.current + 1;
+
+        latestRequestRef.current = requestId;
+        latestFiltersRef.current = nextFilters;
+
+        activityLoaderState.cancel();
+        setActivityError(null);
+        setActiveFilters(nextFilters);
+        updateActivityUrl(ledger.id, nextFilters);
+
+        try {
+            await activityLoaderState.get(
+                activityLoader.url(
+                    { ledger: ledger.id },
+                    { query: buildActivityQuery(nextFilters) },
+                ),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
+                },
+            );
+
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setActivityResponse(activityLoaderState.response ?? null);
+            }
+
+            return true;
+        } catch {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setActivityError('Failed to load activity.');
+            }
+
+            return false;
+        } finally {
+            if (!cancelled && latestRequestRef.current === requestId) {
+                setHasLoadedOnce(true);
+            }
+        }
     }
+
+    useEffect(() => {
+        if (
+            !shouldResetActivityState(
+                previousLedgerIdRef.current,
+                ledger.id,
+                previousFiltersRef.current,
+                filters,
+            )
+        ) {
+            return;
+        }
+
+        previousLedgerIdRef.current = ledger.id;
+        previousFiltersRef.current = filters;
+
+        const nextFilterSelectState = getActivityFilterSelectState(filters);
+
+        activityLoaderState.cancel();
+        latestRequestRef.current += 1;
+        latestFiltersRef.current = filters;
+        setFilterType(nextFilterSelectState.filterType);
+        setFilterAction(nextFilterSelectState.filterAction);
+        setActiveFilters(filters);
+        setActivityResponse(null);
+        setActivityError(null);
+        setHasLoadedOnce(false);
+    }, [activityLoaderState, filters, ledger.id]);
+
+    useEffect(() => {
+        void loadActivity(filters);
+
+        return () => {
+            activityLoaderState.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters, ledger.id]);
+
+    const activityEntries = activityResponse?.data ?? [];
+    const activityMeta = activityResponse?.meta ?? null;
+    const showInitialLoading = activityLoaderState.processing && !hasLoadedOnce;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`${ledger.name} activity`} />
 
             <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
-                {/* Filters */}
                 <div className="flex flex-wrap items-center gap-3">
                     <Select
                         value={filterType}
                         onValueChange={(val) => {
                             setFilterType(val);
-                            reloadActivity({
-                                subjectType: val,
-                                action: filterAction,
+
+                            void loadActivity({
+                                subject_type:
+                                    val === ALL_FILTER ? null : val,
+                                action:
+                                    filterAction === ALL_FILTER
+                                        ? null
+                                        : filterAction,
                                 page: 1,
                             });
                         }}
@@ -362,9 +494,7 @@ export default function ActivityIndex() {
                             <SelectValue placeholder="All types" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value={ALL_FILTER}>
-                                All types
-                            </SelectItem>
+                            <SelectItem value={ALL_FILTER}>All types</SelectItem>
                             {SUBJECT_TYPES.map((type) => (
                                 <SelectItem key={type} value={type}>
                                     {type}
@@ -377,9 +507,13 @@ export default function ActivityIndex() {
                         value={filterAction}
                         onValueChange={(val) => {
                             setFilterAction(val);
-                            reloadActivity({
-                                subjectType: filterType,
-                                action: val,
+
+                            void loadActivity({
+                                subject_type:
+                                    filterType === ALL_FILTER
+                                        ? null
+                                        : filterType,
+                                action: val === ALL_FILTER ? null : val,
                                 page: 1,
                             });
                         }}
@@ -401,10 +535,15 @@ export default function ActivityIndex() {
                     </Select>
                 </div>
 
-                <Deferred
-                    data="activity"
-                    fallback={<ActivityLoadingSkeleton />}
-                >
+                {showInitialLoading ? (
+                    <ActivityLoadingSkeleton />
+                ) : activityError && activityEntries.length === 0 ? (
+                    <ActivityErrorState
+                        onRetry={() => {
+                            void loadActivity(latestFiltersRef.current);
+                        }}
+                    />
+                ) : (
                     <div className="grid gap-3">
                         {activityEntries.length === 0 ? (
                             <EmptyState
@@ -418,46 +557,65 @@ export default function ActivityIndex() {
                             ))
                         )}
                     </div>
-                </Deferred>
+                )}
 
-                {/* Pagination */}
-                {activity && activity.last_page > 1 && (
+                {activityError && activityEntries.length > 0 ? (
+                    <div className="flex items-center justify-end gap-2">
+                        <p className="text-sm text-muted-foreground">
+                            Refresh failed.
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                void loadActivity(latestFiltersRef.current);
+                            }}
+                        >
+                            Retry
+                        </Button>
+                    </div>
+                ) : null}
+
+                {activityMeta && activityMeta.last_page > 1 ? (
                     <div className="flex items-center justify-center gap-2">
                         <button
                             type="button"
                             className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
-                            disabled={activity.current_page <= 1}
-                            onClick={() =>
-                                reloadActivity({
-                                    subjectType: filterType,
-                                    action: filterAction,
-                                    page: activity.current_page - 1,
-                                })
+                            disabled={
+                                activityLoaderState.processing ||
+                                activityMeta.current_page <= 1
                             }
+                            onClick={() => {
+                                void loadActivity({
+                                    ...activeFilters,
+                                    page: activityMeta.current_page - 1,
+                                });
+                            }}
                         >
                             Previous
                         </button>
                         <span className="text-sm text-muted-foreground">
-                            Page {activity.current_page} of {activity.last_page}
+                            Page {activityMeta.current_page} of{' '}
+                            {activityMeta.last_page}
                         </span>
                         <button
                             type="button"
                             className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
                             disabled={
-                                activity.current_page >= activity.last_page
+                                activityLoaderState.processing ||
+                                activityMeta.current_page >= activityMeta.last_page
                             }
-                            onClick={() =>
-                                reloadActivity({
-                                    subjectType: filterType,
-                                    action: filterAction,
-                                    page: activity.current_page + 1,
-                                })
-                            }
+                            onClick={() => {
+                                void loadActivity({
+                                    ...activeFilters,
+                                    page: activityMeta.current_page + 1,
+                                });
+                            }}
                         >
                             Next
                         </button>
                     </div>
-                )}
+                ) : null}
             </div>
         </AppLayout>
     );

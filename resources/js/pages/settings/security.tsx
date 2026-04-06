@@ -1,17 +1,20 @@
 import { Transition } from '@headlessui/react';
-import { Form, Head, useForm } from '@inertiajs/react';
+import { Form, Head, useForm, useHttp } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import SecuritySettingsController from '@/actions/App/Http/Controllers/Api/V1/Settings/SecuritySettingsController';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TwoFactorRecoveryCodes from '@/components/two-factor-recovery-codes';
 import TwoFactorSetupModal from '@/components/two-factor-setup-modal';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useTwoFactorAuth } from '@/hooks/use-two-factor-auth';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -19,10 +22,17 @@ import { edit } from '@/routes/security';
 import { disable, enable } from '@/routes/two-factor';
 import type { BreadcrumbItem } from '@/types';
 
+type SecurityConfig = {
+    canManageTwoFactor: boolean;
+    requiresConfirmation: boolean;
+    twoFactorEnabled: boolean;
+};
+
+type ApiEnvelope<T> = {
+    data: T;
+};
+
 type Props = {
-    canManageTwoFactor?: boolean;
-    requiresConfirmation?: boolean;
-    twoFactorEnabled?: boolean;
     passwordReset?: {
         email: string;
         status: string | null;
@@ -36,14 +46,36 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function Security({
-    canManageTwoFactor = false,
-    requiresConfirmation = false,
-    twoFactorEnabled = false,
-    passwordReset,
-}: Props) {
+function SecuritySkeleton() {
+    return (
+        <div className="space-y-6">
+            <div className="space-y-2">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-4 w-72" />
+            </div>
+            <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+            </div>
+        </div>
+    );
+}
+
+export default function Security({ passwordReset }: Props) {
     const passwordInput = useRef<HTMLInputElement>(null);
     const currentPasswordInput = useRef<HTMLInputElement>(null);
+
+    const securityLoader = useHttp<
+        Record<string, never>,
+        ApiEnvelope<SecurityConfig>
+    >({});
+    const [hasResolved, setHasResolved] = useState(false);
+    const [securityConfig, setSecurityConfig] = useState<SecurityConfig>({
+        canManageTwoFactor: false,
+        requiresConfirmation: false,
+        twoFactorEnabled: false,
+    });
 
     const {
         qrCodeSvg,
@@ -62,6 +94,36 @@ export default function Security({
         password_confirmation: '',
     });
     const resetLinkForm = useForm({});
+
+    useEffect(() => {
+        let cancelled = false;
+
+        securityLoader.cancel();
+
+        void securityLoader
+            .get(SecuritySettingsController.url(), {
+                onCancel: () => {
+                    cancelled = true;
+                },
+            })
+            .then((response) => {
+                if (!cancelled && response?.data) {
+                    setSecurityConfig(response.data);
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) {
+                    setHasResolved(true);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+            securityLoader.cancel();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const submitPassword = (e: FormEvent) => {
         e.preventDefault();
@@ -235,95 +297,106 @@ export default function Security({
                     </div>
                 </div>
 
-                {canManageTwoFactor && (
-                    <div className="space-y-6">
-                        <Heading
-                            variant="small"
-                            title="Two-factor authentication"
-                            description="Manage your two-factor authentication settings"
-                        />
-                        {twoFactorEnabled ? (
-                            <div className="flex flex-col items-start justify-start space-y-4">
-                                <p className="text-sm text-muted-foreground">
-                                    You will be prompted for a secure, random
-                                    pin during login, which you can retrieve
-                                    from the TOTP-supported application on your
-                                    phone.
-                                </p>
+                <BoneSkeleton
+                    name="settings-security"
+                    loading={!hasResolved}
+                    fallback={<SecuritySkeleton />}
+                >
+                    {securityConfig.canManageTwoFactor && (
+                        <div className="space-y-6">
+                            <Heading
+                                variant="small"
+                                title="Two-factor authentication"
+                                description="Manage your two-factor authentication settings"
+                            />
+                            {securityConfig.twoFactorEnabled ? (
+                                <div className="flex flex-col items-start justify-start space-y-4">
+                                    <p className="text-sm text-muted-foreground">
+                                        You will be prompted for a secure,
+                                        random pin during login, which you can
+                                        retrieve from the TOTP-supported
+                                        application on your phone.
+                                    </p>
 
-                                <div className="relative inline">
-                                    <Form {...disable.form()}>
-                                        {({ processing }) => (
-                                            <Button
-                                                variant="destructive"
-                                                type="submit"
-                                                disabled={processing}
-                                            >
-                                                Disable 2FA
-                                            </Button>
-                                        )}
-                                    </Form>
-                                </div>
-
-                                <TwoFactorRecoveryCodes
-                                    recoveryCodesList={recoveryCodesList}
-                                    fetchRecoveryCodes={fetchRecoveryCodes}
-                                    errors={twoFactorErrors}
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-start justify-start space-y-4">
-                                <p className="text-sm text-muted-foreground">
-                                    When you enable two-factor authentication,
-                                    you will be prompted for a secure pin during
-                                    login. This pin can be retrieved from a
-                                    TOTP-supported application on your phone.
-                                </p>
-
-                                <div>
-                                    {hasSetupData ? (
-                                        <Button
-                                            onClick={() =>
-                                                setShowSetupModal(true)
-                                            }
-                                        >
-                                            <ShieldCheck />
-                                            Continue setup
-                                        </Button>
-                                    ) : (
-                                        <Form
-                                            {...enable.form()}
-                                            onSuccess={() =>
-                                                setShowSetupModal(true)
-                                            }
-                                        >
+                                    <div className="relative inline">
+                                        <Form {...disable.form()}>
                                             {({ processing }) => (
                                                 <Button
+                                                    variant="destructive"
                                                     type="submit"
                                                     disabled={processing}
                                                 >
-                                                    Enable 2FA
+                                                    Disable 2FA
                                                 </Button>
                                             )}
                                         </Form>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                                    </div>
 
-                        <TwoFactorSetupModal
-                            isOpen={showSetupModal}
-                            onClose={() => setShowSetupModal(false)}
-                            requiresConfirmation={requiresConfirmation}
-                            twoFactorEnabled={twoFactorEnabled}
-                            qrCodeSvg={qrCodeSvg}
-                            manualSetupKey={manualSetupKey}
-                            clearSetupData={clearSetupData}
-                            fetchSetupData={fetchSetupData}
-                            errors={twoFactorErrors}
-                        />
-                    </div>
-                )}
+                                    <TwoFactorRecoveryCodes
+                                        recoveryCodesList={recoveryCodesList}
+                                        fetchRecoveryCodes={fetchRecoveryCodes}
+                                        errors={twoFactorErrors}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-start justify-start space-y-4">
+                                    <p className="text-sm text-muted-foreground">
+                                        When you enable two-factor
+                                        authentication, you will be prompted for
+                                        a secure pin during login. This pin can
+                                        be retrieved from a TOTP-supported
+                                        application on your phone.
+                                    </p>
+
+                                    <div>
+                                        {hasSetupData ? (
+                                            <Button
+                                                onClick={() =>
+                                                    setShowSetupModal(true)
+                                                }
+                                            >
+                                                <ShieldCheck />
+                                                Continue setup
+                                            </Button>
+                                        ) : (
+                                            <Form
+                                                {...enable.form()}
+                                                onSuccess={() =>
+                                                    setShowSetupModal(true)
+                                                }
+                                            >
+                                                {({ processing }) => (
+                                                    <Button
+                                                        type="submit"
+                                                        disabled={processing}
+                                                    >
+                                                        Enable 2FA
+                                                    </Button>
+                                                )}
+                                            </Form>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <TwoFactorSetupModal
+                                isOpen={showSetupModal}
+                                onClose={() => setShowSetupModal(false)}
+                                requiresConfirmation={
+                                    securityConfig.requiresConfirmation
+                                }
+                                twoFactorEnabled={
+                                    securityConfig.twoFactorEnabled
+                                }
+                                qrCodeSvg={qrCodeSvg}
+                                manualSetupKey={manualSetupKey}
+                                clearSetupData={clearSetupData}
+                                fetchSetupData={fetchSetupData}
+                                errors={twoFactorErrors}
+                            />
+                        </div>
+                    )}
+                </BoneSkeleton>
             </SettingsLayout>
         </AppLayout>
     );

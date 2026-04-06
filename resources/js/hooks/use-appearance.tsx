@@ -11,6 +11,7 @@ export type UseAppearanceReturn = {
 
 const listeners = new Set<() => void>();
 let currentAppearance: Appearance = 'system';
+let hasInitializedTheme = false;
 
 const prefersDark = (): boolean => {
     if (typeof window === 'undefined') {
@@ -75,6 +76,10 @@ export function initializeTheme(): void {
         return;
     }
 
+    if (hasInitializedTheme) {
+        return;
+    }
+
     if (!localStorage.getItem('appearance')) {
         localStorage.setItem('appearance', 'system');
         setCookie('appearance', 'system');
@@ -82,9 +87,8 @@ export function initializeTheme(): void {
 
     currentAppearance = getStoredAppearance();
     applyTheme(currentAppearance);
-
-    // Set up system theme change listener
     mediaQuery()?.addEventListener('change', handleSystemThemeChange);
+    hasInitializedTheme = true;
 }
 
 export function useAppearance(): UseAppearanceReturn {

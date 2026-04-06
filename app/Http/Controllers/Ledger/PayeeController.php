@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\Ledger;
 
+use App\Actions\Payees\UseCases\DeletePayeeAction;
+use App\Actions\Payees\UseCases\StorePayeeAction;
+use App\Actions\Payees\UseCases\UpdatePayeeAction;
+use App\Data\Payees\Input\StorePayeeData;
+use App\Data\Payees\Input\UpdatePayeeData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\UpdatePayeeRequest;
 use App\Models\Ledger;
 use App\Models\Payee;
 use Illuminate\Http\RedirectResponse;
@@ -17,47 +21,32 @@ class PayeeController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        $search = $request->input('search');
+        $search = $request->string('search')->toString();
 
         return Inertia::render('ledgers/payees/index', [
-            'search' => $search ?? '',
-            'payees' => Inertia::defer(function () use ($ledger, $search) {
-                $query = $ledger->payees()
-                    ->withCount('transactions')
-                    ->orderBy('name');
-
-                if ($search) {
-                    $query->where('name', 'like', "%{$search}%");
-                }
-
-                return $query->get();
-            }),
+            'search' => $search,
         ]);
     }
 
-    public function store(UpdatePayeeRequest $request, Ledger $ledger): RedirectResponse
+    public function store(Ledger $ledger, StorePayeeData $data, StorePayeeAction $storePayee): RedirectResponse
     {
-        $this->authorize('view', $ledger);
-
-        $ledger->payees()->create($request->validated());
+        $storePayee($data);
 
         return back()->with('success', 'Payee added.');
     }
 
-    public function update(UpdatePayeeRequest $request, Ledger $ledger, Payee $payee): RedirectResponse
+    public function update(Ledger $ledger, Payee $payee, UpdatePayeeData $data, UpdatePayeeAction $updatePayee): RedirectResponse
     {
-        $this->authorize('update', $ledger);
-
-        $payee->update($request->validated());
+        $updatePayee($data);
 
         return back()->with('success', 'Payee updated.');
     }
 
-    public function destroy(Ledger $ledger, Payee $payee): RedirectResponse
+    public function destroy(Ledger $ledger, Payee $payee, DeletePayeeAction $deletePayee): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $payee->delete();
+        $deletePayee($payee);
 
         return back()->with('success', 'Payee deleted.');
     }

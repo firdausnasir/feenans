@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Ledger;
 
+use App\Actions\Tags\UseCases\DeleteTagAction;
+use App\Actions\Tags\UseCases\StoreTagAction;
+use App\Actions\Tags\UseCases\UpdateTagAction;
+use App\Data\Tags\Input\StoreTagData;
+use App\Data\Tags\Input\UpdateTagData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\TagRequest;
-use App\Http\Resources\TagResource;
 use App\Models\Ledger;
 use App\Models\Tag;
 use Illuminate\Http\RedirectResponse;
@@ -18,48 +21,28 @@ class TagController extends Controller
     {
         $this->authorize('view', $ledger);
 
-        return Inertia::render('ledgers/tags/index', [
-            'tags' => Inertia::defer(function () use ($ledger) {
-                return TagResource::collection(
-                    $ledger->tags()
-                        ->withCount('transactions')
-                        ->orderBy('name')
-                        ->get()
-                )->resolve();
-            }),
-        ]);
+        return Inertia::render('ledgers/tags/index');
     }
 
-    public function store(TagRequest $request, Ledger $ledger): RedirectResponse
+    public function store(Ledger $ledger, StoreTagData $data, StoreTagAction $storeTag): RedirectResponse
     {
-        $this->authorize('view', $ledger);
+        $storeTag($data);
 
-        $validated = $request->validated();
-
-        $ledger->tags()->firstOrCreate(
-            ['name' => $validated['name']],
-            ['color' => $validated['color'] ?? null],
-        );
-
-        return to_route('ledgers.tags.index', $ledger)->with('success', 'Tag created.');
+        return to_route('ledgers.tags.index', $data->ledger)->with('success', 'Tag created.');
     }
 
-    public function update(TagRequest $request, Ledger $ledger, Tag $tag): RedirectResponse
+    public function update(Ledger $ledger, Tag $tag, UpdateTagData $data, UpdateTagAction $updateTag): RedirectResponse
     {
-        $this->authorize('update', $ledger);
+        $updateTag($data);
 
-        $validated = $request->validated();
-
-        $tag->update($validated);
-
-        return to_route('ledgers.tags.index', $ledger)->with('success', 'Tag updated.');
+        return to_route('ledgers.tags.index', $data->ledger)->with('success', 'Tag updated.');
     }
 
-    public function destroy(Ledger $ledger, Tag $tag): RedirectResponse
+    public function destroy(Ledger $ledger, Tag $tag, DeleteTagAction $deleteTag): RedirectResponse
     {
         $this->authorize('delete', $ledger);
 
-        $tag->delete();
+        $deleteTag($tag);
 
         return to_route('ledgers.tags.index', $ledger)->with('success', 'Tag deleted.');
     }

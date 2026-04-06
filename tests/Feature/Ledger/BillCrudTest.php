@@ -1,11 +1,171 @@
 <?php
 
+use App\Actions\Bills\UseCases\DeleteBillAction;
+use App\Actions\Bills\UseCases\PayBillAction;
+use App\Actions\Bills\UseCases\StoreBillAction;
+use App\Actions\Bills\UseCases\ToggleBillAction;
+use App\Actions\Bills\UseCases\UpdateBillAction;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Bill;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\User;
+
+test('bill store routes through StoreBillAction', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create();
+
+    $called = false;
+    $real = app()->make(StoreBillAction::class);
+    app()->bind(StoreBillAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Streaming',
+            'transaction_type' => 'expense',
+            'amount' => 29.99,
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'payee_id' => null,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'recurrence_day' => null,
+            'next_due_date' => '2026-04-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'end_date' => null,
+            'end_after_occurrences' => null,
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Recurring transaction created.');
+
+    expect($called)->toBeTrue();
+});
+
+test('bill update routes through UpdateBillAction', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = false;
+    $real = app()->make(UpdateBillAction::class);
+    app()->bind(UpdateBillAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.edit', [$ledger, $bill]))
+        ->put(route('ledgers.bills.update', [$ledger, $bill]), [
+            'name' => 'Updated Bill',
+            'transaction_type' => 'expense',
+            'amount' => 250.00,
+            'account_id' => $account->id,
+            'category_id' => null,
+            'payee_id' => null,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'recurrence_day' => null,
+            'next_due_date' => '2026-04-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'end_date' => null,
+            'end_after_occurrences' => null,
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Recurring transaction updated.');
+
+    expect($called)->toBeTrue();
+});
+
+test('bill destroy routes through DeleteBillAction', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = false;
+    $real = app()->make(DeleteBillAction::class);
+    app()->bind(DeleteBillAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->delete(route('ledgers.bills.destroy', [$ledger, $bill]))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Recurring transaction deleted.');
+
+    expect($called)->toBeTrue();
+});
+
+test('bill toggle routes through ToggleBillAction', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = false;
+    $real = app()->make(ToggleBillAction::class);
+    app()->bind(ToggleBillAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->patch(route('ledgers.bills.toggle', [$ledger, $bill]))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Recurring transaction deactivated.');
+
+    expect($called)->toBeTrue();
+});
+
+test('bill pay routes through PayBillAction', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create();
+
+    $called = false;
+    $real = app()->make(PayBillAction::class);
+    app()->bind(PayBillAction::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.index', $ledger))
+        ->post(route('ledgers.bills.pay', [$ledger, $bill]))
+        ->assertRedirect()
+        ->assertSessionHas('success', "{$bill->name} marked as paid.");
+
+    expect($called)->toBeTrue();
+});
 
 test('bill update via HTTP updates the bill', function () {
     $user = User::factory()->create();
@@ -72,6 +232,17 @@ test('bill create page renders', function () {
     $user = User::factory()->create();
     $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
     $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Checking',
+        'position' => 1,
+    ]);
+    Account::factory()->for($ledger)->for($accountType)->create([
+        'name' => 'Savings',
+        'include_in_totals' => false,
+        'position' => 2,
+    ]);
 
     $response = $this
         ->actingAs($user)
@@ -242,6 +413,121 @@ test('bill store is forbidden for another users ledger', function () {
             'auto_create' => false,
         ])
         ->assertForbidden();
+});
+
+test('bill store saves notify_email as true by default', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Notify Default',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'Notify Default')->first();
+
+    expect($bill?->notify_email)->toBeTrue();
+});
+
+test('bill store can disable notify_email', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'No Notify',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'notify_email' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'No Notify')->first();
+
+    expect($bill?->notify_email)->toBeFalse();
+});
+
+test('bill store can create an inactive bill', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.create', $ledger))
+        ->post(route('ledgers.bills.store', $ledger), [
+            'name' => 'Inactive Bill',
+            'transaction_type' => 'expense',
+            'amount' => 50.00,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'is_active' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $bill = $ledger->bills()->where('name', 'Inactive Bill')->first();
+
+    expect($bill?->is_active)->toBeFalse();
+});
+
+test('bill update can change notify_email', function () {
+    $user = User::factory()->create();
+    $user->membership()->update(['tier' => 'premium', 'status' => 'active']);
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $bill = Bill::factory()->for($ledger)->for($account)->create(['notify_email' => true]);
+
+    $this->actingAs($user)
+        ->from(route('ledgers.bills.edit', [$ledger, $bill]))
+        ->put(route('ledgers.bills.update', [$ledger, $bill]), [
+            'name' => $bill->name,
+            'transaction_type' => 'expense',
+            'amount' => $bill->amount,
+            'account_id' => $account->id,
+            'recurrence_type' => 'monthly',
+            'recurrence_interval' => 1,
+            'next_due_date' => '2026-05-01',
+            'auto_create' => false,
+            'end_type' => null,
+            'notify_email' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($bill->refresh()->notify_email)->toBeFalse();
 });
 
 test('bill update is forbidden for another users ledger', function () {

@@ -1,11 +1,33 @@
 <?php
 
+use App\Actions\Accounts\Queries\ExportAccountTransactionsQuery;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
+
+test('account export routes through ExportAccountTransactionsQuery', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+
+    $called = false;
+    $real = app()->make(ExportAccountTransactionsQuery::class);
+    app()->bind(ExportAccountTransactionsQuery::class, function () use ($real, &$called) {
+        $called = true;
+
+        return $real;
+    });
+
+    $this->actingAs($user)
+        ->get(route('ledgers.accounts.export', [$ledger, $account]))
+        ->assertOk();
+
+    expect($called)->toBeTrue();
+});
 
 test('account csv export returns csv with correct headers', function () {
     $user = User::factory()->create();

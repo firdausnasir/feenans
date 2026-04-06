@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\BillService;
+use App\Actions\Bills\UseCases\ProcessAutoBillsAction;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -9,7 +9,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::call(fn () => app(BillService::class)->processAutoBills())
+Schedule::call(app(ProcessAutoBillsAction::class))
     ->name('bills:process-auto')
     ->daily()
     ->withoutOverlapping(60)
