@@ -2,21 +2,29 @@
 
 namespace App\Actions\Bills\UseCases;
 
+use App\Actions\Payees\UseCases\ResolveLedgerPayeeAction;
 use App\Data\Bills\Input\StoreBillData;
 use App\Models\Bill;
-use App\Models\Ledger;
 use Illuminate\Support\Facades\DB;
 
 class StoreBillAction
 {
+    public function __construct(private readonly ResolveLedgerPayeeAction $resolveLedgerPayee) {}
+
     public function __invoke(StoreBillData $data): Bill
     {
         return DB::transaction(function () use ($data): Bill {
+            $payee = ($this->resolveLedgerPayee)(
+                $data->ledger,
+                $data->payee_id,
+                $data->new_payee_name,
+            );
+
             $bill = $data->ledger->bills()->create([
                 'account_id' => $data->account_id,
                 'to_account_id' => $data->to_account_id,
                 'category_id' => $data->category_id,
-                'payee_id' => $this->resolvePayeeId($data->ledger, $data->payee_id, $data->new_payee_name),
+                'payee_id' => $payee?->id,
                 'name' => $data->name,
                 'transaction_type' => $data->transaction_type,
                 'amount' => $data->amount,
@@ -34,20 +42,5 @@ class StoreBillAction
 
             return $bill->loadMissing(['account', 'toAccount', 'category', 'payee']);
         });
-    }
-
-    private function resolvePayeeId(Ledger $ledger, ?int $payeeId, ?string $newPayeeName): ?int
-    {
-        if ($payeeId !== null) {
-            return $payeeId;
-        }
-
-        $trimmedName = trim((string) $newPayeeName);
-
-        if ($trimmedName === '') {
-            return null;
-        }
-
-        return $ledger->payees()->create(['name' => $trimmedName])->id;
     }
 }

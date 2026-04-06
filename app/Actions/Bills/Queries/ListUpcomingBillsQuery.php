@@ -18,11 +18,13 @@ class ListUpcomingBillsQuery
      */
     public function __invoke(Ledger $ledger, int $days = 3): array
     {
+        $today = CarbonImmutable::today();
+
         $upcoming = $ledger->bills()
             ->with('payee')
             ->active()
-            ->where('next_due_date', '>', CarbonImmutable::today())
-            ->where('next_due_date', '<=', CarbonImmutable::today()->addDays($days))
+            ->where('next_due_date', '>', $today)
+            ->where('next_due_date', '<=', $today->addDays($days))
             ->orderBy('next_due_date')
             ->get();
 
@@ -41,8 +43,8 @@ class ListUpcomingBillsQuery
             ->get();
 
         return [
-            'upcoming' => $upcoming->map(fn (Bill $bill) => BillData::fromModel($bill, ($this->getBillMissedCycles)($bill))->toArray())->values()->all(),
-            'due' => $due->map(fn (Bill $bill) => BillData::fromModel($bill, ($this->getBillMissedCycles)($bill))->toArray())->values()->all(),
+            'upcoming' => $upcoming->map(fn (Bill $bill) => BillData::fromModel($bill)->toArray())->values()->all(),
+            'due' => $due->map(fn (Bill $bill) => BillData::fromModel($bill)->toArray())->values()->all(),
             'missed' => $missed->map(fn (Bill $bill) => BillData::fromModel($bill, ($this->getBillMissedCycles)($bill))->toArray())->values()->all(),
         ];
     }

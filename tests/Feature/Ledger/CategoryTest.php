@@ -1,8 +1,11 @@
 <?php
 
+use App\Actions\Categories\UseCases\ReorderCategoriesAction;
+use App\Data\Categories\Input\ReorderCategoriesData;
 use App\Models\Category;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('users can create categories in a ledger', function () {
@@ -328,4 +331,33 @@ test('ledger category web routes are available for inertia actions', function ()
         ->and(parse_url(route('ledgers.categories.update', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
         ->and(parse_url(route('ledgers.categories.destroy', [$ledger, $category]), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/{$category->id}")
         ->and(parse_url(route('ledgers.categories.reorder', $ledger), PHP_URL_PATH))->toBe("/ledgers/{$ledger->id}/categories/reorder");
+});
+
+test('reorder categories action applies all positions with one update statement', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $first = Category::factory()->for($ledger)->create(['position' => 1]);
+    $second = Category::factory()->for($ledger)->create(['position' => 2]);
+
+    $updateStatements = 0;
+
+    DB::listen(function ($query) use (&$updateStatements): void {
+        if (str_starts_with(strtolower($query->sql), 'update')) {
+            $updateStatements++;
+        }
+    });
+
+    app(ReorderCategoriesAction::class)(new ReorderCategoriesData(
+        ledger: $ledger,
+        user: $user,
+        items: [
+            ['id' => $first->id, 'position' => 2],
+            ['id' => $second->id, 'position' => 1],
+        ],
+    ));
+
+    expect($updateStatements)->toBe(1)
+        ->and($first->fresh()->position)->toBe(2)
+        ->and($second->fresh()->position)->toBe(1);
 });

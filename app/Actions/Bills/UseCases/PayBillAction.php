@@ -40,8 +40,7 @@ class PayBillAction
                 'bill_id' => $data->bill->id,
             ]);
 
-            $this->advanceToNextDue($data->bill);
-            $this->syncBillStateAfterPayment($data->bill);
+            $this->advanceBillAfterPayment($data->bill);
 
             return $transaction;
         });
@@ -67,26 +66,22 @@ class PayBillAction
             'bill_id' => $data->bill->id,
         ]);
 
-        $this->advanceToNextDue($data->bill);
-        $this->syncBillStateAfterPayment($data->bill);
+        $this->advanceBillAfterPayment($data->bill);
 
         return $outgoing;
     }
 
-    private function advanceToNextDue(Bill $bill): void
+    private function advanceBillAfterPayment(Bill $bill): void
     {
-        $bill->update([
-            'next_due_date' => $bill->nextDueDateAfter($bill->next_due_date),
-        ]);
-    }
-
-    private function syncBillStateAfterPayment(Bill $bill): void
-    {
-        $bill->increment('occurrences_count');
-        $bill->refresh();
+        $bill->next_due_date = $bill->nextDueDateAfter(
+            CarbonImmutable::parse($bill->next_due_date->toDateString())
+        );
+        $bill->occurrences_count++;
 
         if ($bill->hasReachedEnd()) {
-            $bill->update(['is_active' => false]);
+            $bill->is_active = false;
         }
+
+        $bill->save();
     }
 }

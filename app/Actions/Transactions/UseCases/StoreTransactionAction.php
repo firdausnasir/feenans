@@ -3,10 +3,10 @@
 namespace App\Actions\Transactions\UseCases;
 
 use App\Actions\Budgets\UseCases\CheckBudgetThresholdsAction;
+use App\Actions\Payees\UseCases\ResolveLedgerPayeeAction;
 use App\Data\Transactions\Input\StoreTransactionData;
 use App\Enums\TransactionType;
 use App\Models\Category;
-use App\Models\Payee;
 use App\Models\Transaction;
 use App\Services\TransactionService;
 
@@ -17,6 +17,7 @@ class StoreTransactionAction
         private readonly StoreTransactionAttachmentsAction $storeAttachments,
         private readonly CelebrateFirstTransactionAction $celebrateFirstTransaction,
         private readonly CheckBudgetThresholdsAction $checkBudgetThresholds,
+        private readonly ResolveLedgerPayeeAction $resolveLedgerPayee,
     ) {}
 
     public function __invoke(StoreTransactionData $data): Transaction
@@ -50,7 +51,11 @@ class StoreTransactionAction
             'ledger' => $data->ledger,
             'account' => $data->ledger->accounts()->findOrFail($data->account_id),
             'category' => $this->resolveCategory($data),
-            'payee' => $this->resolvePayee($data),
+            'payee' => ($this->resolveLedgerPayee)(
+                $data->ledger,
+                $data->payee_id,
+                $data->new_payee_name,
+            ),
             'transaction_type' => TransactionType::from($data->transaction_type),
             'amount' => $data->amount,
             'description' => $data->description,
@@ -80,24 +85,6 @@ class StoreTransactionAction
         }
 
         return $data->ledger->categories()->findOrFail($data->category_id);
-    }
-
-    private function resolvePayee(StoreTransactionData $data): ?Payee
-    {
-        if ($data->payee_id !== null) {
-            return $data->ledger->payees()->findOrFail($data->payee_id);
-        }
-
-        $newPayeeName = trim((string) $data->new_payee_name);
-
-        if ($newPayeeName === '') {
-            return null;
-        }
-
-        /** @var Payee $payee */
-        $payee = $data->ledger->payees()->create(['name' => $newPayeeName]);
-
-        return $payee;
     }
 
     private function loadForOutput(Transaction $transaction): Transaction

@@ -13,6 +13,7 @@ import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { ColorPicker } from '@/components/color-picker';
 import { CurrencySelect } from '@/components/currency-select';
 import { Badge } from '@/components/ui/badge';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -35,7 +36,6 @@ import {
 } from '@/routes/ledgers';
 import { index as settingsIndex } from '@/routes/ledgers/settings';
 import type { AccountType, BreadcrumbItem } from '@/types';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -1484,8 +1484,10 @@ export default function TransactionsIndex() {
     const { privacyMode } = usePrivacyMode();
     const { filters, accounts, categories, payees, tags } =
         usePage<TransactionPageProps>().props;
-    const transactionsLoaderState =
-        useHttp<Record<string, never>, TransactionListResponse>({});
+    const transactionsLoaderState = useHttp<
+        Record<string, never>,
+        TransactionListResponse
+    >({});
 
     const [activeFilters, setActiveFilters] = useState<Filters>(filters);
     const [localFilters, setLocalFilters] = useState<Filters>(filters);
@@ -1706,6 +1708,10 @@ export default function TransactionsIndex() {
         return true;
     }
 
+    // Keep a ref to always call the latest version from the event listener
+    const reloadLoadedTransactionsRef = useRef(reloadLoadedTransactions);
+    reloadLoadedTransactionsRef.current = reloadLoadedTransactions;
+
     function applyFiltersWith(nextFilters: Filters) {
         setLocalFilters(nextFilters);
         setSelectedIds([]);
@@ -1781,9 +1787,7 @@ export default function TransactionsIndex() {
     useEffect(() => {
         const visibleIds = new Set(resolvedTransactions.map(({ id }) => id));
 
-        setSelectedIds((current) =>
-            current.filter((id) => visibleIds.has(id)),
-        );
+        setSelectedIds((current) => current.filter((id) => visibleIds.has(id)));
     }, [resolvedTransactions]);
 
     // Filter panel open/closed
@@ -1819,6 +1823,21 @@ export default function TransactionsIndex() {
         mql.addEventListener('change', handler);
 
         return () => mql.removeEventListener('change', handler);
+    }, []);
+
+    // Reload transactions when the sidebar's AddTransactionModal closes after a save
+    useEffect(() => {
+        function handleTransactionSaved() {
+            void reloadLoadedTransactionsRef.current();
+        }
+
+        window.addEventListener('transactionSaved', handleTransactionSaved);
+
+        return () =>
+            window.removeEventListener(
+                'transactionSaved',
+                handleTransactionSaved,
+            );
     }, []);
 
     // Check if filters have changed from committed
@@ -2911,7 +2930,9 @@ export default function TransactionsIndex() {
                         {renderTransactionList(resolvedTransactions)}
                         {resolvedTransactions.length > 0 ? (
                             <BottomScrollTrigger
-                                hasMore={transactionsMeta?.next_page_url !== null}
+                                hasMore={
+                                    transactionsMeta?.next_page_url !== null
+                                }
                                 loading={isAppendingTransactions}
                                 onFetch={() => {
                                     void loadNextTransactionsPage();
@@ -2983,7 +3004,7 @@ export default function TransactionsIndex() {
                     }
                 }}
                 initialData={duplicateTransaction}
-                onTransactionAdded={() => {
+                onModalClosed={() => {
                     void reloadLoadedTransactions();
                 }}
                 modal

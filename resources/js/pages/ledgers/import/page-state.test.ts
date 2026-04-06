@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { shouldBlockImportStepTwo as ShouldBlockImportStepTwo } from './page-state';
 
-const {
-    createInitialImportPageState,
-    shouldBlockImportStepTwo,
-} = await import(new URL('./page-state.ts', import.meta.url).href);
+const { createInitialImportPageState, shouldBlockImportStepTwo } = await import(
+    new URL('./page-state.ts', import.meta.url).href
+);
+
+type ImportStepTwoArgs = Parameters<typeof ShouldBlockImportStepTwo>[0];
 
 test('createInitialImportPageState resets to the upload step when there is no parse result', () => {
     assert.deepEqual(createInitialImportPageState(null), {
@@ -64,25 +66,24 @@ test('createInitialImportPageState restores mapping defaults from a parse result
 });
 
 test('shouldBlockImportStepTwo only blocks on accounts loader failures without any accounts', () => {
-    assert.equal(
-        shouldBlockImportStepTwo({
-            accountsError: 'Failed to load accounts.',
-            accountsCount: 0,
-            savedMappingsError: null,
-            savedMappingsCount: 0,
-        }),
-        true,
-    );
+    const args: ImportStepTwoArgs = {
+        accountsError: 'Failed to load accounts.',
+        accountsCount: 0,
+    };
+
+    assert.equal(shouldBlockImportStepTwo(args), true);
 });
 
 test('shouldBlockImportStepTwo keeps manual mapping available when saved mappings fail', () => {
-    assert.equal(
-        shouldBlockImportStepTwo({
-            accountsError: null,
-            accountsCount: 1,
-            savedMappingsError: 'Failed to load saved mappings.',
-            savedMappingsCount: 0,
-        }),
-        false,
-    );
+    const args: ImportStepTwoArgs = {
+        accountsError: null,
+        accountsCount: 1,
+    };
+
+    assert.deepEqual(args, {
+        accountsError: null,
+        accountsCount: 1,
+    });
+
+    assert.equal(shouldBlockImportStepTwo(args), false);
 });

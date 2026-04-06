@@ -64,7 +64,6 @@ class ProcessAutoBillsAction
                     date: $dueDate->toDateString(),
                 ));
 
-                $bill->refresh();
                 $dueDate = CarbonImmutable::parse($bill->next_due_date->toDateString());
 
                 if ($bill->hasReachedEnd()) {

@@ -43,11 +43,9 @@ import {
     emptyMapping,
     deriveMapping,
     NOT_MAPPED,
-    
-    
-    shouldBlockImportStepTwo
+    shouldBlockImportStepTwo,
 } from '@/pages/ledgers/import/page-state';
-import type {Mapping, ParseResult} from '@/pages/ledgers/import/page-state';
+import type { Mapping, ParseResult } from '@/pages/ledgers/import/page-state';
 import { dashboard as ledgerDashboard } from '@/routes/ledgers';
 import { index as transactionsIndex } from '@/routes/ledgers/transactions';
 import type { Account, BreadcrumbItem } from '@/types';
@@ -131,11 +129,7 @@ function LoaderErrorCard({
 
 export default function ImportIndex() {
     const page = usePage<ImportPageProps>();
-    const {
-        currentLedger,
-        flash,
-        parseResult: pageParseResult,
-    } = page.props;
+    const { currentLedger, flash, parseResult: pageParseResult } = page.props;
     const ledger = currentLedger!;
     const latestParseResult =
         pageParseResult ?? flash.import_parse_result ?? null;
@@ -146,9 +140,18 @@ export default function ImportIndex() {
         { title: 'Import', href: '#' },
     ];
 
-    const accountsLoaderState = useHttp<Record<string, never>, ApiEnvelope<Account[]>>({});
-    const savedMappingsLoaderState = useHttp<Record<string, never>, ApiEnvelope<SavedMapping[]>>({});
-    const historyLoaderState = useHttp<Record<string, never>, ApiEnvelope<ImportHistoryRecord[]>>({});
+    const accountsLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<Account[]>
+    >({});
+    const savedMappingsLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<SavedMapping[]>
+    >({});
+    const historyLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<ImportHistoryRecord[]>
+    >({});
 
     const initialPageState = createInitialImportPageState(latestParseResult);
 
@@ -176,13 +179,16 @@ export default function ImportIndex() {
     const [historyOpen, setHistoryOpen] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [savedMappings, setSavedMappings] = useState<SavedMapping[]>([]);
-    const [importHistory, setImportHistory] = useState<ImportHistoryRecord[]>([]);
+    const [importHistory, setImportHistory] = useState<ImportHistoryRecord[]>(
+        [],
+    );
     const [accountsError, setAccountsError] = useState<string | null>(null);
-    const [savedMappingsError, setSavedMappingsError] = useState<string | null>(null);
+    const [savedMappingsError, setSavedMappingsError] = useState<string | null>(
+        null,
+    );
     const [historyError, setHistoryError] = useState<string | null>(null);
     const [hasLoadedAccounts, setHasLoadedAccounts] = useState(false);
-    const [hasLoadedSavedMappings, setHasLoadedSavedMappings] =
-        useState(false);
+    const [hasLoadedSavedMappings, setHasLoadedSavedMappings] = useState(false);
     const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
     const accountsRequestIdRef = useRef(0);
     const savedMappingsRequestIdRef = useRef(0);
@@ -234,7 +240,9 @@ export default function ImportIndex() {
         }
     }, [flash.error, flash.success]);
 
-    async function loadAccounts(options?: { force?: boolean }): Promise<boolean> {
+    async function loadAccounts(options?: {
+        force?: boolean;
+    }): Promise<boolean> {
         if (
             !options?.force &&
             (hasLoadedAccounts || accountsLoaderState.processing)
@@ -289,26 +297,23 @@ export default function ImportIndex() {
         setSavedMappingsError(null);
 
         try {
-            await savedMappingsLoaderState.get(savedMappingsLoader.url(ledger.id), {
-                onCancel: () => {
-                    cancelled = true;
+            await savedMappingsLoaderState.get(
+                savedMappingsLoader.url(ledger.id),
+                {
+                    onCancel: () => {
+                        cancelled = true;
+                    },
                 },
-            });
+            );
 
-            if (
-                !cancelled &&
-                savedMappingsRequestIdRef.current === requestId
-            ) {
+            if (!cancelled && savedMappingsRequestIdRef.current === requestId) {
                 setSavedMappings(savedMappingsLoaderState.response?.data ?? []);
                 setHasLoadedSavedMappings(true);
             }
 
             return true;
         } catch {
-            if (
-                !cancelled &&
-                savedMappingsRequestIdRef.current === requestId
-            ) {
+            if (!cancelled && savedMappingsRequestIdRef.current === requestId) {
                 setSavedMappingsError('Failed to load saved mappings.');
             }
 
@@ -567,8 +572,6 @@ export default function ImportIndex() {
     const shouldBlockStepTwo = shouldBlockImportStepTwo({
         accountsError,
         accountsCount: accounts.length,
-        savedMappingsError,
-        savedMappingsCount: savedMappings.length,
     });
     const showStepTwoSkeleton =
         step === 2 &&
@@ -796,12 +799,15 @@ export default function ImportIndex() {
                     )}
 
                     {/* Step 2: Map Columns */}
-                    {step === 2 && parseResult && (
-                        showStepTwoSkeleton ? (
+                    {step === 2 &&
+                        parseResult &&
+                        (showStepTwoSkeleton ? (
                             <ImportLoadingSkeleton />
                         ) : shouldBlockStepTwo ? (
                             <LoaderErrorCard
-                                message={accountsError ?? 'Failed to load accounts.'}
+                                message={
+                                    accountsError ?? 'Failed to load accounts.'
+                                }
                                 onRetry={() => {
                                     void loadAccounts({ force: true });
                                 }}
@@ -838,7 +844,9 @@ export default function ImportIndex() {
                                                 Saved mappings unavailable
                                             </AlertTitle>
                                             <AlertDescription className="flex items-center justify-between gap-3">
-                                                <span>{savedMappingsError}</span>
+                                                <span>
+                                                    {savedMappingsError}
+                                                </span>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
@@ -1097,108 +1105,103 @@ export default function ImportIndex() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        )
-                    )}
+                        ))}
 
                     {/* Step 3: Preview */}
                     {step === 3 && parseResult && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Preview & Confirm</CardTitle>
-                                </CardHeader>
-                                <CardContent className="flex flex-col gap-6">
-                                    <p className="text-sm text-muted-foreground">
-                                        Showing the first{' '}
-                                        {parseResult.preview_rows.length} of{' '}
-                                        {parseResult.total_rows} rows. Review
-                                        before importing.
-                                    </p>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Preview & Confirm</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-6">
+                                <p className="text-sm text-muted-foreground">
+                                    Showing the first{' '}
+                                    {parseResult.preview_rows.length} of{' '}
+                                    {parseResult.total_rows} rows. Review before
+                                    importing.
+                                </p>
 
-                                    <div className="overflow-x-auto rounded-md border">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Date</TableHead>
-                                                    <TableHead>
-                                                        Amount
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Description
-                                                    </TableHead>
-                                                    <TableHead>
-                                                        Category
-                                                    </TableHead>
-                                                    <TableHead>Payee</TableHead>
-                                                    <TableHead>Type</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {parseResult.preview_rows.map(
-                                                    (row, i) => (
-                                                        <TableRow key={i}>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'date',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'amount',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'description',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'category',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'payee',
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {getPreviewValue(
-                                                                    row,
-                                                                    'type',
-                                                                )}
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ),
-                                                )}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
+                                <div className="overflow-x-auto rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Date</TableHead>
+                                                <TableHead>Amount</TableHead>
+                                                <TableHead>
+                                                    Description
+                                                </TableHead>
+                                                <TableHead>Category</TableHead>
+                                                <TableHead>Payee</TableHead>
+                                                <TableHead>Type</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {parseResult.preview_rows.map(
+                                                (row, i) => (
+                                                    <TableRow key={i}>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'date',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'amount',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'description',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'category',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'payee',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPreviewValue(
+                                                                row,
+                                                                'type',
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ),
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
 
-                                    <div className="flex gap-3">
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => setStep(2)}
-                                        >
-                                            Back
-                                        </Button>
-                                        <Button
-                                            onClick={() =>
-                                                void handleConfirmImport()
-                                            }
-                                            disabled={isLoading}
-                                        >
-                                            {isLoading
-                                                ? 'Importing...'
-                                                : `Import ${parseResult.total_rows} transactions`}
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                <div className="flex gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setStep(2)}
+                                    >
+                                        Back
+                                    </Button>
+                                    <Button
+                                        onClick={() =>
+                                            void handleConfirmImport()
+                                        }
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading
+                                            ? 'Importing...'
+                                            : `Import ${parseResult.total_rows} transactions`}
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {/* Import History */}
@@ -1221,7 +1224,9 @@ export default function ImportIndex() {
                                             type="button"
                                             className="flex w-full items-center justify-between"
                                         >
-                                            <CardTitle>Import History</CardTitle>
+                                            <CardTitle>
+                                                Import History
+                                            </CardTitle>
                                             <span className="text-sm text-muted-foreground">
                                                 {historyOpen
                                                     ? 'Hide'

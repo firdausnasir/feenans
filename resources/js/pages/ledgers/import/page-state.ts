@@ -118,8 +118,6 @@ export function shouldBlockImportStepTwo({
 }: {
     accountsError: string | null;
     accountsCount: number;
-    savedMappingsError: string | null;
-    savedMappingsCount: number;
 }): boolean {
     return accountsError !== null && accountsCount === 0;
 }

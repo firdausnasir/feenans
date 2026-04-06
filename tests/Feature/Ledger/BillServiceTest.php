@@ -15,6 +15,7 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Bill;
 use App\Models\Ledger;
+use App\Models\Payee;
 use App\Models\Transaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -90,6 +91,34 @@ test('store bill action can store a transfer bill', function () {
         ->and((string) $bill->amount)->toBe('250.00');
 });
 
+test('store bill action reuses an existing payee name', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'ISP']);
+
+    $bill = app(StoreBillAction::class)(new StoreBillData(
+        name: 'Internet',
+        transaction_type: TransactionType::Expense->value,
+        amount: 50.00,
+        account_id: $account->id,
+        to_account_id: null,
+        category_id: null,
+        payee_id: null,
+        new_payee_name: 'ISP',
+        recurrence_type: RecurrenceType::Monthly->value,
+        recurrence_interval: 1,
+        recurrence_day: null,
+        next_due_date: '2026-04-01',
+        auto_create: false,
+        end_type: null,
+        end_date: null,
+        end_after_occurrences: null,
+        ledger: $ledger,
+    ));
+
+    expect($bill->payee_id)->toBe($payee->id)
+        ->and($ledger->payees()->where('name', 'ISP')->count())->toBe(1);
+});
+
 test('update bill action can update a bill', function () {
     [$ledger, $account] = makeLedgerWithAccount();
 
@@ -112,6 +141,29 @@ test('update bill action can update a bill', function () {
 
     expect($updated->name)->toBe('New Name')
         ->and((string) $updated->amount)->toBe('200.00');
+});
+
+test('update bill action reuses an existing payee name', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Water Utility']);
+
+    $bill = Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Water Bill',
+        'payee_id' => null,
+    ]);
+
+    app()->instance('request', Request::create('/_tests/bills/'.$bill->id, 'PATCH', [
+        'new_payee_name' => 'Water Utility',
+    ]));
+
+    $updated = app(UpdateBillAction::class)(new UpdateBillData(
+        ledger: $ledger,
+        bill: $bill,
+        new_payee_name: 'Water Utility',
+    ));
+
+    expect($updated->payee_id)->toBe($payee->id)
+        ->and($ledger->payees()->where('name', 'Water Utility')->count())->toBe(1);
 });
 
 test('pay bill action creates transaction', function () {
@@ -392,6 +444,43 @@ test('list upcoming bills query returns the correct groups', function () {
         ->and($result['missed'])->toHaveCount(1)
         ->and($result['due'])->toHaveCount(1)
         ->and($result['upcoming'])->toHaveCount(1);
+});
+
+test('list upcoming bills only resolves missed cycle counts for missed bills', function () {
+    [$ledger, $account] = makeLedgerWithAccount();
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today(),
+        'is_active' => true,
+    ]);
+
+    Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today()->addDay(),
+        'is_active' => true,
+    ]);
+
+    $missed = Bill::factory()->for($ledger)->for($account)->create([
+        'next_due_date' => CarbonImmutable::today()->subDays(2),
+        'is_active' => true,
+        'auto_create' => false,
+    ]);
+
+    $mock = Mockery::mock(GetBillMissedCyclesQuery::class);
+    $mock->shouldReceive('__invoke')
+        ->once()
+        ->andReturnUsing(function (Bill $bill) use ($missed): int {
+            expect($bill->is($missed))->toBeTrue();
+
+            return 2;
+        });
+
+    app()->instance(GetBillMissedCyclesQuery::class, $mock);
+
+    $result = app(ListUpcomingBillsQuery::class)($ledger, 30);
+
+    expect($result['due'][0]['missed_cycles'])->toBe(0)
+        ->and($result['upcoming'][0]['missed_cycles'])->toBe(0)
+        ->and($result['missed'][0]['missed_cycles'])->toBe(2);
 });
 
 test('pay bill action respects overrides', function () {

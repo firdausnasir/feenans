@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { show as showLedgerLoader } from '@/actions/App/Http/Controllers/Api/V1/LedgerController';
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import InputError from '@/components/input-error';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
 import { edit as editLedger, index } from '@/routes/ledgers';
 import type { BreadcrumbItem } from '@/types';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 type Ledger = {
     id: number;

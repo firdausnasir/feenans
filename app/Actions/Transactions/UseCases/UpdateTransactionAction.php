@@ -3,10 +3,10 @@
 namespace App\Actions\Transactions\UseCases;
 
 use App\Actions\Budgets\UseCases\CheckBudgetThresholdsAction;
+use App\Actions\Payees\UseCases\ResolveLedgerPayeeAction;
 use App\Data\Transactions\Input\UpdateTransactionData;
 use App\Enums\TransactionType;
 use App\Models\Category;
-use App\Models\Payee;
 use App\Models\Transaction;
 use App\Services\TransactionService;
 
@@ -15,6 +15,7 @@ class UpdateTransactionAction
     public function __construct(
         private readonly TransactionService $transactionService,
         private readonly CheckBudgetThresholdsAction $checkBudgetThresholds,
+        private readonly ResolveLedgerPayeeAction $resolveLedgerPayee,
     ) {}
 
     public function __invoke(UpdateTransactionData $data): Transaction
@@ -28,7 +29,11 @@ class UpdateTransactionAction
                 'transaction_type' => $type,
                 'account' => $data->ledger->accounts()->findOrFail($data->account_id),
                 'category' => $this->resolveCategory($data),
-                'payee' => $this->resolvePayee($data),
+                'payee' => ($this->resolveLedgerPayee)(
+                    $data->ledger,
+                    $data->payee_id,
+                    $data->new_payee_name,
+                ),
                 'amount' => $data->amount,
                 'description' => $data->description,
                 'notes' => $data->notes,
@@ -57,7 +62,11 @@ class UpdateTransactionAction
                 'transaction_type' => $type,
                 'account' => $data->ledger->accounts()->findOrFail($data->account_id),
                 'category' => $this->resolveCategory($data),
-                'payee' => $this->resolvePayee($data),
+                'payee' => ($this->resolveLedgerPayee)(
+                    $data->ledger,
+                    $data->payee_id,
+                    $data->new_payee_name,
+                ),
                 'amount' => $data->amount,
                 'description' => $data->description,
                 'notes' => $data->notes,
@@ -80,24 +89,6 @@ class UpdateTransactionAction
         }
 
         return $data->ledger->categories()->findOrFail($data->category_id);
-    }
-
-    private function resolvePayee(UpdateTransactionData $data): ?Payee
-    {
-        if ($data->payee_id !== null) {
-            return $data->ledger->payees()->findOrFail($data->payee_id);
-        }
-
-        $newPayeeName = trim((string) $data->new_payee_name);
-
-        if ($newPayeeName === '') {
-            return null;
-        }
-
-        /** @var Payee $payee */
-        $payee = $data->ledger->payees()->create(['name' => $newPayeeName]);
-
-        return $payee;
     }
 
     private function loadForOutput(Transaction $transaction): Transaction

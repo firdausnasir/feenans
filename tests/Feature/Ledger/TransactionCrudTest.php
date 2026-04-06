@@ -138,6 +138,36 @@ test('users can create an income transaction', function () {
         ->and($transaction->transaction_type)->toBe(TransactionType::Income);
 });
 
+test('transaction store can reuse an existing payee through the web route', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => TransactionType::Expense]);
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Coffee Shop']);
+
+    $response = $this
+        ->actingAs($user)
+        ->from(route('ledgers.transactions.index', $ledger))
+        ->post(route('ledgers.transactions.store', $ledger), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'payee_id' => null,
+            'new_payee_name' => 'Coffee Shop',
+            'transaction_type' => 'expense',
+            'amount' => 20.25,
+            'description' => 'Morning coffee',
+            'transaction_date' => '2026-03-13',
+        ]);
+
+    $response->assertRedirect();
+
+    $transaction = $ledger->transactions()->latest('id')->first();
+
+    expect($ledger->payees()->where('name', 'Coffee Shop')->count())->toBe(1)
+        ->and($transaction?->payee_id)->toBe($payee->id);
+});
+
 test('users can create a transfer via HTTP', function () {
     $user = User::factory()->create();
     $ledger = Ledger::factory()->for($user)->create();
@@ -496,6 +526,44 @@ test('transaction update can create a new payee through the web route', function
 
     expect($ledger->payees()->where('name', 'Fresh Edit Payee')->exists())->toBeTrue()
         ->and($transaction->payee?->name)->toBe('Fresh Edit Payee');
+});
+
+test('transaction update can reuse an existing payee through the web route', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $category = Category::factory()->for($ledger)->create(['transaction_type' => 'expense']);
+    $payee = Payee::factory()->for($ledger)->create(['name' => 'Fresh Edit Payee']);
+
+    $transaction = Transaction::factory()
+        ->for($ledger)
+        ->for($account)
+        ->for($category)
+        ->expense()
+        ->create([
+            'description' => 'Before payee update',
+            'transaction_date' => '2026-03-12',
+        ]);
+
+    $response = $this->actingAs($user)
+        ->from(route('ledgers.transactions.edit', [$ledger, $transaction]))
+        ->put(route('ledgers.transactions.update', [$ledger, $transaction]), [
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'transaction_type' => 'expense',
+            'amount' => '25.00',
+            'description' => 'Updated from web route',
+            'transaction_date' => '2026-03-20',
+            'new_payee_name' => 'Fresh Edit Payee',
+        ]);
+
+    $response->assertRedirect(route('ledgers.transactions.index', $ledger));
+
+    $transaction->refresh();
+
+    expect($ledger->payees()->where('name', 'Fresh Edit Payee')->count())->toBe(1)
+        ->and($transaction->payee_id)->toBe($payee->id);
 });
 
 test('transaction store validation redirects back with submitted input', function () {

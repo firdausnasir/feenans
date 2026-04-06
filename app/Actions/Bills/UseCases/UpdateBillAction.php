@@ -2,20 +2,26 @@
 
 namespace App\Actions\Bills\UseCases;
 
+use App\Actions\Payees\UseCases\ResolveLedgerPayeeAction;
 use App\Data\Bills\Input\UpdateBillData;
 use App\Models\Bill;
-use App\Models\Ledger;
 use Illuminate\Support\Facades\DB;
 
 class UpdateBillAction
 {
+    public function __construct(private readonly ResolveLedgerPayeeAction $resolveLedgerPayee) {}
+
     public function __invoke(UpdateBillData $data): Bill
     {
         return DB::transaction(function () use ($data): Bill {
             $attributes = $data->attributesToUpdate();
 
             if ($data->payee_id === null && trim((string) $data->new_payee_name) !== '') {
-                $attributes['payee_id'] = $this->resolvePayeeId($data->ledger, $data->payee_id, $data->new_payee_name);
+                $attributes['payee_id'] = ($this->resolveLedgerPayee)(
+                    $data->ledger,
+                    null,
+                    $data->new_payee_name,
+                )?->id;
             }
 
             $data->bill->update($attributes);
@@ -25,20 +31,5 @@ class UpdateBillAction
 
             return $bill->loadMissing(['account', 'toAccount', 'category', 'payee']);
         });
-    }
-
-    private function resolvePayeeId(Ledger $ledger, ?int $payeeId, ?string $newPayeeName): ?int
-    {
-        if ($payeeId !== null) {
-            return $payeeId;
-        }
-
-        $trimmedName = trim((string) $newPayeeName);
-
-        if ($trimmedName === '') {
-            return null;
-        }
-
-        return $ledger->payees()->create(['name' => $trimmedName])->id;
     }
 }

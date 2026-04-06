@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { Eye, EyeOff, PlusCircle } from 'lucide-react';
 import { useState } from 'react';
 import { AddTransactionModal } from '@/components/add-transaction-modal';
@@ -72,6 +72,12 @@ export function AppSidebarHeader({
                             ledger={currentLedger as Ledger}
                             externalOpen={addTxOpen}
                             onExternalOpenChange={setAddTxOpen}
+                            onModalClosed={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent('transactionSaved'),
+                                );
+                                router.reload();
+                            }}
                         />
                     </>
                 )}

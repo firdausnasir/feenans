@@ -1,7 +1,9 @@
+import type { Bill } from '@/types';
+
 type UpcomingBillsState = {
-    due: unknown[];
-    missed: unknown[];
-    upcoming: unknown[];
+    due: Bill[];
+    missed: Bill[];
+    upcoming: Bill[];
 };
 
 export function shouldShowUpcomingRecurring({

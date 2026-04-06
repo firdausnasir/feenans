@@ -8,6 +8,7 @@ import { index as payeesLoader } from '@/actions/App/Http/Controllers/Api/V1/Led
 import { store as storeRoute } from '@/actions/App/Http/Controllers/Ledger/BillController';
 import InputError from '@/components/input-error';
 import { SearchableSelect } from '@/components/searchable-select';
+import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -32,7 +33,6 @@ import {
     index as billsIndex,
 } from '@/routes/ledgers/bills';
 import type { Account, BreadcrumbItem, Category, Ledger, Payee } from '@/types';
-import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 
 type ApiEnvelope<T> = { data: T };
 
