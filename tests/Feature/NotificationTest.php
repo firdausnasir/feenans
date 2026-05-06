@@ -7,6 +7,7 @@ use App\Models\Ledger;
 use App\Models\User;
 use App\Notifications\BillDueReminder;
 use App\Notifications\BillOverdue;
+use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('index returns unread notifications for authenticated user', function () {
@@ -136,4 +137,47 @@ test('bill overdue mail uses the bill ledger currency', function () {
     $message = (new BillOverdue($bill))->toMail($user);
 
     expect($message->introLines)->toContain('Amount: €120.50');
+});
+
+test('bill overdue mail shows overdue days as an integer', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 4, 15, 0, 0, 7));
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'Electric',
+        'next_due_date' => CarbonImmutable::create(2026, 4, 14),
+    ]);
+
+    $message = (new BillOverdue($bill))->toMail($user);
+
+    expect($message->introLines[0])->toContain('is now 1 day(s) overdue.');
+    expect($message->introLines[0])->not->toContain('1.');
+
+    CarbonImmutable::setTestNow();
+});
+
+test('bill due reminder mail shows overdue days as an integer', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::create(2026, 4, 15, 0, 0, 7));
+
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create([
+        'currency_code' => 'MYR',
+    ]);
+    $accountType = AccountType::factory()->for($ledger)->create();
+    $account = Account::factory()->for($ledger)->for($accountType)->create();
+    $bill = Bill::factory()->for($ledger)->for($account)->create([
+        'name' => 'CelcomDigi',
+        'amount' => 42.40,
+        'next_due_date' => CarbonImmutable::create(2026, 4, 14),
+    ]);
+
+    $message = (new BillDueReminder(collect(), collect(), collect([$bill])))->toMail($user);
+
+    expect($message->introLines[1])->toContain('(1 days overdue)');
+    expect($message->introLines[1])->not->toContain('1.');
+
+    CarbonImmutable::setTestNow();
 });

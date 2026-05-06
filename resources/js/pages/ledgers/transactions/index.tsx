@@ -103,6 +103,7 @@ import {
     resolveTransactionsResponse,
     shouldContinueTransactionsReload,
     shouldApplyTransactionsResponse,
+    shouldFetchNextTransactionsPage,
     shouldResetTransactionsState,
 } from './page-state';
 import type { Filters } from './query-params';
@@ -1217,6 +1218,7 @@ function BottomScrollTrigger({
     loading,
     onFetch,
 }: BottomScrollTriggerProps) {
+    const triggerRef = useRef<HTMLDivElement | null>(null);
     const fetchTriggeredRef = useRef(false);
 
     useEffect(() => {
@@ -1230,21 +1232,50 @@ function BottomScrollTrigger({
             return;
         }
 
-        const handleScroll = () => {
-            if (window.scrollY <= 0) {
-                return;
-            }
+        const trigger = triggerRef.current;
 
+        if (trigger && 'IntersectionObserver' in window) {
+            const observer = new IntersectionObserver(
+                ([entry]) => {
+                    if (
+                        shouldFetchNextTransactionsPage({
+                            hasMore,
+                            loading,
+                            alreadyTriggered: fetchTriggeredRef.current,
+                            isVisible: entry.isIntersecting,
+                        })
+                    ) {
+                        fetchTriggeredRef.current = true;
+                        onFetch();
+                    }
+                },
+                { root: null, rootMargin: '160px 0px' },
+            );
+
+            observer.observe(trigger);
+
+            return () => observer.disconnect();
+        }
+
+        const handleScroll = () => {
             const scrolledToBottom =
                 window.innerHeight + window.scrollY >=
                 document.documentElement.scrollHeight - 16;
 
-            if (scrolledToBottom && !loading && !fetchTriggeredRef.current) {
+            if (
+                shouldFetchNextTransactionsPage({
+                    hasMore,
+                    loading,
+                    alreadyTriggered: fetchTriggeredRef.current,
+                    isVisible: scrolledToBottom,
+                })
+            ) {
                 fetchTriggeredRef.current = true;
                 onFetch();
             }
         };
 
+        handleScroll();
         window.addEventListener('scroll', handleScroll, { passive: true });
 
         return () => window.removeEventListener('scroll', handleScroll);
@@ -1252,7 +1283,7 @@ function BottomScrollTrigger({
 
     return (
         <>
-            <div className="h-1" />
+            <div ref={triggerRef} className="h-1" />
             {loading && (
                 <>
                     <div className="space-y-2 py-3 sm:hidden">
