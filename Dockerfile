@@ -28,7 +28,9 @@ COPY . .
 COPY --from=composer-deps /app/vendor ./vendor
 
 # Install npm deps and build (Wayfinder plugin will call php artisan)
-RUN npm ci && npm run build
+RUN php artisan wayfinder:generate --with-form \
+    && npm ci \
+    && npm run build
 
 # ── Stage 3: Production image ──
 FROM serversideup/php:8.5-fpm-nginx
