@@ -173,6 +173,20 @@ export function canAppendTransactionsPage({
     return nextPageUrl !== null && !processing && !isAppending;
 }
 
+export function shouldFetchNextTransactionsPage({
+    hasMore,
+    loading,
+    alreadyTriggered,
+    isVisible,
+}: {
+    hasMore: boolean;
+    loading: boolean;
+    alreadyTriggered: boolean;
+    isVisible: boolean;
+}): boolean {
+    return hasMore && !loading && !alreadyTriggered && isVisible;
+}
+
 export function shouldContinueTransactionsReload({
     operationId,
     latestOperationId,

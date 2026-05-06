@@ -12,6 +12,7 @@ const {
     resolveTransactionsResponse,
     shouldContinueTransactionsReload,
     shouldApplyTransactionsResponse,
+    shouldFetchNextTransactionsPage,
     shouldResetTransactionsState,
 } = await import(new URL('./page-state.ts', import.meta.url).href);
 
@@ -130,6 +131,48 @@ test('canAppendTransactionsPage blocks duplicate appends while a page load is ac
             nextPageUrl: 'https://feenans.test/api/v1/ledgers/1/transactions?page=2',
             processing: false,
             isAppending: true,
+        }),
+        false,
+    );
+});
+
+test('shouldFetchNextTransactionsPage fetches only when the bottom trigger is visible and idle', () => {
+    assert.equal(
+        shouldFetchNextTransactionsPage({
+            hasMore: true,
+            loading: false,
+            alreadyTriggered: false,
+            isVisible: true,
+        }),
+        true,
+    );
+
+    assert.equal(
+        shouldFetchNextTransactionsPage({
+            hasMore: true,
+            loading: false,
+            alreadyTriggered: false,
+            isVisible: false,
+        }),
+        false,
+    );
+
+    assert.equal(
+        shouldFetchNextTransactionsPage({
+            hasMore: true,
+            loading: true,
+            alreadyTriggered: false,
+            isVisible: true,
+        }),
+        false,
+    );
+
+    assert.equal(
+        shouldFetchNextTransactionsPage({
+            hasMore: true,
+            loading: false,
+            alreadyTriggered: true,
+            isVisible: true,
         }),
         false,
     );

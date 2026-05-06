@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Bill;
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -26,7 +27,7 @@ class BillOverdue extends Notification implements ShouldQueue
     {
         $this->bill->loadMissing('ledger');
 
-        $daysOverdue = $this->bill->next_due_date->diffInDays(now());
+        $daysOverdue = $this->bill->next_due_date->diffInDays(CarbonImmutable::today());
 
         return (new MailMessage)
             ->subject("Overdue: {$this->bill->name}")

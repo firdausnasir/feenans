@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Bill;
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -48,7 +49,7 @@ class BillDueReminder extends Notification implements ShouldQueue
         if ($this->overdueBills->isNotEmpty()) {
             $mailMessage->line('**Overdue Bills:**');
             foreach ($this->overdueBills as $bill) {
-                $daysOverdue = $bill->next_due_date->diffInDays(now());
+                $daysOverdue = $bill->next_due_date->diffInDays(CarbonImmutable::today());
                 $mailMessage->line("• {$bill->name} - Due: {$bill->next_due_date->format('d M Y')} ({$daysOverdue} days overdue) - Amount: {$this->formatBillAmount($bill)}");
             }
             $mailMessage->line('');
