@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\ApiTokenAbility;
+use App\Models\Ledger;
 use App\Models\User;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -42,6 +44,77 @@ test('token creation returns plain token once plus token metadata', function () 
         ->assertJsonPath('data.created_at', fn (mixed $createdAt): bool => is_string($createdAt) && $createdAt !== '')
         ->assertJsonPath('data.last_used_at', null)
         ->assertJsonMissingPath('data.token');
+});
+
+test('authenticated web user can create a ledger scoped webhook token', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+
+    $response = $this->actingAs($user)
+        ->postJson(route('api.v1.auth.tokens.store'), [
+            'device_name' => 'Webhook',
+            'ledger_id' => $ledger->id,
+        ]);
+
+    $response->assertCreated()
+        ->assertJsonPath('data.name', 'Webhook')
+        ->assertJsonPath('data.abilities', [ApiTokenAbility::transactionWebhookForLedger($ledger->id)])
+        ->assertJsonPath('data.plain_text_token', fn (mixed $token): bool => is_string($token) && str_contains($token, '|'));
+});
+
+test('authenticated web user can still create a generic webhook token with explicit abilities', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)
+        ->postJson(route('api.v1.auth.tokens.store'), [
+            'device_name' => 'Webhook',
+            'abilities' => [ApiTokenAbility::TransactionWebhook->value],
+        ]);
+
+    $response->assertCreated()
+        ->assertJsonPath('data.name', 'Webhook')
+        ->assertJsonPath('data.abilities', [ApiTokenAbility::TransactionWebhook->value])
+        ->assertJsonPath('data.plain_text_token', fn (mixed $token): bool => is_string($token) && str_contains($token, '|'));
+});
+
+test('authenticated web user can list token metadata without plain tokens', function () {
+    $user = User::factory()->create();
+    $user->createToken('Webhook', [ApiTokenAbility::TransactionWebhook->value]);
+    $user->createToken('CLI');
+
+    $response = $this->actingAs($user)
+        ->getJson(route('api.v1.auth.tokens.index'));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonFragment([
+            'name' => 'Webhook',
+            'abilities' => [ApiTokenAbility::TransactionWebhook->value],
+            'plain_text_token' => null,
+        ])
+        ->assertJsonFragment([
+            'name' => 'CLI',
+            'abilities' => ['*'],
+            'plain_text_token' => null,
+        ]);
+});
+
+test('authenticated web user can list only token metadata for a ledger', function () {
+    $user = User::factory()->create();
+    $ledger = Ledger::factory()->for($user)->create();
+    $otherLedger = Ledger::factory()->for($user)->create();
+    $user->createToken('Ledger webhook', [ApiTokenAbility::transactionWebhookForLedger($ledger->id)]);
+    $user->createToken('Other ledger webhook', [ApiTokenAbility::transactionWebhookForLedger($otherLedger->id)]);
+    $user->createToken('Generic webhook', [ApiTokenAbility::TransactionWebhook->value]);
+
+    $response = $this->actingAs($user)
+        ->getJson(route('api.v1.auth.tokens.index', ['ledger_id' => $ledger->id]));
+
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.name', 'Ledger webhook')
+        ->assertJsonPath('data.0.abilities', [ApiTokenAbility::transactionWebhookForLedger($ledger->id)])
+        ->assertJsonPath('data.0.plain_text_token', null);
 });
 
 test('bearer token requests cannot mint new tokens through the issuance endpoint', function () {

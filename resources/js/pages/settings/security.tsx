@@ -76,7 +76,6 @@ export default function Security({ passwordReset }: Props) {
         requiresConfirmation: false,
         twoFactorEnabled: false,
     });
-
     const {
         qrCodeSvg,
         hasSetupData,

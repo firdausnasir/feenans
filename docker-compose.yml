@@ -6,8 +6,6 @@ services:
     ports:
       - "${APP_PORT:-8080}:8080"
     env_file: .env
-    environment:
-      SSL_MODE: "off"
     volumes:
       - app-storage:/var/www/html/storage
       - db-data:/var/www/html/database
@@ -33,6 +31,19 @@ services:
       dockerfile: Dockerfile
     entrypoint: []
     command: ["php", "/var/www/html/artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--no-interaction"]
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/html/storage
+      - db-data:/var/www/html/database
+    depends_on:
+      - app
+
+  webhook-queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["php", "/var/www/html/artisan", "queue:work", "--queue=webhooks", "--sleep=3", "--tries=3", "--max-time=3600", "--no-interaction"]
     env_file: .env
     volumes:
       - app-storage:/var/www/html/storage
