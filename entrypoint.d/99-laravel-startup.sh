@@ -16,6 +16,15 @@ else
     echo "✅ APP_KEY is set"
 fi
 
+if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
+    SQLITE_DATABASE="${DB_DATABASE:-/var/www/html/database/database.sqlite}"
+
+    if [ ! -f "$SQLITE_DATABASE" ]; then
+        mkdir -p "$(dirname "$SQLITE_DATABASE")"
+        touch "$SQLITE_DATABASE"
+    fi
+fi
+
 # Rebuild config, route, and view caches
 echo "⚡ Caching config, routes, and views..."
 php "$ARTISAN" config:cache

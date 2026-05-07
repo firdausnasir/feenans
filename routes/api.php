@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\V1\Ledger\TransactionAttachmentController as ApiTra
 use App\Http\Controllers\Api\V1\Ledger\TransactionController as ApiTransactionController;
 use App\Http\Controllers\Api\V1\LedgerController as ApiLedgerController;
 use App\Http\Controllers\Api\V1\Settings\SecuritySettingsController as ApiSecuritySettingsController;
+use App\Http\Controllers\Api\V1\WebhookTransactionController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
@@ -37,6 +38,8 @@ Route::middleware(['auth', 'verified'])->prefix('v1')->as('api.v1.')->scopeBindi
         ->name('architecture.proof-tags.store');
     Route::post('auth/tokens', [ApiTokenController::class, 'store'])
         ->name('auth.tokens.store');
+    Route::get('auth/tokens', [ApiTokenController::class, 'index'])
+        ->name('auth.tokens.index');
 
     Route::get('settings/security', ApiSecuritySettingsController::class)
         ->name('settings.security');
@@ -48,6 +51,8 @@ Route::middleware(['auth:sanctum', 'verified'])->prefix('v1')->as('api.v1.')->sc
     Route::delete('auth/tokens/{token}', [ApiTokenController::class, 'destroy'])
         ->whereNumber('token')
         ->name('auth.tokens.destroy');
+    Route::post('webhooks/transactions', WebhookTransactionController::class)
+        ->name('webhooks.transactions.store');
 
     Route::get('ledgers', [ApiLedgerController::class, 'index'])
         ->name('ledgers.index');

@@ -12,6 +12,7 @@ import SettingsController from '@/actions/App/Http/Controllers/Ledger/SettingsCo
 import LedgerController from '@/actions/App/Http/Controllers/LedgerController';
 import { ColorPicker } from '@/components/color-picker';
 import { CurrencySelect } from '@/components/currency-select';
+import { LedgerWebhookTokenManagement } from '@/components/ledger-webhook-token-management';
 import { Badge } from '@/components/ui/badge';
 import { BoneSkeleton } from '@/components/ui/bone-skeleton';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
-import { mapInertiaErrorsArray } from '@/lib/utils';
+import { cn, mapInertiaErrorsArray } from '@/lib/utils';
 import {
     dashboard as ledgerDashboard,
     exportMethod as ledgerExport,
@@ -61,6 +62,27 @@ type AddAccountTypeState = {
     color: string;
     is_credit: boolean;
 };
+
+type WorkspaceSettingsTab =
+    | 'general'
+    | 'account-types'
+    | 'webhook-keys'
+    | 'sample-data'
+    | 'data-export'
+    | 'danger-zone';
+
+const workspaceSettingsTabs: {
+    value: WorkspaceSettingsTab;
+    title: string;
+    requiresSampleData?: boolean;
+}[] = [
+    { value: 'general', title: 'General' },
+    { value: 'account-types', title: 'Account types' },
+    { value: 'webhook-keys', title: 'Webhook keys' },
+    { value: 'sample-data', title: 'Sample data', requiresSampleData: true },
+    { value: 'data-export', title: 'Data export' },
+    { value: 'danger-zone', title: 'Danger zone' },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -108,7 +130,10 @@ function SettingsLoadingSkeleton() {
                 <Separator />
                 <div className="max-w-lg space-y-2">
                     {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2">
+                        <div
+                            key={i}
+                            className="flex items-center gap-3 px-3 py-2"
+                        >
                             <Skeleton className="h-3 w-3 rounded-full" />
                             <Skeleton className="h-4 w-32" />
                             <Skeleton className="h-5 w-14" />
@@ -124,17 +149,33 @@ function SettingsLoadingSkeleton() {
 
 export default function SettingsIndex() {
     const { currentLedger } = usePage<{
-        currentLedger: { id: number; name: string; currency_code: string; cycle_start_day: number } | null;
+        currentLedger: {
+            id: number;
+            name: string;
+            currency_code: string;
+            cycle_start_day: number;
+        } | null;
     }>().props;
     const ledger = currentLedger!;
 
     // API loaders
-    const ledgerLoaderState = useHttp<Record<string, never>, ApiEnvelope<LedgerSettings>>({});
-    const accountTypesLoaderState = useHttp<Record<string, never>, ApiEnvelope<AccountType[]>>({});
-    const sampleDataLoaderState = useHttp<Record<string, never>, ApiEnvelope<boolean>>({});
+    const ledgerLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<LedgerSettings>
+    >({});
+    const accountTypesLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<AccountType[]>
+    >({});
+    const sampleDataLoaderState = useHttp<
+        Record<string, never>,
+        ApiEnvelope<boolean>
+    >({});
 
     const [hasLoaded, setHasLoaded] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [activeWorkspaceTab, setActiveWorkspaceTab] =
+        useState<WorkspaceSettingsTab>('general');
 
     const ledgerSettings = ledgerLoaderState.response?.data ?? null;
     const accountTypes = accountTypesLoaderState.response?.data ?? [];
@@ -190,18 +231,18 @@ export default function SettingsIndex() {
             await Promise.allSettled([
                 ledgerLoaderState.get(showLedgerLoader.url(ledger.id), {
                     onCancel: () => {
- cancelled = true; 
-},
+                        cancelled = true;
+                    },
                 }),
                 accountTypesLoaderState.get(accountTypesLoader.url(ledger.id), {
                     onCancel: () => {
- cancelled = true; 
-},
+                        cancelled = true;
+                    },
                 }),
                 sampleDataLoaderState.get(hasSampleDataLoader.url(ledger.id), {
                     onCancel: () => {
- cancelled = true; 
-},
+                        cancelled = true;
+                    },
                 }),
             ]);
 
@@ -221,11 +262,13 @@ export default function SettingsIndex() {
 
     async function reloadAccountTypes(): Promise<void> {
         if (!ledger) {
-return;
-}
+            return;
+        }
 
         try {
-            await accountTypesLoaderState.get(accountTypesLoader.url(ledger.id));
+            await accountTypesLoaderState.get(
+                accountTypesLoader.url(ledger.id),
+            );
         } catch {
             // Silently fail — stale data is acceptable after mutations
         }
@@ -233,8 +276,8 @@ return;
 
     async function reloadSampleData(): Promise<void> {
         if (!ledger) {
-return;
-}
+            return;
+        }
 
         try {
             await sampleDataLoaderState.get(hasSampleDataLoader.url(ledger.id));
@@ -245,8 +288,8 @@ return;
 
     async function reloadLedgerSettings(): Promise<void> {
         if (!ledger) {
-return;
-}
+            return;
+        }
 
         try {
             await ledgerLoaderState.get(showLedgerLoader.url(ledger.id));
@@ -268,13 +311,26 @@ return;
 
     // Derived values: use local overrides or fall back to API data
     const effectiveName = ledgerName ?? ledgerSettings?.name ?? ledger.name;
-    const effectiveCycleDay = cycleStartDay ?? ledgerSettings?.cycle_start_day ?? ledger.cycle_start_day;
-    const effectiveCurrency = currencyCode ?? ledgerSettings?.currency_code ?? ledger.currency_code;
+    const effectiveCycleDay =
+        cycleStartDay ??
+        ledgerSettings?.cycle_start_day ??
+        ledger.cycle_start_day;
+    const effectiveCurrency =
+        currencyCode ?? ledgerSettings?.currency_code ?? ledger.currency_code;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: ledger.name, href: ledgerDashboard.url(ledger.id) },
         { title: 'Workspace Settings', href: settingsIndex.url(ledger.id) },
     ];
+    const visibleWorkspaceSettingsTabs = workspaceSettingsTabs.filter(
+        (item) => !item.requiresSampleData || hasSampleData,
+    );
+
+    useEffect(() => {
+        if (activeWorkspaceTab === 'sample-data' && !hasSampleData) {
+            setActiveWorkspaceTab('general');
+        }
+    }, [activeWorkspaceTab, hasSampleData]);
 
     // ── General settings handlers ─────────────────────────────────────────────
 
@@ -582,434 +638,667 @@ return;
                         </div>
                     </div>
                 ) : (
-            <div className="flex h-full flex-1 flex-col gap-4 p-4 md:p-6">
-                {/* ── General ────────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">General</h2>
-                    <Separator />
-
-                    <div className="grid max-w-md gap-4">
-                        {/* Workspace name */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="ledger-name">Workspace name</Label>
-                            <Input
-                                id="ledger-name"
-                                value={effectiveName}
-                                onChange={(e) => setLedgerName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        void handleSaveGeneral();
-                                    }
-                                }}
-                            />
-                        </div>
-
-                        {/* Currency */}
-                        <div className="space-y-1.5">
-                            <Label>Currency code</Label>
-                            <CurrencySelect
-                                value={effectiveCurrency}
-                                onValueChange={setCurrencyCode}
-                            />
-                            {effectiveCurrency !==
-                                (ledgerSettings?.currency_code ?? ledger.currency_code) && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
-                                    Changing the currency code does not convert
-                                    existing transaction amounts.
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Cycle start day */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="cycle-start-day">
-                                Cycle start day
-                            </Label>
-                            <Input
-                                id="cycle-start-day"
-                                type="number"
-                                inputMode="decimal"
-                                min={1}
-                                max={31}
-                                value={effectiveCycleDay}
-                                onChange={(e) =>
-                                    setCycleStartDay(Number(e.target.value))
-                                }
-                                className="w-24"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Day of the month your budget cycle starts
-                                (1–31). Months with fewer days will use the last
-                                day.
-                            </p>
-                        </div>
-
-                        <div>
-                            <Button
-                                onClick={() => void handleSaveGeneral()}
-                                disabled={
-                                    isSavingGeneral || !effectiveName.trim()
-                                }
-                            >
-                                {isSavingGeneral ? 'Saving…' : 'Save'}
-                            </Button>
-                        </div>
-                    </div>
-                </section>
-
-                {/* ── Account Types ───────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">Account Types</h2>
-                    <Separator />
-
-                    <div className="max-w-lg space-y-1">
-                        {accountTypes.length === 0 && !showAddForm && (
-                            <p className="py-4 text-sm text-muted-foreground">
-                                No account types yet.
-                            </p>
-                        )}
-
-                        {accountTypes.map((accountType) => {
-                            const isEditing =
-                                editState?.accountTypeId === accountType.id;
-                            const isDragOver = dragOverId === accountType.id;
-
-                            return (
-                                <div
-                                    key={accountType.id}
-                                    draggable
-                                    onDragStart={(e) =>
-                                        handleDragStart(e, accountType.id)
-                                    }
-                                    onDragOver={(e) =>
-                                        handleDragOver(e, accountType.id)
-                                    }
-                                    onDragLeave={handleDragLeave}
-                                    onDragEnd={() => {
-                                        dragOverIdRef.current = null;
-                                        setDragOverId(null);
-                                    }}
-                                    onDrop={(e) =>
-                                        void handleDrop(e, accountType.id)
-                                    }
-                                    className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
-                                        isDragOver
-                                            ? 'border border-primary/40 bg-primary/5'
-                                            : 'border border-transparent hover:bg-muted/50'
-                                    }`}
+                    <div className="px-4 py-6 md:px-6">
+                        <div className="flex flex-col lg:flex-row lg:space-x-12">
+                            <aside className="w-full max-w-xl lg:w-48">
+                                <nav
+                                    className="flex flex-col space-y-1 space-x-0"
+                                    aria-label="Workspace settings"
                                 >
-                                    {/* Drag handle */}
-                                    <span
-                                        aria-hidden="true"
-                                        className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100"
-                                    >
-                                        ⋮⋮
-                                    </span>
-
-                                    {/* Color dot */}
-                                    {colorDot(accountType.color)}
-
-                                    {isEditing && editState ? (
-                                        /* Inline edit form */
-                                        <div className="flex flex-1 flex-wrap items-center gap-2">
-                                            <Input
-                                                autoFocus
-                                                value={editState.name}
-                                                onChange={(e) =>
-                                                    setEditState({
-                                                        ...editState,
-                                                        name: e.target.value,
-                                                    })
-                                                }
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        void saveEdit();
-                                                    } else if (
-                                                        e.key === 'Escape'
-                                                    ) {
-                                                        setEditState(null);
-                                                    }
-                                                }}
-                                                className="h-7 w-40 text-sm"
-                                            />
-                                            <div className="flex items-center gap-1">
-                                                <Label
-                                                    className="sr-only"
-                                                    htmlFor={`at-color-${editState.accountTypeId}`}
-                                                >
-                                                    Color
-                                                </Label>
-                                                <ColorPicker
-                                                    id={`at-color-${editState.accountTypeId}`}
-                                                    value={editState.color}
-                                                    onChange={(color) =>
-                                                        setEditState({
-                                                            ...editState,
-                                                            color,
-                                                        })
-                                                    }
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Switch
-                                                    id={`at-credit-${editState.accountTypeId}`}
-                                                    checked={
-                                                        editState.is_credit
-                                                    }
-                                                    onCheckedChange={(v) =>
-                                                        setEditState({
-                                                            ...editState,
-                                                            is_credit: v,
-                                                        })
-                                                    }
-                                                />
-                                                <Label
-                                                    htmlFor={`at-credit-${editState.accountTypeId}`}
-                                                    className="text-xs"
-                                                >
-                                                    Credit
-                                                </Label>
-                                            </div>
+                                    {visibleWorkspaceSettingsTabs.map(
+                                        (item) => (
                                             <Button
-                                                size="sm"
-                                                className="h-7 px-2 text-xs"
-                                                onClick={() => void saveEdit()}
-                                            >
-                                                Save
-                                            </Button>
-                                            <Button
+                                                key={item.value}
+                                                type="button"
                                                 size="sm"
                                                 variant="ghost"
-                                                className="h-7 px-2 text-xs"
+                                                className={cn(
+                                                    'w-full justify-start',
+                                                    activeWorkspaceTab ===
+                                                        item.value &&
+                                                        'bg-muted',
+                                                )}
                                                 onClick={() =>
-                                                    setEditState(null)
+                                                    setActiveWorkspaceTab(
+                                                        item.value,
+                                                    )
                                                 }
                                             >
-                                                Cancel
+                                                {item.title}
                                             </Button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <Button
-                                                type="button"
-                                                variant="link"
-                                                onClick={() =>
-                                                    startEdit(accountType)
-                                                }
-                                                className="h-auto flex-1 justify-start p-0 text-sm font-medium text-foreground no-underline hover:underline"
-                                            >
-                                                {accountType.name}
-                                            </Button>
+                                        ),
+                                    )}
+                                </nav>
+                            </aside>
 
-                                            <Badge
-                                                variant={
-                                                    accountType.is_credit
-                                                        ? 'default'
-                                                        : 'secondary'
-                                                }
-                                            >
-                                                {accountType.is_credit
-                                                    ? 'Credit'
-                                                    : 'Debit'}
-                                            </Badge>
+                            <Separator className="my-6 lg:hidden" />
 
-                                            <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
-                                                    onClick={() =>
-                                                        setDeleteTarget(
-                                                            accountType,
-                                                        )
-                                                    }
-                                                >
-                                                    Delete
-                                                </Button>
+                            <div className="flex-1 md:max-w-3xl">
+                                <div className="max-w-2xl space-y-8">
+                                    {/* ── General ────────────────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'general' && (
+                                        <section className="space-y-4">
+                                            <h2 className="text-base font-semibold">
+                                                General
+                                            </h2>
+                                            <Separator />
+
+                                            <div className="grid max-w-md gap-4">
+                                                {/* Workspace name */}
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="ledger-name">
+                                                        Workspace name
+                                                    </Label>
+                                                    <Input
+                                                        id="ledger-name"
+                                                        value={effectiveName}
+                                                        onChange={(e) =>
+                                                            setLedgerName(
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        onKeyDown={(e) => {
+                                                            if (
+                                                                e.key ===
+                                                                'Enter'
+                                                            ) {
+                                                                void handleSaveGeneral();
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                {/* Currency */}
+                                                <div className="space-y-1.5">
+                                                    <Label>Currency code</Label>
+                                                    <CurrencySelect
+                                                        value={
+                                                            effectiveCurrency
+                                                        }
+                                                        onValueChange={
+                                                            setCurrencyCode
+                                                        }
+                                                    />
+                                                    {effectiveCurrency !==
+                                                        (ledgerSettings?.currency_code ??
+                                                            ledger.currency_code) && (
+                                                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                            Changing the
+                                                            currency code does
+                                                            not convert existing
+                                                            transaction amounts.
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                {/* Cycle start day */}
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="cycle-start-day">
+                                                        Cycle start day
+                                                    </Label>
+                                                    <Input
+                                                        id="cycle-start-day"
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        min={1}
+                                                        max={31}
+                                                        value={
+                                                            effectiveCycleDay
+                                                        }
+                                                        onChange={(e) =>
+                                                            setCycleStartDay(
+                                                                Number(
+                                                                    e.target
+                                                                        .value,
+                                                                ),
+                                                            )
+                                                        }
+                                                        className="w-24"
+                                                    />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Day of the month your
+                                                        budget cycle starts
+                                                        (1–31). Months with
+                                                        fewer days will use the
+                                                        last day.
+                                                    </p>
+                                                </div>
+
+                                                <div>
+                                                    <Button
+                                                        onClick={() =>
+                                                            void handleSaveGeneral()
+                                                        }
+                                                        disabled={
+                                                            isSavingGeneral ||
+                                                            !effectiveName.trim()
+                                                        }
+                                                    >
+                                                        {isSavingGeneral
+                                                            ? 'Saving…'
+                                                            : 'Save'}
+                                                    </Button>
+                                                </div>
                                             </div>
-                                        </>
+                                        </section>
+                                    )}
+
+                                    {/* ── Account Types ───────────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'account-types' && (
+                                        <section className="space-y-4">
+                                            <h2 className="text-base font-semibold">
+                                                Account Types
+                                            </h2>
+                                            <Separator />
+
+                                            <div className="max-w-lg space-y-1">
+                                                {accountTypes.length === 0 &&
+                                                    !showAddForm && (
+                                                        <p className="py-4 text-sm text-muted-foreground">
+                                                            No account types
+                                                            yet.
+                                                        </p>
+                                                    )}
+
+                                                {accountTypes.map(
+                                                    (accountType) => {
+                                                        const isEditing =
+                                                            editState?.accountTypeId ===
+                                                            accountType.id;
+                                                        const isDragOver =
+                                                            dragOverId ===
+                                                            accountType.id;
+
+                                                        return (
+                                                            <div
+                                                                key={
+                                                                    accountType.id
+                                                                }
+                                                                draggable
+                                                                onDragStart={(
+                                                                    e,
+                                                                ) =>
+                                                                    handleDragStart(
+                                                                        e,
+                                                                        accountType.id,
+                                                                    )
+                                                                }
+                                                                onDragOver={(
+                                                                    e,
+                                                                ) =>
+                                                                    handleDragOver(
+                                                                        e,
+                                                                        accountType.id,
+                                                                    )
+                                                                }
+                                                                onDragLeave={
+                                                                    handleDragLeave
+                                                                }
+                                                                onDragEnd={() => {
+                                                                    dragOverIdRef.current =
+                                                                        null;
+                                                                    setDragOverId(
+                                                                        null,
+                                                                    );
+                                                                }}
+                                                                onDrop={(e) =>
+                                                                    void handleDrop(
+                                                                        e,
+                                                                        accountType.id,
+                                                                    )
+                                                                }
+                                                                className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
+                                                                    isDragOver
+                                                                        ? 'border border-primary/40 bg-primary/5'
+                                                                        : 'border border-transparent hover:bg-muted/50'
+                                                                }`}
+                                                            >
+                                                                {/* Drag handle */}
+                                                                <span
+                                                                    aria-hidden="true"
+                                                                    className="cursor-grab text-muted-foreground opacity-0 select-none group-hover:opacity-100"
+                                                                >
+                                                                    ⋮⋮
+                                                                </span>
+
+                                                                {/* Color dot */}
+                                                                {colorDot(
+                                                                    accountType.color,
+                                                                )}
+
+                                                                {isEditing &&
+                                                                editState ? (
+                                                                    /* Inline edit form */
+                                                                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                                                                        <Input
+                                                                            autoFocus
+                                                                            value={
+                                                                                editState.name
+                                                                            }
+                                                                            onChange={(
+                                                                                e,
+                                                                            ) =>
+                                                                                setEditState(
+                                                                                    {
+                                                                                        ...editState,
+                                                                                        name: e
+                                                                                            .target
+                                                                                            .value,
+                                                                                    },
+                                                                                )
+                                                                            }
+                                                                            onKeyDown={(
+                                                                                e,
+                                                                            ) => {
+                                                                                if (
+                                                                                    e.key ===
+                                                                                    'Enter'
+                                                                                ) {
+                                                                                    void saveEdit();
+                                                                                } else if (
+                                                                                    e.key ===
+                                                                                    'Escape'
+                                                                                ) {
+                                                                                    setEditState(
+                                                                                        null,
+                                                                                    );
+                                                                                }
+                                                                            }}
+                                                                            className="h-7 w-40 text-sm"
+                                                                        />
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Label
+                                                                                className="sr-only"
+                                                                                htmlFor={`at-color-${editState.accountTypeId}`}
+                                                                            >
+                                                                                Color
+                                                                            </Label>
+                                                                            <ColorPicker
+                                                                                id={`at-color-${editState.accountTypeId}`}
+                                                                                value={
+                                                                                    editState.color
+                                                                                }
+                                                                                onChange={(
+                                                                                    color,
+                                                                                ) =>
+                                                                                    setEditState(
+                                                                                        {
+                                                                                            ...editState,
+                                                                                            color,
+                                                                                        },
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Switch
+                                                                                id={`at-credit-${editState.accountTypeId}`}
+                                                                                checked={
+                                                                                    editState.is_credit
+                                                                                }
+                                                                                onCheckedChange={(
+                                                                                    v,
+                                                                                ) =>
+                                                                                    setEditState(
+                                                                                        {
+                                                                                            ...editState,
+                                                                                            is_credit:
+                                                                                                v,
+                                                                                        },
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                            <Label
+                                                                                htmlFor={`at-credit-${editState.accountTypeId}`}
+                                                                                className="text-xs"
+                                                                            >
+                                                                                Credit
+                                                                            </Label>
+                                                                        </div>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className="h-7 px-2 text-xs"
+                                                                            onClick={() =>
+                                                                                void saveEdit()
+                                                                            }
+                                                                        >
+                                                                            Save
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="ghost"
+                                                                            className="h-7 px-2 text-xs"
+                                                                            onClick={() =>
+                                                                                setEditState(
+                                                                                    null,
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            Cancel
+                                                                        </Button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="link"
+                                                                            onClick={() =>
+                                                                                startEdit(
+                                                                                    accountType,
+                                                                                )
+                                                                            }
+                                                                            className="h-auto flex-1 justify-start p-0 text-sm font-medium text-foreground no-underline hover:underline"
+                                                                        >
+                                                                            {
+                                                                                accountType.name
+                                                                            }
+                                                                        </Button>
+
+                                                                        <Badge
+                                                                            variant={
+                                                                                accountType.is_credit
+                                                                                    ? 'default'
+                                                                                    : 'secondary'
+                                                                            }
+                                                                        >
+                                                                            {accountType.is_credit
+                                                                                ? 'Credit'
+                                                                                : 'Debit'}
+                                                                        </Badge>
+
+                                                                        <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                className="h-auto px-2 py-0.5 text-xs text-destructive hover:text-destructive"
+                                                                                onClick={() =>
+                                                                                    setDeleteTarget(
+                                                                                        accountType,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Delete
+                                                                            </Button>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    },
+                                                )}
+
+                                                {/* Add account type form */}
+                                                {showAddForm ? (
+                                                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3">
+                                                        <Input
+                                                            autoFocus
+                                                            value={
+                                                                addState.name
+                                                            }
+                                                            onChange={(e) =>
+                                                                setAddState({
+                                                                    ...addState,
+                                                                    name: e
+                                                                        .target
+                                                                        .value,
+                                                                })
+                                                            }
+                                                            onKeyDown={(e) => {
+                                                                if (
+                                                                    e.key ===
+                                                                    'Enter'
+                                                                ) {
+                                                                    void handleAddAccountType();
+                                                                } else if (
+                                                                    e.key ===
+                                                                    'Escape'
+                                                                ) {
+                                                                    setShowAddForm(
+                                                                        false,
+                                                                    );
+                                                                }
+                                                            }}
+                                                            placeholder="Account type name…"
+                                                            className="h-7 w-48 text-sm"
+                                                        />
+                                                        <ColorPicker
+                                                            value={
+                                                                addState.color
+                                                            }
+                                                            onChange={(color) =>
+                                                                setAddState({
+                                                                    ...addState,
+                                                                    color,
+                                                                })
+                                                            }
+                                                        />
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Switch
+                                                                id="add-at-credit"
+                                                                checked={
+                                                                    addState.is_credit
+                                                                }
+                                                                onCheckedChange={(
+                                                                    v,
+                                                                ) =>
+                                                                    setAddState(
+                                                                        {
+                                                                            ...addState,
+                                                                            is_credit:
+                                                                                v,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            />
+                                                            <Label
+                                                                htmlFor="add-at-credit"
+                                                                className="text-xs"
+                                                            >
+                                                                Credit
+                                                            </Label>
+                                                        </div>
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-7 px-2 text-xs"
+                                                            onClick={() =>
+                                                                void handleAddAccountType()
+                                                            }
+                                                            disabled={
+                                                                !addState.name.trim()
+                                                            }
+                                                        >
+                                                            Add
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-7 px-2 text-xs"
+                                                            onClick={() =>
+                                                                setShowAddForm(
+                                                                    false,
+                                                                )
+                                                            }
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="mt-2"
+                                                        onClick={() =>
+                                                            setShowAddForm(true)
+                                                        }
+                                                    >
+                                                        + Add Account Type
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    {/* ── Webhook API Keys ───────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'webhook-keys' && (
+                                        <section className="space-y-4">
+                                            <div className="space-y-1">
+                                                <h2 className="text-base font-semibold">
+                                                    Webhook API Keys
+                                                </h2>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Keys created here can only
+                                                    create transactions for this
+                                                    workspace.
+                                                </p>
+                                            </div>
+                                            <Separator />
+
+                                            <LedgerWebhookTokenManagement
+                                                key={ledger.id}
+                                                ledgerId={ledger.id}
+                                            />
+                                        </section>
+                                    )}
+
+                                    {/* ── Sample Data ─────────────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'sample-data' &&
+                                        hasSampleData && (
+                                            <section className="space-y-4">
+                                                <h2 className="text-base font-semibold">
+                                                    Sample Data
+                                                </h2>
+                                                <Separator />
+
+                                                <div className="rounded-lg border border-border p-4">
+                                                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div>
+                                                            <p className="text-sm font-medium">
+                                                                Remove sample
+                                                                data
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                This will delete
+                                                                all sample
+                                                                accounts,
+                                                                transactions,
+                                                                bills, and
+                                                                payees. Your own
+                                                                data will not be
+                                                                affected.
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                void handleRemoveSampleData()
+                                                            }
+                                                            disabled={
+                                                                isRemovingSampleData
+                                                            }
+                                                        >
+                                                            {isRemovingSampleData
+                                                                ? 'Removing...'
+                                                                : 'Remove sample data'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </section>
+                                        )}
+
+                                    {/* ── Data Export ──────────────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'data-export' && (
+                                        <section className="space-y-4">
+                                            <h2 className="text-base font-semibold">
+                                                Data Export
+                                            </h2>
+                                            <Separator />
+
+                                            <div className="rounded-lg border border-border p-4">
+                                                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <p className="text-sm font-medium">
+                                                            Export all data
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Download all
+                                                            accounts,
+                                                            transactions,
+                                                            categories, payees,
+                                                            tags, bills, and
+                                                            budgets as a JSON
+                                                            file.
+                                                        </p>
+                                                    </div>
+                                                    <a
+                                                        href={ledgerExport.url(
+                                                            ledger.id,
+                                                        )}
+                                                        download
+                                                    >
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                        >
+                                                            <Download className="mr-2 size-4" />
+                                                            Export
+                                                        </Button>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    {/* ── Danger Zone ─────────────────────────────────────────── */}
+                                    {activeWorkspaceTab === 'danger-zone' && (
+                                        <section className="space-y-4">
+                                            <h2 className="text-base font-semibold text-destructive">
+                                                Danger Zone
+                                            </h2>
+                                            <Separator />
+
+                                            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                                                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-destructive">
+                                                            Delete this
+                                                            workspace
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            Permanently deletes
+                                                            all accounts,
+                                                            transactions,
+                                                            categories, budgets,
+                                                            and other data. This
+                                                            action cannot be
+                                                            undone.
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                        onClick={() => {
+                                                            setDeleteConfirmName(
+                                                                '',
+                                                            );
+                                                            setShowDeleteDialog(
+                                                                true,
+                                                            );
+                                                        }}
+                                                    >
+                                                        Delete workspace
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </section>
                                     )}
                                 </div>
-                            );
-                        })}
-
-                        {/* Add account type form */}
-                        {showAddForm ? (
-                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3">
-                                <Input
-                                    autoFocus
-                                    value={addState.name}
-                                    onChange={(e) =>
-                                        setAddState({
-                                            ...addState,
-                                            name: e.target.value,
-                                        })
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            void handleAddAccountType();
-                                        } else if (e.key === 'Escape') {
-                                            setShowAddForm(false);
-                                        }
-                                    }}
-                                    placeholder="Account type name…"
-                                    className="h-7 w-48 text-sm"
-                                />
-                                <ColorPicker
-                                    value={addState.color}
-                                    onChange={(color) =>
-                                        setAddState({
-                                            ...addState,
-                                            color,
-                                        })
-                                    }
-                                />
-                                <div className="flex items-center gap-1.5">
-                                    <Switch
-                                        id="add-at-credit"
-                                        checked={addState.is_credit}
-                                        onCheckedChange={(v) =>
-                                            setAddState({
-                                                ...addState,
-                                                is_credit: v,
-                                            })
-                                        }
-                                    />
-                                    <Label
-                                        htmlFor="add-at-credit"
-                                        className="text-xs"
-                                    >
-                                        Credit
-                                    </Label>
-                                </div>
-                                <Button
-                                    size="sm"
-                                    className="h-7 px-2 text-xs"
-                                    onClick={() => void handleAddAccountType()}
-                                    disabled={!addState.name.trim()}
-                                >
-                                    Add
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 px-2 text-xs"
-                                    onClick={() => setShowAddForm(false)}
-                                >
-                                    Cancel
-                                </Button>
-                            </div>
-                        ) : (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={() => setShowAddForm(true)}
-                            >
-                                + Add Account Type
-                            </Button>
-                        )}
-                    </div>
-                </section>
-
-                {/* ── Sample Data ─────────────────────────────────────────── */}
-                {hasSampleData && (
-                    <section className="space-y-4">
-                        <h2 className="text-base font-semibold">Sample Data</h2>
-                        <Separator />
-
-                        <div className="rounded-lg border border-border p-4">
-                            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <p className="text-sm font-medium">
-                                        Remove sample data
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        This will delete all sample accounts,
-                                        transactions, bills, and payees. Your
-                                        own data will not be affected.
-                                    </p>
-                                </div>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() =>
-                                        void handleRemoveSampleData()
-                                    }
-                                    disabled={isRemovingSampleData}
-                                >
-                                    {isRemovingSampleData
-                                        ? 'Removing...'
-                                        : 'Remove sample data'}
-                                </Button>
                             </div>
                         </div>
-                    </section>
-                )}
-
-                {/* ── Data Export ──────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold">Data Export</h2>
-                    <Separator />
-
-                    <div className="rounded-lg border border-border p-4">
-                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm font-medium">
-                                    Export all data
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                    Download all accounts, transactions,
-                                    categories, payees, tags, bills, and budgets
-                                    as a JSON file.
-                                </p>
-                            </div>
-                            <a href={ledgerExport.url(ledger.id)} download>
-                                <Button variant="outline" size="sm">
-                                    <Download className="mr-2 size-4" />
-                                    Export
-                                </Button>
-                            </a>
-                        </div>
                     </div>
-                </section>
-
-                {/* ── Danger Zone ─────────────────────────────────────────── */}
-                <section className="space-y-4">
-                    <h2 className="text-base font-semibold text-destructive">
-                        Danger Zone
-                    </h2>
-                    <Separator />
-
-                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
-                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-destructive">
-                                    Delete this workspace
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    Permanently deletes all accounts,
-                                    transactions, categories, budgets, and other
-                                    data. This action cannot be undone.
-                                </p>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => {
-                                    setDeleteConfirmName('');
-                                    setShowDeleteDialog(true);
-                                }}
-                            >
-                                Delete workspace
-                            </Button>
-                        </div>
-                    </div>
-                </section>
-            </div>
                 )}
             </BoneSkeleton>
 
